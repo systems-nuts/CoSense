@@ -1,5 +1,6 @@
 # CoSense
 Cosense is a part of the [Noisy&Newton Project](https://github.com/phillipstanleymarbell/Noisy-lang-compiler). Please check it for more details.
+
 The main idea of CoSense is to use sensor specifications to help compilation optimization, including value range propagation, function overload & elimination, type compression, condition simplification, and constant substitution.
 - - - -
 
