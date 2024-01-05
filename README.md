@@ -77,15 +77,40 @@ For example,
 
 4.	Build Libflex by going to the directory you cloned for Libflex and 
 running `make`. The Makefile assumes the environment variables `OSTYPE`
-and `MACHTYPE` are set. If that is not the case, you will need to 
-explicitly set them, for example on macOS:
+and `MACHTYPE` are set.
 ```shell
-$ cd submodules/libflex
-$ make
+	$ cd submodules/libflex
+	$ make
 ```
 
-5.	From the root of this top-level repository, build the Noisy and Newton compilers by running `make`. The makefile assumes the  environment variables `OSTYPE` and `MACHTYPE` are set. If that is not the  case, you will need to explicitly set them, for example on macOS:
+5.	From the root of this top-level repository, build the Noisy and Newton compilers by running `make`. The makefile assumes the  environment variables `OSTYPE` and `MACHTYPE` are set.
 ```shell
-$ make -j32
+	$ make -j32
 ```
 
+- - - -
+
+## Experiments
+### Micro Benchmarks
+Our micro-benchmark test cases are listed in `applications/newton/llvm-ir`.
+
+1. Following the [LLVM Benchmarking tips](https://llvm.org/docs/Benchmarking.html). We summarize it in a bash file.
+```bash
+sudo bash ./env.sh
+```
+In this bash file, we'll set the necessary benchmarking configs and then run the whole micro-benchmarks to check the compilation and execution.
+To reset the configs, run
+```bash
+sudo bash ./reset.sh
+```
+
+2. We have an `auto_test.cpp` to run and log the micro-benchmarks. To compile the test file and run:
+```bash
+make auto_test_compile
+./auto_test 2> err.log
+```
+Users can get the average performance in `average_speedup.log` and the detailed performance numbers in `perf.log`. For the compilation log, please check `compile.log`, and please check `err.log` if any error happens.
+
+3. Optional. We provide Python scripts to plot the figures as shown in our paper.
+	* `plot_sensor_ranges.py`: Plot the heatmaps.
+	* `bar_plot.py`: Plot the average speedup bar figure.
