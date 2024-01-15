@@ -72,7 +72,7 @@ For example,
 	$ cp config.local submodules/libflex
 ```
 
-3.	In `src/common/Makefile` and `src/newton/Makefile`, change `COMPILERVARIANT` as necessary (default is `clang`).
+3.	In `src/common/Makefile` and `src/newton/Makefile`, change `COMPILERVARIANT` as necessary (default is `gcc`).
 
 
 4.	Build Libflex by going to the directory you cloned for Libflex and 
