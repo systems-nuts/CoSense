@@ -2,7 +2,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-breakdown = True
+breakdown = False
 
 
 def bar_plot_groups(labels,
@@ -184,7 +184,7 @@ if __name__ == '__main__':
                            nrows=10,
                            header=None,
                            names=['benchmark', 'speedup', 'size'],
-                           usecols='B,C,E',
+                           usecols='A,B,D',
                            engine='openpyxl')
         df['benchmark'] = df['benchmark'].apply(
             lambda x: x.replace(' with time speed up', ''))
@@ -192,8 +192,8 @@ if __name__ == '__main__':
         labels = list(df['benchmark'].values)
         x86_speedup = list(df['speedup'].values)
         x86_size = list(df['size'].values)
-        x86_speedup = list(map(lambda x: x + 1.0, x86_speedup))
-        x86_size = list(map(lambda x: x * 100, x86_size))
+        x86_speedup = list(map(lambda x: float(x.strip('%'))/100 + 1.0, x86_speedup))
+        x86_size = list(map(lambda x: float(x.strip('%')), x86_size))
 
         # ARM
         df = pd.read_excel('overall_speedup_microbenchmarks.xlsx',
@@ -206,8 +206,8 @@ if __name__ == '__main__':
 
         arm_speedup = list(df['speedup'].values)
         arm_size = list(df['size'].values)
-        arm_speedup = list(map(lambda x: x + 1.0, arm_speedup))
-        arm_size = list(map(lambda x: x * 100, arm_size))
+        arm_speedup = list(map(lambda x: float(x.strip('%'))/100 + 1.0, arm_speedup))
+        arm_size = list(map(lambda x: float(x.strip('%')), arm_size))
 
         bar_plot_pairs(labels, arm_speedup, x86_speedup, 'arm', 'x86', 'Speedup',
                        'Speedup in microbenchmarks', 'speedup_microbenchmarks.png')

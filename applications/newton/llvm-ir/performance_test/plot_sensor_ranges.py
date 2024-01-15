@@ -45,13 +45,10 @@ import platform
 
 # [instruction counts (million)", "time consumption (s)", "IR lines", "size of library (bytes)"]
 y_units = [1000, 1000, 1, 1]
-# changed with auto_test.cpp
-range_extend_list = [1]
 
 params_num = 17
 test_case_num = 10
 merit_num = 4
-range_extend_num = len(range_extend_list)
 
 average_data = []
 with open('average_speedup.log', 'r') as f:
@@ -60,25 +57,25 @@ with open('average_speedup.log', 'r') as f:
         average_data.append(line_list)
 
 average_name_list = []
-for i in range(1, len(average_data), range_extend_num):
-    name = average_data[i][0][5:]
+for i in range(1, len(average_data), 1):
+    name = average_data[i][0][4:]
     average_name_list.append(name)
 
 average_time_speedup = []
 average_libsize_reduce = []
-for i in range(1, len(average_data), range_extend_num):
+for i in range(1, len(average_data), 1):
     time_speedup = 0
     libsize_reduce = 0
-    for j in range(i, i + range_extend_num):
-        time_speedup += float(average_data[j][3].strip('%')) / 100
-        libsize_reduce += float(average_data[j][5].strip('%')) / 100
-    average_time_speedup.append(time_speedup / range_extend_num * 100)
-    average_libsize_reduce.append(libsize_reduce / range_extend_num * 100)
+    for j in range(i, i + 1):
+        time_speedup += float(average_data[j][2].strip('%')) / 100 + 1
+        libsize_reduce += float(average_data[j][4].strip('%')) / 100
+    average_time_speedup.append(time_speedup * 100)
+    average_libsize_reduce.append(libsize_reduce * 100)
 
 assert (len(average_name_list) == len(average_time_speedup))
 for i in range(0, len(average_name_list)):
-    print(average_name_list[i], "with time speed up: ", format(average_time_speedup[i], '.2f'),
-          "%, lib size reduce: ", format(average_libsize_reduce[i], '.2f'), "%")
+    print(average_name_list[i], "with time speed up: ", format(average_time_speedup[i]/100, '.2f'),
+          "times, lib size reduce: ", format(average_libsize_reduce[i], '.2f'), "%")
 
 performance_data = []
 with open('perf.log', 'r') as f:
@@ -96,7 +93,7 @@ for i in range(2, len(performance_data), 3):
     opt_name_list.append(performance_data[i][0])
 
 param_list = []
-for i in range(1, 3 * params_num * range_extend_num, 3):
+for i in range(1, 3 * params_num, 3):
     lower, upper = map(float, performance_data[i][1].split())
     lower_r1 = round(lower, 1)
     upper_r1 = round(upper, 1)
@@ -137,22 +134,22 @@ opt_perf_data = [opt_inst_count, opt_time_consumption, opt_ir_lines, opt_lib_siz
 inst_speedup = []
 for i in range(3, len(performance_data), 3):
     inst_speedup.append(float(performance_data[i][2].strip('%')) / 100)
-inst_speedup = np.reshape(inst_speedup, (test_case_num, range_extend_num, params_num))
+inst_speedup = np.reshape(inst_speedup, (test_case_num, 1, params_num))
 
 time_speedup = []
 for i in range(3, len(performance_data), 3):
     time_speedup.append(float(performance_data[i][3].strip('%')) / 100 + 1)
-time_speedup = np.reshape(time_speedup, (test_case_num, range_extend_num, params_num))
+time_speedup = np.reshape(time_speedup, (test_case_num, 1, params_num))
 
 ir_reduction = []
 for i in range(3, len(performance_data), 3):
     ir_reduction.append(float(performance_data[i][4].strip('%')) / 100)
-ir_reduction = np.reshape(ir_reduction, (test_case_num, range_extend_num, params_num))
+ir_reduction = np.reshape(ir_reduction, (test_case_num, 1, params_num))
 
 lib_size_reduction = []
 for i in range(3, len(performance_data), 3):
     lib_size_reduction.append(float(performance_data[i][5].strip('%')) / 100)
-lib_size_reduction = np.reshape(lib_size_reduction, (test_case_num, range_extend_num, params_num))
+lib_size_reduction = np.reshape(lib_size_reduction, (test_case_num, 1, params_num))
 
 perf_data_speedup = [inst_speedup, time_speedup, ir_reduction, lib_size_reduction]
 
