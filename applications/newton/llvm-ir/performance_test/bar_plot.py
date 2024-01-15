@@ -1,6 +1,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import os
 
 breakdown = False
 
@@ -215,3 +216,5 @@ if __name__ == '__main__':
         bar_plot_pairs(labels, arm_size, x86_size, 'arm', 'x86',
                        'Size reduction (\%)', 'Library size reduction in microbenchmarks',
                        'size_reduction_microbenchmarks.png')
+
+    os.system("mv *.png fig/.")

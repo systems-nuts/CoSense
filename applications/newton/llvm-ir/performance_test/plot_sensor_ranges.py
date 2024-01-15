@@ -32,8 +32,8 @@
 # LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN
 # ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 # POSSIBILITY OF SUCH DAMAGE.
-import platform
 
+import platform
 import matplotlib.pyplot as plt
 import os
 import shutil
@@ -193,6 +193,5 @@ for merit_id in range(1, merit_num, 2):
 
 plt.close()
 
-os.system('cp perf.log fig/' + machine + "_perf.log")
-os.system('cp average_speedup.log fig/' + machine + "_average_speedup.log")
-os.system('tar -zvcf fig.tar.gz fig/')
+os.system('cp perf.log ' + machine + "_perf.log")
+os.system('cp average_speedup.log ' + machine + "_average_speedup.log")
