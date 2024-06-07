@@ -101,6 +101,7 @@ SOURCES		=\
 		newton-irPass-LLVMIR-shrinkTypeByRange.cpp\
 		newton-irPass-LLVMIR-quantization.cpp\
 		newton-irPass-LLVMIR-memoryAlignment.cpp\
+		newton-irPass-LLVMIR-emitAssume.cpp\
 
 
 #
@@ -136,6 +137,7 @@ OBJS		=\
 		newton-irPass-LLVMIR-constantSubstitution.$(OBJECTEXTENSION)\
 		newton-irPass-LLVMIR-shrinkTypeByRange.$(OBJECTEXTENSION)\
 		newton-irPass-LLVMIR-quantization.$(OBJECTEXTENSION)\
+		newton-irPass-LLVMIR-emitAssume.$(OBJECTEXTENSION)\
 		newton-irPass-invariantSignalAnnotation.$(OBJECTEXTENSION)\
 		newton-irPass-piGroupsSignalAnnotation.$(OBJECTEXTENSION)\
 		newton-irPass-ipsaBackend.$(OBJECTEXTENSION)\
@@ -184,6 +186,7 @@ CGIOBJS		=\
 		newton-irPass-LLVMIR-constantSubstitution.$(OBJECTEXTENSION)\
 		newton-irPass-LLVMIR-shrinkTypeByRange.$(OBJECTEXTENSION)\
 		newton-irPass-LLVMIR-quantization.$(OBJECTEXTENSION)\
+		newton-irPass-LLVMIR-emitAssume.$(OBJECTEXTENSION)\
 		newton-irPass-invariantSignalAnnotation.$(OBJECTEXTENSION)\
 		newton-irPass-piGroupsSignalAnnotation.$(OBJECTEXTENSION)\
 		newton-irPass-estimatorSynthesisBackend/$(OBJECTEXTENSION)\
@@ -231,6 +234,7 @@ LIBNEWTONOBJS =\
 		newton-irPass-LLVMIR-constantSubstitution.$(OBJECTEXTENSION)\
 		newton-irPass-LLVMIR-shrinkTypeByRange.$(OBJECTEXTENSION)\
 		newton-irPass-LLVMIR-quantization.$(OBJECTEXTENSION)\
+		newton-irPass-LLVMIR-emitAssume.$(OBJECTEXTENSION)\
 		newton-irPass-invariantSignalAnnotation.$(OBJECTEXTENSION)\
 		newton-irPass-piGroupsSignalAnnotation.$(OBJECTEXTENSION)\
 		newton-irPass-ipsaBackend.$(OBJECTEXTENSION)\
@@ -367,6 +371,10 @@ newton-irPass-LLVMIR-quantization.$(OBJECTEXTENSION): newton-irPass-LLVMIR-quant
 	$(CXX) $(FLEXFLAGS) $(INCDIRS) $(CXXFLAGS) $(WFLAGS) $(OPTFLAGS) $<
 
 newton-irPass-LLVMIR-memoryAlignment.$(OBJECTEXTENSION): newton-irPass-LLVMIR-memoryAlignment.cpp
+	$(CXX) $(FLEXFLAGS) $(INCDIRS) $(CXXFLAGS) $(WFLAGS) $(OPTFLAGS) $(LINTFLAGS) $<
+	$(CXX) $(FLEXFLAGS) $(INCDIRS) $(CXXFLAGS) $(WFLAGS) $(OPTFLAGS) $<
+
+newton-irPass-LLVMIR-emitAssume.$(OBJECTEXTENSION): newton-irPass-LLVMIR-emitAssume.cpp
 	$(CXX) $(FLEXFLAGS) $(INCDIRS) $(CXXFLAGS) $(WFLAGS) $(OPTFLAGS) $(LINTFLAGS) $<
 	$(CXX) $(FLEXFLAGS) $(INCDIRS) $(CXXFLAGS) $(WFLAGS) $(OPTFLAGS) $<
 

@@ -204,7 +204,10 @@ processNewtonFile(State *  N, char *  filename)
 	}
 	if (N->irPasses & kNewtonirPassLLVMIROptimizeByRange)
 	{
-		irPassLLVMIROptimizeByRange(N);
+        bool enableQuantization = N->irPasses & kNewtonirPassLLVMIRAutoQuantization;
+        bool enableOverload = N->irPasses & kNewtonirPassLLVMIREnableOverload;
+        bool enableBuiltinAssume = N->irPasses & kNewtonirPassLLVMIREnableBuiltinAssume;
+		irPassLLVMIROptimizeByRange(N, enableQuantization, enableOverload, enableBuiltinAssume);
 	}
 	/*
 	 *	Dot backend.
