@@ -68,6 +68,14 @@ setQuantizedType(Value * inValue, Type * quantizedType)
 				inValue->mutateType(quantizedType);
 			}
 		}
+		else
+		{
+			llvm::errs() << "Unsupported type for quantization\n";
+		}
+	}
+	else
+	{
+		llvm::errs() << "Null type encountered in setQuantizedType\n";
 	}
 }
 
@@ -85,8 +93,10 @@ quantizeConstant(Instruction * inInstruction, Type * quantizedType)
 			continue;
 		}
 
-		ConstantFP * constFp  = llvm::dyn_cast<llvm::ConstantFP>(inValue);
-		Value *	     newValue = nullptr;
+		ConstantFP * constFp = llvm::dyn_cast<llvm::ConstantFP>(inValue);
+
+		// TODO  Cache the quantized value to avoid multiple calculations
+		Value * newValue = nullptr;
 		if (inValue->getType()->isFloatTy())
 		{
 			// Convert float constant to fixed-point
@@ -105,9 +115,10 @@ quantizeConstant(Instruction * inInstruction, Type * quantizedType)
 		{
 			// assert(false && "unknown floating type");
 			llvm::errs() << "Unknown floating type\n";
-			return;
+			continue;
 		}
 
+		// Replace all uses of the original value with the new quantized value
 		inInstruction->replaceUsesOfWith(inValue, newValue);
 	}
 }
@@ -348,11 +359,6 @@ quantizePredict(CmpInst::Predicate predict)
 		case FCmpInst::FCMP_UNO:  // unordered (at least one NaN)
 			// For unordered, there is no direct integer equivalent, map to ICMP_EQ for safety
 			return ICmpInst::ICMP_EQ;
-		case FCmpInst::FCMP_TRUE:  // always true
-			// There is no direct integer equivalent, but we can use a workaround
-			return ICmpInst::ICMP_TRUE;   // custom handling needed
-		case FCmpInst::FCMP_FALSE:	      // always false
-			return ICmpInst::ICMP_FALSE;  // custom handling needed
 
 		default:
 			llvm::errs() << "Unhandled floating point predicate\n";
@@ -402,16 +408,17 @@ quantizeSimpleFPInstruction(Instruction * inInstruction, Type * quantizedType)
 			newInst = Builder.CreateSRem(inInstruction->getOperand(0), inInstruction->getOperand(1));
 			break;
 		}
+
 		case Instruction::FCmp:
 			// Replace floating-point comparison with integer comparison
 			if (auto fcmp_inst = dyn_cast<FCmpInst>(inInstruction))
 			{
 				CmpInst::Predicate pred = quantizePredict(fcmp_inst->getPredicate());
-				if (pred == ICmpInst::ICMP_TRUE)
+				if (fcmp_inst->getPredicate() == FCmpInst::FCMP_TRUE)
 				{
 					newInst = ConstantInt::getTrue(quantizedType);
 				}
-				else if (pred == ICmpInst::ICMP_FALSE)
+				else if (fcmp_inst->getPredicate() == FCmpInst::FCMP_FALSE)
 				{
 					newInst = ConstantInt::getFalse(quantizedType);
 				}
@@ -421,6 +428,7 @@ quantizeSimpleFPInstruction(Instruction * inInstruction, Type * quantizedType)
 				}
 			}
 			break;
+
 			/*
 			 * Change fneg(a) to `0-a`.
 			 * */
@@ -696,6 +704,7 @@ irPassLLVMIRAutoQuantization(State * N, llvm::Function & llvmIrFunction, std::ve
 						gepInst->setResultElementType(quantizedType);
 						//                        }
 					}
+					break;
 				case Instruction::Load:
 				case Instruction::PHI:
 				{
@@ -822,5 +831,4 @@ irPassLLVMIRAutoQuantization(State * N, llvm::Function & llvmIrFunction, std::ve
 	adaptTypeCast(llvmIrFunction, quantizedType);
 
 	return;
-}
 }
