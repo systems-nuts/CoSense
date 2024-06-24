@@ -11,7 +11,7 @@ CHStone_DIR = ../CHStone_test/
 NEWTON_BIN_DIR = ../../../../src/newton
 
 CC = clang
-OUT_FILE = out.ll
+OUT_FILE = out.llperformace
 OUT_BC = out.bc
 OUT_S = out.s
 OUT_OBJ = out.o
@@ -19,9 +19,11 @@ OUT_LIB = libout.a
 
 # DEBUG_MODE=true make ...
 ifdef DEBUG_MODE
-CC_OPT_LEVEL = -O0 -g
+#CC_OPT_LEVEL = -O0 -g
+CC_OPT_LEVEL = -O0 -g -fno-builtin
 else
-CC_OPT_LEVEL = -O3 -Os
+#CC_OPT_LEVEL = -O3 -Os
+CC_OPT_LEVEL = -O3 -Os -g -fno-builtin
 endif
 
 # CROSS_COMPILE=true make ...
@@ -262,7 +264,7 @@ compile_arm_sqrt_q15:
 	$(call compile_main_fn,ARM_SQRT_Q15)
 
 madgwick_non_opt:
-ifdef AUTO_QUANT
+ifdef AUTO_FIX_QUANT
 	$(call max_opt_fn,MadgwickAHRSfix)
 else ifdef SOFT_FLOAT_LIB
 	$(call max_opt_fn,MadgwickAHRS_softfloat)
@@ -272,9 +274,9 @@ else
 endif
 
 madgwick_opt:
-	cd $(NEWTON_BIN_DIR) && $(call newton_opt_fn,MadgwickAHRSfix)
-	llvm-dis ../MadgwickAHRSfix_output.bc
-	$(call max_opt_fn,MadgwickAHRSfix_output)
+	cd $(NEWTON_BIN_DIR) && $(call newton_opt_fn,MadgwickAHRS)
+	llvm-dis ../MadgwickAHRS_output.bc
+	$(call max_opt_fn,MadgwickAHRS_output)
 
 inferBoundControlFlow_non_opt:
 	$(call max_opt_fn,inferBoundControlFlow)
@@ -343,7 +345,7 @@ perf_benchmark_suite_double_opt: clean make_ll benchmark_suite_opt compile_lib c
 
 perf_benchmark_suite_float: clean make_ll benchmark_suite_non_opt compile_lib compile_benchmark_suite_float
 
-perf_benchmark_suite_float_opt: clean make_ll benchmark_suite_opt compile_lib compile_benchmark_suite_float
+perf_benchmark_suite_float_opt: clean make_ll benchmark_suite_opt compile_lib compile_benchmark_suite_floa et
 
 perf_benchmark_suite_asuint: clean make_ll benchmark_suite_non_opt compile_lib compile_benchmark_suite_asuint
 
@@ -351,7 +353,7 @@ perf_benchmark_suite_asuint_opt: clean make_ll benchmark_suite_opt compile_lib c
 
 perf_benchmark_suite_quant: clean make_ll benchmark_suite_non_opt compile_lib compile_benchmark_suite_quant
 
-perf_benchmark_suite_fixedpoint: clean make_ll benchmark_suite_non_opt compile_lib compile_benchmark_suite_fixed_point
+perf_benchmark_suite_fixedpoint: clean make_ll benchmark_suite_non_opt compile_lib compile_benchmark_suite_fixe ed_point
 
 perf_madgwick: clean make_ll madgwick_non_opt compile_lib compile_test_madgwick
 
@@ -374,9 +376,17 @@ auto_test_compile:
 
 all: default
 
+
+
+
 default: perf_exp perf_exp_opt perf_log perf_log_opt perf_acosh perf_acosh_opt perf_j0 perf_j0_opt perf_y0 perf_y0_opt perf_rem_pio2 perf_rem_pio2_opt perf_sincosf perf_sincosf_opt perf_float64_add perf_float64_add_opt perf_float64_div perf_float64_div_opt perf_float64_mul perf_float64_mul_opt perf_float64_sin perf_float64_sin_opt perf_arm_sqrt_q15 perf_arm_sqrt_q15_opt auto_test_compile
 
 clean:
 	$(QUIET)rm -f *.ll *.o *.s *.txt out.* libout.a main_out auto_test
 	cd $(CHStone_DIR) && $(MAKE_CLEAN)
 	cd $(SUBDIR) && $(MAKE_CLEAN)
+
+
+
+
+
