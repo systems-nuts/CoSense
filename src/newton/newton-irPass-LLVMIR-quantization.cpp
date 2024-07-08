@@ -1,32 +1,32 @@
 /*
-	Authored 2022. Pei Mu.
-	All rights reserved.
-	Redistribution and use in source and binary forms, with or without
-	modification, are permitted provided that the following conditions
-	are met:
-	*	Redistributions of source code must retain the above
-		copyright notice, this list of conditions and the following
-		disclaimer.
-	*	Redistributions in binary form must reproduce the above
-		copyright notice, this list of conditions and the following
-		disclaimer in the documentation and/or other materials
-		provided with the distribution.
-	*	Neither the name of the author nor the names of its
-		contributors may be used to endorse or promote products
-		derived from this software without specific prior written
-		permission.
-	THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-	"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-	LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS
-	FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE
-	COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
-	INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
-	BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
-	LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
-	CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
-	LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN
-	ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
-	POSSIBILITY OF SUCH DAMAGE.
+Authored 2022. Pei Mu.
+All rights reserved.
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions
+are met:
+*	Redistributions of source code must retain the above
+	copyright notice, this list of conditions and the following
+	disclaimer.
+*	Redistributions in binary form must reproduce the above
+	copyright notice, this list of conditions and the following
+	disclaimer in the documentation and/or other materials
+	provided with the distribution.
+*	Neither the name of the author nor the names of its
+	contributors may be used to endorse or promote products
+	derived from this software without specific prior written
+	permission.
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS
+FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE
+COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
+INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
+BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN
+ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGE.
 */
 
 #include "newton-irPass-LLVMIR-quantization.h"
@@ -39,26 +39,26 @@ using namespace llvm;
 
 extern "C" {
 
-//check if the type is a floating type
-bool isValidFloatingType(Type *type) {
+// check if the type is a floating type
+bool
+isValidFloatingType(Type * type)
+{
 	return type->isFloatTy() || type->isDoubleTy();
 }
-
 
 // Set the quantized type for a given value
 void
 setQuantizedType(Value * inValue, Type * quantizedType)
 {
 	llvm::errs() << "Entering setQuantizedType\n";
-	if (inValue == nullptr) {
+	if (inValue == nullptr)
+	{
 		llvm::errs() << "inValue is nullptr\n";
 		return;
 	}
 	auto	 valueType = inValue->getType();
 	unsigned pointerAddr;
 	bool	 isPointer = false;
-
-
 
 	if (valueType != nullptr)
 	{
@@ -71,11 +71,11 @@ setQuantizedType(Value * inValue, Type * quantizedType)
 		}
 
 		// 跳过整数类型和结构体类型
-		if (valueType->isIntegerTy() || valueType->isStructTy()) {
+		if (valueType->isIntegerTy() || valueType->isStructTy())
+		{
 			llvm::errs() << "Skipping quantization for type: " << *valueType << "\n";
 			return;
 		}
-
 
 		if (isValidFloatingType(valueType) || valueType->isArrayTy())
 		{
@@ -92,11 +92,14 @@ setQuantizedType(Value * inValue, Type * quantizedType)
 				// Otherwise, directly set the type to the quantized type
 				inValue->mutateType(quantizedType);
 			}
-		}else {
-			llvm::errs() << "Unsupported type for quantization: " << *valueType << "\n";
-
 		}
-	} else {
+		else
+		{
+			llvm::errs() << "Unsupported type for quantization: " << *valueType << "\n";
+		}
+	}
+	else
+	{
 		llvm::errs() << "Value type is nullptr\n";
 	}
 }
@@ -104,24 +107,35 @@ setQuantizedType(Value * inValue, Type * quantizedType)
 std::unordered_map<ConstantFP *, Value *> quantizedValueCache;
 
 // Ensure load and store instructions have matching types
-void handleLoadStoreInstructions(Function &llvmIrFunction, Type *quantizedType) {
+void
+handleLoadStoreInstructions(Function & llvmIrFunction, Type * quantizedType)
+{
 	llvm::errs() << "Entering handleLoadStoreInstructions\n";
-	for (BasicBlock &llvmIrBasicBlock : llvmIrFunction) {
-		for (BasicBlock::iterator itBB = llvmIrBasicBlock.begin(); itBB != llvmIrBasicBlock.end();) {
-			Instruction *llvmIrInstruction = &*itBB++;
-			if (llvmIrInstruction->getOpcode() == Instruction::Load) {
-				if (auto loadInst = dyn_cast<LoadInst>(llvmIrInstruction)) {
+	for (BasicBlock & llvmIrBasicBlock : llvmIrFunction)
+	{
+		for (BasicBlock::iterator itBB = llvmIrBasicBlock.begin(); itBB != llvmIrBasicBlock.end();)
+		{
+			Instruction * llvmIrInstruction = &*itBB++;
+			if (llvmIrInstruction->getOpcode() == Instruction::Load)
+			{
+				if (auto loadInst = dyn_cast<LoadInst>(llvmIrInstruction))
+				{
 					auto ptr = loadInst->getPointerOperand();
 					if (ptr->getType()->getPointerElementType()->isFloatTy() ||
-					    ptr->getType()->getPointerElementType()->isDoubleTy()) {
+					    ptr->getType()->getPointerElementType()->isDoubleTy())
+					{
 						ptr->mutateType(quantizedType->getPointerTo());
 					}
 				}
-			} else if (llvmIrInstruction->getOpcode() == Instruction::Store) {
-				if (auto storeInst = dyn_cast<StoreInst>(llvmIrInstruction)) {
+			}
+			else if (llvmIrInstruction->getOpcode() == Instruction::Store)
+			{
+				if (auto storeInst = dyn_cast<StoreInst>(llvmIrInstruction))
+				{
 					auto ptr = storeInst->getPointerOperand();
 					if (ptr->getType()->getPointerElementType()->isFloatTy() ||
-					    ptr->getType()->getPointerElementType()->isDoubleTy()) {
+					    ptr->getType()->getPointerElementType()->isDoubleTy())
+					{
 						ptr->mutateType(quantizedType->getPointerTo());
 					}
 				}
@@ -130,104 +144,90 @@ void handleLoadStoreInstructions(Function &llvmIrFunction, Type *quantizedType) 
 	}
 }
 
-void handleFunctionSignature(Function &llvmIrFunction, Type *quantizedType) {
-	auto &context = llvmIrFunction.getContext();
-	std::vector<Type*> paramTypes;
+// Create a quantized function with the same signature as the original function
+// Create a quantized function with the same signature as the original function
+Function *createQuantizedFunction(Function &llvmIrFunction, Type *quantizedType) {
+	std::vector<Type *> params;
 	for (auto &arg : llvmIrFunction.args()) {
+		// If the argument type is float or double, use the quantized type
 		if (arg.getType()->isFloatTy() || arg.getType()->isDoubleTy()) {
-			paramTypes.push_back(quantizedType);
+			params.push_back(quantizedType);
+			llvm::errs() << "Quantizing parameter: " << arg.getName() << " from " << *arg.getType() << " to " << *quantizedType << "\n";
 		} else {
-			paramTypes.push_back(arg.getType());
+			params.push_back(arg.getType());
 		}
 	}
 
+	// Determine the return type: if it's float or double, use the quantized type
 	Type *returnType = llvmIrFunction.getReturnType()->isFloatTy() || llvmIrFunction.getReturnType()->isDoubleTy()
 				? quantizedType
 				: llvmIrFunction.getReturnType();
+	llvm::errs() << "Original Function: " << llvmIrFunction.getName() << "\n";
+	llvm::errs() << "Original Return Type: " << *llvmIrFunction.getReturnType() << "\n";
+	for (auto &arg : llvmIrFunction.args()) {
+		llvm::errs() << "Original Arg: " << *arg.getType() << "\n";
+	}
+	llvm::errs() << "New Function: " << llvmIrFunction.getName() + "_quantized" << "\n";
+	llvm::errs() << "New Return Type: " << *returnType << "\n";
+	for (auto &param : params) {
+		llvm::errs() << "New Arg: " << *param << "\n";
+	}
 
-	FunctionType *funcType = FunctionType::get(returnType, paramTypes, llvmIrFunction.isVarArg());
-
-	llvmIrFunction.mutateType(PointerType::getUnqual(funcType));
+	// Create a new function type with the modified parameters and return type
+	FunctionType *newFuncType = FunctionType::get(returnType, params, false);
+	// Create the new function in the same module with a modified name
+	Function *newFunc = Function::Create(newFuncType, llvmIrFunction.getLinkage(), llvmIrFunction.getName() + "_quantized", llvmIrFunction.getParent());
+	return newFunc;
 }
 
+// Clone the function body from the original function to the new quantized function
+void cloneFunctionBody(Function &oldFunc, Function *newFunc) {
+	ValueToValueMapTy vmap;
+	Function::arg_iterator newArgIt = newFunc->arg_begin();
+	for (auto &oldArg : oldFunc.args()) {
+		newArgIt->setName(oldArg.getName());
+		vmap[&oldArg] = &*newArgIt++;
+	}
+	// Clone the function body into the new function
+	SmallVector<ReturnInst *, 8> returns;
+	llvm::CloneFunctionInto(newFunc, &oldFunc, vmap, CloneFunctionChangeType::LocalChangesOnly, returns);
+}
 
-void handleReturnInstructions(Function &llvmIrFunction, Type *quantizedType) {
-	for (BasicBlock &llvmIrBasicBlock : llvmIrFunction) {
-		for (BasicBlock::iterator itBB = llvmIrBasicBlock.begin(); itBB != llvmIrBasicBlock.end();) {
-			Instruction *llvmIrInstruction = &*itBB++;
-			if (llvmIrInstruction->getOpcode() == Instruction::Ret) {
-				if (auto retInst = dyn_cast<ReturnInst>(llvmIrInstruction)) {
-					Value *retVal = retInst->getReturnValue();
-					if (retVal && (retVal->getType()->isFloatTy() || retVal->getType()->isDoubleTy())) {
-						IRBuilder<> Builder(retInst);
-						Value *newRetVal = Builder.CreateFPToSI(retVal, quantizedType);
-						Builder.CreateRet(newRetVal);
-						retInst->eraseFromParent();
-					}
-				}
+// Replace all uses of the original function with the new quantized function
+void replaceFunctionUses(Function &oldFunc, Function *newFunc) {
+	std::vector<User*> users(oldFunc.user_begin(), oldFunc.user_end());
+	for (auto *U : users) {
+		if (CallInst *callInst = dyn_cast<CallInst>(U)) {
+			std::vector<Value *> args;
+			for (auto &arg : callInst->args()) {
+				args.push_back(arg);
 			}
+			// Create a new call instruction to the new function
+			CallInst *newCall = CallInst::Create(newFunc, args, "", callInst);
+			newCall->setCallingConv(callInst->getCallingConv());
+			newCall->setDebugLoc(callInst->getDebugLoc());
+			llvm::errs() << "Replacing call: " << *callInst << " with " << *newCall << "\n";
+			callInst->replaceAllUsesWith(newCall);
+			callInst->eraseFromParent();
 		}
 	}
 }
 
-
+// Handle the function signature change for quantization
+void handleFunctionSignature(Function &llvmIrFunction, Type *quantizedType) {
+	llvm::errs() << "Calling handleFunctionSignature for function: " << llvmIrFunction.getName() << "\n";
+	Function *newFunc = createQuantizedFunction(llvmIrFunction, quantizedType);
+	cloneFunctionBody(llvmIrFunction, newFunc);
+	replaceFunctionUses(llvmIrFunction, newFunc);
+	// Erase the old function from the module
+	llvmIrFunction.eraseFromParent();
+	llvm::errs() << "Finished handling function signature for: " << newFunc->getName() << "\n";
+}
 
 
 // Quantize constants within an instruction
 
-void quantizeConstant(Instruction *inInstruction, Type *quantizedType) {
-	llvm::errs() << "Entering quantizeConstant\n";
-	for (size_t idx = 0; idx < inInstruction->getNumOperands(); idx++) {
-		Value *inValue = inInstruction->getOperand(idx);
-
-
-		// Skip if the operand is not a floating-point constant
-		if (!isa<llvm::ConstantFP>(inValue)) {
-			continue;
-		}
-
-
-		auto *constFp = llvm::dyn_cast<ConstantFP>(inValue);
-
-
-		// Check the cache for the quantized value
-		auto cachedValue = quantizedValueCache.find(constFp);
-
-		if (cachedValue != quantizedValueCache.end()) {
-			inInstruction->replaceUsesOfWith(inValue, cachedValue->second);
-			continue;
-		}
-
-		// Compute the quantized value if not found in cache
-		Value *newValue = nullptr;
-		if (inValue->getType()->isFloatTy()) {
-			// Convert float constant to fixed-point
-			float constValue = constFp->getValueAPF().convertToFloat();
-			constValue *= FRAC_BASE;
-			int32_t fixedPointValue = round(constValue);
-			//newValue = ConstantInt::get(quantizedType, round(constValue), true);
-			newValue = ConstantFP::get(inValue->getType(), (float)fixedPointValue / FRAC_BASE);
-		} else if (inValue->getType()->isDoubleTy()) {
-			// Convert double constant to fixed-point and back to double
-			double constValue = constFp->getValueAPF().convertToDouble();
-			constValue *= FRAC_BASE;
-			int64_t fixedPointValue = round(constValue);
-			//newValue = ConstantInt::get(quantizedType, round(constValue), true);
-			newValue = ConstantFP::get(inValue->getType(), (double)fixedPointValue / FRAC_BASE);
-		} else {
-			llvm::errs() << "Unknown floating type: " << *inValue->getType() << "\n";
-			//assert(false && "unknown floating type");
-			continue;
-		}
-
-		// Cache the quantized value
-		quantizedValueCache[constFp] = newValue;
-
-		// Replace all uses of the original value with the new quantized value
-		inInstruction->replaceUsesOfWith(inValue, newValue);
-	}
-}
-/*void
+void
 quantizeConstant(Instruction * inInstruction, Type * quantizedType)
 {
 	llvm::errs() << "Entering quantizeConstant\n";
@@ -241,35 +241,51 @@ quantizeConstant(Instruction * inInstruction, Type * quantizedType)
 			continue;
 		}
 
-		ConstantFP * constFp = llvm::dyn_cast<llvm::ConstantFP>(inValue);
+		auto * constFp = llvm::dyn_cast<ConstantFP>(inValue);
 
+		// Check the cache for the quantized value
+		auto cachedValue = quantizedValueCache.find(constFp);
 
+		if (cachedValue != quantizedValueCache.end())
+		{
+			inInstruction->replaceUsesOfWith(inValue, cachedValue->second);
+			continue;
+		}
+
+		// Compute the quantized value if not found in cache
 		Value * newValue = nullptr;
 		if (inValue->getType()->isFloatTy())
 		{
 			// Convert float constant to fixed-point
 			float constValue = constFp->getValueAPF().convertToFloat();
 			constValue *= FRAC_BASE;
-			newValue = ConstantInt::get(quantizedType, round(constValue), true);
+			int32_t fixedPointValue = round(constValue);
+			// newValue = ConstantInt::get(quantizedType, round(constValue), true);
+			newValue = ConstantFP::get(inValue->getType(), (float)fixedPointValue / FRAC_BASE);
 		}
 		else if (inValue->getType()->isDoubleTy())
 		{
-			// Convert double constant to fixed-point
+			// Convert double constant to fixed-point and back to double
 			double constValue = constFp->getValueAPF().convertToDouble();
 			constValue *= FRAC_BASE;
-			newValue = ConstantInt::get(quantizedType, round(constValue), true);
+			int64_t fixedPointValue = round(constValue);
+			// newValue = ConstantInt::get(quantizedType, round(constValue), true);
+			newValue = ConstantFP::get(inValue->getType(), (double)fixedPointValue / FRAC_BASE);
 		}
 		else
 		{
+			llvm::errs() << "Unknown floating type: " << *inValue->getType() << "\n";
 			// assert(false && "unknown floating type");
-			llvm::errs() << "Unknown floating type\n";
 			continue;
 		}
+
+		// Cache the quantized value
+		quantizedValueCache[constFp] = newValue;
 
 		// Replace all uses of the original value with the new quantized value
 		inInstruction->replaceUsesOfWith(inValue, newValue);
 	}
-}*/
+}
 
 // Simplify constants in the instruction
 void
@@ -409,13 +425,17 @@ createFixMul(llvm::Function * inFunction, Type * quantizedType, std::vector<llvm
 	{
 		if (function.getName() == fixmulFuncName)
 		{
+			llvm::errs() << "fixmul already exists\n";
 			return &function;
 		}
 	}
 
+	// Create the function type for fixmul
 	llvm::FunctionType * funcType = llvm::FunctionType::get(quantizedType, {quantizedType, quantizedType}, false);
 	llvm::Function *     func     = llvm::Function::Create(funcType, llvm::Function::PrivateLinkage, fixmulFuncName, irModule);
+	llvm::errs() << "Created fixmul function\n";
 
+	// Create the entry block and IR builder
 	llvm::BasicBlock * entryBB = llvm::BasicBlock::Create(inFunction->getContext(), "entry", func);
 	llvm::IRBuilder<>  builder(entryBB);
 	builder.SetInsertPoint(entryBB);
@@ -434,6 +454,8 @@ createFixMul(llvm::Function * inFunction, Type * quantizedType, std::vector<llvm
 	 * ret i32 %7
 	 * }
 	 * */
+
+	// Handle different bit widths for higher precision multiplication
 	Type * higherQuantizedType;
 	switch (BIT_WIDTH)
 	{
@@ -447,17 +469,34 @@ createFixMul(llvm::Function * inFunction, Type * quantizedType, std::vector<llvm
 			higherQuantizedType = Type::getInt64Ty(inFunction->getContext());
 			break;
 	}
+	// Get arguments and create the instructions for the function body
+	llvm::Function::arg_iterator arg1 = func->arg_begin();
+	if (arg1 == func->arg_end()) {
+		llvm::errs() << "Error: Function arguments not set correctly\n";
+		return nullptr;
+	}
 
-	llvm::Function::arg_iterator arg1      = &*(func->arg_begin());
+
+	//llvm::Function::arg_iterator arg1      = &*(func->arg_begin());
 	llvm::Value *		     sext1     = builder.CreateSExt(arg1, higherQuantizedType);
-	llvm::Function::arg_iterator arg2      = &*(++arg1);
+	//llvm::Function::arg_iterator arg2      = &*(++arg1);
+	llvm::Function::arg_iterator arg2 = std::next(func->arg_begin());
+	if (arg2 == func->arg_end()) {
+		llvm::errs() << "Error: Function arguments not set correctly\n";
+		return nullptr;
+	}
 	llvm::Value *		     sext2     = builder.CreateSExt(arg2, higherQuantizedType);
 	llvm::Value *		     mulInst   = builder.CreateMul(sext1, sext2);
 	llvm::Value *		     ashrInst  = builder.CreateAShr(mulInst, ConstantInt::get(higherQuantizedType, FRAC_Q));
 	llvm::Value *		     truncInst = builder.CreateTrunc(ashrInst, quantizedType);
 	builder.CreateRet(truncInst);
+	llvm::errs() << "Created function body\n";
 
+
+	// Insert the created function into the list
 	functionsToInsert.emplace_back(func);
+	llvm::errs() << "Inserted fixmul function into the list\n";
+
 
 	return func;
 }
@@ -592,47 +631,45 @@ quantizeSimpleFPInstruction(Instruction * inInstruction, Type * quantizedType)
 		}
 
 		case Instruction::FCmp:
-				// Replace floating-point comparison with integer comparisonm
-				llvm::errs() << "Handling FCmp\n";
-				if (auto fcmp_inst = dyn_cast<FCmpInst>(inInstruction))
+			// Replace floating-point comparison with integer comparisonm
+			llvm::errs() << "Handling FCmp\n";
+			if (auto fcmp_inst = dyn_cast<FCmpInst>(inInstruction))
+			{
+				CmpInst::Predicate pred = quantizePredict(fcmp_inst->getPredicate());
+				if (fcmp_inst->getPredicate() == FCmpInst::FCMP_TRUE)
 				{
-					CmpInst::Predicate pred = quantizePredict(fcmp_inst->getPredicate());
-					if (fcmp_inst->getPredicate() == FCmpInst::FCMP_TRUE)
-					{
-						newInst = ConstantInt::getTrue(quantizedType);
-					}
-					else if (fcmp_inst->getPredicate() == FCmpInst::FCMP_FALSE)
-					{
-						newInst = ConstantInt::getFalse(quantizedType);
-					}
-					else
-					{
-						// Convert floating-point operands to integer operands
-						Value * fpOp0 = fcmp_inst->getOperand(0);
-						Value * fpOp1 = fcmp_inst->getOperand(1);
-
-						// Debug output to check types
-						llvm::errs() << "Entering FCmp case\n";
-						llvm::errs() << "Original Operand 0 type: " << *fpOp0->getType() << "\n";
-						llvm::errs() << "Original Operand 1 type: " << *fpOp1->getType() << "\n";
-
-						Value * intOp0 = Builder.CreateFPToSI(fpOp0, quantizedType);
-						Value * intOp1 = Builder.CreateFPToSI(fpOp1, quantizedType);
-
-						// Debug output to check types after conversion
-						llvm::errs() << "Converted Operand 0 type: " << *intOp0->getType() << "\n";
-						llvm::errs() << "Converted Operand 1 type: " << *intOp1->getType() << "\n";
-						llvm::errs() << "Expected quantizedType: " << *quantizedType << "\n";
-
-						// Assert to ensure types are correct
-						assert(intOp0->getType() == intOp1->getType() && "Both operands to ICmp instruction are not of the same type!");
-
-						newInst = Builder.CreateICmp(pred, intOp0, intOp1);
-					}
+					newInst = ConstantInt::getTrue(quantizedType);
 				}
-				break;
+				else if (fcmp_inst->getPredicate() == FCmpInst::FCMP_FALSE)
+				{
+					newInst = ConstantInt::getFalse(quantizedType);
+				}
+				else
+				{
+					// Convert floating-point operands to integer operands
+					Value * fpOp0 = fcmp_inst->getOperand(0);
+					Value * fpOp1 = fcmp_inst->getOperand(1);
 
+					// Debug output to check types
+					llvm::errs() << "Entering FCmp case\n";
+					llvm::errs() << "Original Operand 0 type: " << *fpOp0->getType() << "\n";
+					llvm::errs() << "Original Operand 1 type: " << *fpOp1->getType() << "\n";
 
+					Value * intOp0 = Builder.CreateFPToSI(fpOp0, quantizedType);
+					Value * intOp1 = Builder.CreateFPToSI(fpOp1, quantizedType);
+
+					// Debug output to check types after conversion
+					llvm::errs() << "Converted Operand 0 type: " << *intOp0->getType() << "\n";
+					llvm::errs() << "Converted Operand 1 type: " << *intOp1->getType() << "\n";
+					llvm::errs() << "Expected quantizedType: " << *quantizedType << "\n";
+
+					// Assert to ensure types are correct
+					assert(intOp0->getType() == intOp1->getType() && "Both operands to ICmp instruction are not of the same type!");
+
+					newInst = Builder.CreateICmp(pred, intOp0, intOp1);
+				}
+			}
+			break;
 
 			/*
 			 * Change fneg(a) to `0-a`.
@@ -763,28 +800,28 @@ irPassLLVMIRAutoQuantization(State * N, llvm::Function & llvmIrFunction, std::ve
 			return;
 	}
 
-	// Change the function signature if it has floating point types
+	llvm::errs() << "Calling handleFunctionSignature for function: " << llvmIrFunction.getName() << "\n";
 	handleFunctionSignature(llvmIrFunction, quantizedType);
+	llvm::errs() << "Finished calling handleFunctionSignature for function: " << llvmIrFunction.getName() << "\n";
 
-
-
-
-/*
-	*/
-/*
+	/*
+	 */
+	/*
 	 * change the type of this function if it's fp
-	 * *//*
+	 * */
+	/*
 
-	if (llvmIrFunction.getReturnType()->isFloatTy() || llvmIrFunction.getReturnType()->isDoubleTy())
-	{
-		llvmIrFunction.mutateType(quantizedType);
-	}
-*/
+   if (llvmIrFunction.getReturnType()->isFloatTy() || llvmIrFunction.getReturnType()->isDoubleTy())
+   {
+      llvmIrFunction.mutateType(quantizedType);
+   }
+   */
 
 	/*
 	 * generate hardcode function - fixmul and fixdiv
 	 * */
 	llvm::Function * fixmul = createFixMul(&llvmIrFunction, quantizedType, functionsToInsert);
+	llvm::errs() << "Created fixmul function: " << (fixmul ? "Success" : "Failed") << "\n";
 
 	/*
 	 * quantize the arguments type
@@ -792,12 +829,12 @@ irPassLLVMIRAutoQuantization(State * N, llvm::Function & llvmIrFunction, std::ve
 	for (size_t idx = 0; idx < llvmIrFunction.arg_size(); idx++)
 	{
 		auto paramOp = llvmIrFunction.getArg(idx);
-		//setQuantizedType(paramOp, quantizedType);
-		// TODO :  When dealing with passing parameter types, make sure that all floating-point types are correctly converted to integer types.
-			if (paramOp->getType()->isFloatTy() || paramOp->getType()->isDoubleTy())
-			{
-				setQuantizedType(paramOp, quantizedType);
-			}
+		// setQuantizedType(paramOp, quantizedType);
+		//  TODO :  When dealing with passing parameter types, make sure that all floating-point types are correctly converted to integer types.
+		if (paramOp->getType()->isFloatTy() || paramOp->getType()->isDoubleTy())
+		{
+			setQuantizedType(paramOp, quantizedType);
+		}
 	}
 
 	for (BasicBlock & llvmIrBasicBlock : llvmIrFunction)
@@ -1069,4 +1106,3 @@ irPassLLVMIRAutoQuantization(State * N, llvm::Function & llvmIrFunction, std::ve
 
 	return;
 }
-
