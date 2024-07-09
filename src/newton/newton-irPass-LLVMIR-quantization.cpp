@@ -180,6 +180,8 @@ Function *createQuantizedFunction(Function &llvmIrFunction, Type *quantizedType)
 	return newFunc;
 }
 
+
+
 // Clone the function body from the original function to the new quantized function
 void cloneFunctionBody(Function &oldFunc, Function *newFunc) {
 	ValueToValueMapTy vmap;
@@ -193,7 +195,10 @@ void cloneFunctionBody(Function &oldFunc, Function *newFunc) {
 	llvm::CloneFunctionInto(newFunc, &oldFunc, vmap, CloneFunctionChangeType::LocalChangesOnly, returns);
 }
 
-// Replace all uses of the original function with the new quantized function
+
+
+
+ //Replace all uses of the original function with the new quantized function
 void replaceFunctionUses(Function &oldFunc, Function *newFunc) {
 	std::vector<User*> users(oldFunc.user_begin(), oldFunc.user_end());
 	for (auto *U : users) {
@@ -216,7 +221,17 @@ void replaceFunctionUses(Function &oldFunc, Function *newFunc) {
 
 
 
+bool isQuantizedFunctionName(const std::string &functionName) {
+	return functionName.find("_quantized") != std::string::npos;
+}
 
+
+
+//A list of functions to erase after processing
+//std::vector<Function*> functionsToErase;
+
+//Track processed functions to avoid duplicate processing
+std::set<std::string> processedFunctions;
 
 // Handle the function signature change for quantization
 void handleFunctionSignature(Function &llvmIrFunction, Type *quantizedType) {
@@ -228,9 +243,19 @@ void handleFunctionSignature(Function &llvmIrFunction, Type *quantizedType) {
 		return;
 	}
 
-	// 保存原始函数名和模块指针
-	std::string originalName = llvmIrFunction.getName().str();
-	Module *module = llvmIrFunction.getParent();
+	if (processedFunctions.find(functionName) != processedFunctions.end()) {
+		llvm::errs() << "Function already processed: " << functionName << "\n";
+		return;
+	}
+
+	if (isQuantizedFunctionName(functionName)) {
+		llvm::errs() << "Skipping already quantized function: " << functionName << "\n";
+		return;
+	}
+
+	processedFunctions.insert(functionName);
+
+
 
 
 
@@ -240,10 +265,21 @@ void handleFunctionSignature(Function &llvmIrFunction, Type *quantizedType) {
 
 
 
-	// Erase the old function from the module
-	//llvmIrFunction.eraseFromParent();
+	// Add the old function to the list of functions to erase
+	//functionsToErase.push_back(&llvmIrFunction);
+	llvmIrFunction.replaceAllUsesWith(UndefValue::get(llvmIrFunction.getType()));
 	llvm::errs() << "Finished handling function signature for: " << newFunc->getName() << "\n";
 }
+
+
+
+// Function to actually erase functions after processing
+//void eraseOldFunctions() {
+//	for (auto *func : functionsToErase) {
+//		func->eraseFromParent();
+//	}
+//	functionsToErase.clear();
+//}
 
 
 // Quantize constants within an instruction
@@ -833,22 +869,22 @@ irPassLLVMIRAutoQuantization(State * N, llvm::Function & llvmIrFunction, std::ve
 		if (argIt == llvmIrFunction.arg_end()) {
 			llvm::errs() << "Error: Reached end of arguments while trying to access index " << idx << "\n";
 			continue;
-	}
+		}
 
-	llvm::Argument *paramOp = &*argIt;
-	llvm::errs() << "Processing parameter: " << paramOp->getName() << "\n";
-	if (!paramOp) {
-		llvm::errs() << "Error: paramOp is nullptr at index " << idx << "\n";
-		continue;
-	}
+		llvm::Argument *paramOp = &*argIt;
+		llvm::errs() << "Processing parameter: " << paramOp->getName() << "\n";
+		if (!paramOp) {
+			llvm::errs() << "Error: paramOp is nullptr at index " << idx << "\n";
+			continue;
+		}
 
-	if (paramOp->getType()->isFloatTy() || paramOp->getType()->isDoubleTy()) {
-		llvm::errs() << "Quantizing parameter from " << *paramOp->getType() << " to " << *quantizedType << "\n";
-		setQuantizedType(paramOp, quantizedType);
-	} else {
-		llvm::errs() << "Parameter at index " << idx << " is not a floating-point type, skipping\n";
+		if (paramOp->getType()->isFloatTy() || paramOp->getType()->isDoubleTy()) {
+			llvm::errs() << "Quantizing parameter from " << *paramOp->getType() << " to " << *quantizedType << "\n";
+			setQuantizedType(paramOp, quantizedType);
+		} else {
+			llvm::errs() << "Parameter at index " << idx << " is not a floating-point type, skipping\n";
+		}
 	}
-}
 
 
 
@@ -1119,5 +1155,9 @@ irPassLLVMIRAutoQuantization(State * N, llvm::Function & llvmIrFunction, std::ve
 	handleLoadStoreInstructions(llvmIrFunction, quantizedType);
 	adaptTypeCast(llvmIrFunction, quantizedType);
 
+
+
+	// Finally, erase old functions
+	//eraseOldFunctions();
 	return;
 }
