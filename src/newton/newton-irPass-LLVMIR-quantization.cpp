@@ -198,7 +198,7 @@ void cloneFunctionBody(Function &oldFunc, Function *newFunc) {
 
 
 
- //Replace all uses of the original function with the new quantized function
+//Replace all uses of the original function with the new quantized function
 void replaceFunctionUses(Function &oldFunc, Function *newFunc) {
 	std::vector<User*> users(oldFunc.user_begin(), oldFunc.user_end());
 	for (auto *U : users) {
@@ -805,7 +805,8 @@ irPassLLVMIRAutoQuantization(State * N, llvm::Function & llvmIrFunction, std::ve
 
 	// Skip certain functions
 	std::string functionName = llvmIrFunction.getName().str();
-	if (functionName == "llvm.dbg.declare" || functionName == "llvm.dbg.value" || functionName == "llvm.dbg.label") {
+	//if (functionName == "llvm.dbg.declare" || functionName == "llvm.dbg.value" || functionName == "llvm.dbg.label") {
+	if (functionName == "llvm.dbg.declare" || functionName == "llvm.dbg.value" || functionName == "llvm.dbg.label" || functionName == "fixmul") {
 		llvm::errs() << "Skipping function: " << functionName << "\n";
 		return;
 	}
