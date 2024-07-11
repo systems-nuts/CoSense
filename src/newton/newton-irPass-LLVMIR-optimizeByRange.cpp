@@ -41,6 +41,7 @@
 #include "newton-irPass-LLVMIR-constantSubstitution.h"
 #include "newton-irPass-LLVMIR-shrinkTypeByRange.h"
 #include "newton-irPass-LLVMIR-quantization.h"
+#include "newton-irPass-LLVMIR-optimizeByRange.h"
 #include "newton-irPass-LLVMIR-memoryAlignment.h"
 #include "newton-irPass-LLVMIR-emitAssume.h"
 #endif /* __cplusplus */
@@ -69,9 +70,9 @@
 #include "llvm/IR/Module.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/FileSystem.h"
-using namespace llvm;
+#include "llvm/IR/Function.h"
 
-extern "C" {
+using namespace llvm;
 
 
 // Function to save the IR of a module to a file
@@ -491,8 +492,16 @@ irPassLLVMIROptimizeByRange(State * N, bool enableQuantization, bool enableOverl
 //		overloadFunc(Mod, callerMap);
 
 
+	// Finally, erase old functions
+	eraseOldFunctions();
+
+
+
 	// 打印处理后的模块IR并保存到文件
 	saveModuleIR(*Mod, "/home/xyf/CoSense/applications/newton/llvm-ir/MadgwickAHRS_opt.ll");
+
+
+
 
 
 	/*
@@ -501,4 +510,4 @@ irPassLLVMIROptimizeByRange(State * N, bool enableQuantization, bool enableOverl
 	dumpIR(N, "output", Mod);
 	llvm::errs() << "Exiting irPassLLVMIROptimizeByRange\n";
 }
-}
+

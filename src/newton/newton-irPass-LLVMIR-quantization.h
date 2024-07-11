@@ -35,9 +35,13 @@
 extern "C"
 {
 #endif /* __cplusplus */
-
+extern std::vector<llvm::Function*> functionsToErase;
 void
 irPassLLVMIRAutoQuantization(State * N, llvm::Function & llvmIrFunction, std::vector<llvm::Function*>& functionsToInsert);
+
+
+extern
+void eraseOldFunctions();
 
 #ifdef __cplusplus
 } /* extern "C" */

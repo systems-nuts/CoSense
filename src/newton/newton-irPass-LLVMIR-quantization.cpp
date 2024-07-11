@@ -228,7 +228,7 @@ bool isQuantizedFunctionName(const std::string &functionName) {
 
 
 //A list of functions to erase after processing
-//std::vector<Function*> functionsToErase;
+std::vector<Function*> functionsToErase;
 
 //Track processed functions to avoid duplicate processing
 std::set<std::string> processedFunctions;
@@ -238,7 +238,7 @@ void handleFunctionSignature(Function &llvmIrFunction, Type *quantizedType) {
 	llvm::errs() << "Calling handleFunctionSignature for function: " << llvmIrFunction.getName() << "\n";
 	// Skip certain functions
 	std::string functionName = llvmIrFunction.getName().str();
-	if (functionName == "llvm.dbg.declare" || functionName == "llvm.dbg.value" || functionName == "llvm.dbg.label") {
+	if (functionName == "llvm.dbg.declare" || functionName == "llvm.dbg.value" || functionName == "llvm.dbg.label"||functionName == "fixmul") {
 		llvm::errs() << "Skipping function signature handling for: " << functionName << "\n";
 		return;
 	}
@@ -266,7 +266,7 @@ void handleFunctionSignature(Function &llvmIrFunction, Type *quantizedType) {
 
 
 	// Add the old function to the list of functions to erase
-	//functionsToErase.push_back(&llvmIrFunction);
+	functionsToErase.push_back(&llvmIrFunction);
 	llvmIrFunction.replaceAllUsesWith(UndefValue::get(llvmIrFunction.getType()));
 	llvm::errs() << "Finished handling function signature for: " << newFunc->getName() << "\n";
 }
@@ -274,12 +274,15 @@ void handleFunctionSignature(Function &llvmIrFunction, Type *quantizedType) {
 
 
 // Function to actually erase functions after processing
-//void eraseOldFunctions() {
-//	for (auto *func : functionsToErase) {
-//		func->eraseFromParent();
-//	}
-//	functionsToErase.clear();
-//}
+void eraseOldFunctions() {
+	llvm::errs() << "Entering eraseOldFunctions\n";
+	for (auto *func : functionsToErase) {
+		llvm::errs() << "Erasing old function: " << func->getName() << "\n";
+		func->eraseFromParent();
+	}
+	functionsToErase.clear();
+	llvm::errs() << "Exiting eraseOldFunctions\n";
+}
 
 
 // Quantize constants within an instruction
@@ -805,8 +808,7 @@ irPassLLVMIRAutoQuantization(State * N, llvm::Function & llvmIrFunction, std::ve
 
 	// Skip certain functions
 	std::string functionName = llvmIrFunction.getName().str();
-	//if (functionName == "llvm.dbg.declare" || functionName == "llvm.dbg.value" || functionName == "llvm.dbg.label") {
-	if (functionName == "llvm.dbg.declare" || functionName == "llvm.dbg.value" || functionName == "llvm.dbg.label" || functionName == "fixmul") {
+	if (functionName == "llvm.dbg.declare" || functionName == "llvm.dbg.value" || functionName == "llvm.dbg.label"|| functionName == "fixmul" ) {
 		llvm::errs() << "Skipping function: " << functionName << "\n";
 		return;
 	}
@@ -1156,9 +1158,5 @@ irPassLLVMIRAutoQuantization(State * N, llvm::Function & llvmIrFunction, std::ve
 	handleLoadStoreInstructions(llvmIrFunction, quantizedType);
 	adaptTypeCast(llvmIrFunction, quantizedType);
 
-
-
-	// Finally, erase old functions
-	//eraseOldFunctions();
 	return;
 }
