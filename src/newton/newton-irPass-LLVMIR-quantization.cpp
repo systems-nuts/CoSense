@@ -411,6 +411,8 @@ simplifyConstant(Instruction * inInstruction, Type * quantizedType, Function * f
 		return decimalNum;
 	};
 
+
+
 	auto compensateFP = [inInstruction, quantizedType, floatIntMul](float quantizedNum, float decimalNum) {
 		float compensateNum = quantizedNum / decimalNum;
 		//		Value *	 constOperand, *nonConstOperand;
@@ -735,22 +737,46 @@ quantizeSimpleFPInstruction(Instruction * inInstruction, Type * quantizedType)
 			newInst = Builder.CreateAdd(inInstruction->getOperand(0), inInstruction->getOperand(1));
 			break;
 		}
+//		case Instruction::FSub:
+//		{
+//			llvm::errs() << "Handling FSub\n";
+//			Value * op0 = inInstruction->getOperand(0);
+//			Value * op1 = inInstruction->getOperand(1);
+//			if (op0->getType()->isFloatTy() || op0->getType()->isDoubleTy())
+//			{
+//				op0 = Builder.CreateFPToSI(op0, quantizedType);
+//			}
+//			if (op1->getType()->isFloatTy() || op1->getType()->isDoubleTy())
+//			{
+//				op1 = Builder.CreateFPToSI(op1, quantizedType);
+//			}
+//			newInst = Builder.CreateSub(op0, op1);
+//			break;
+//		}
+
 		case Instruction::FSub:
 		{
 			llvm::errs() << "Handling FSub\n";
 			Value * op0 = inInstruction->getOperand(0);
 			Value * op1 = inInstruction->getOperand(1);
+			llvm::errs() << "Original Operand 0: " << *op0 << "\n";
+			llvm::errs() << "Original Operand 1: " << *op1 << "\n";
 			if (op0->getType()->isFloatTy() || op0->getType()->isDoubleTy())
 			{
 				op0 = Builder.CreateFPToSI(op0, quantizedType);
+				llvm::errs() << "Converted Operand 0 to fixed-point: " << *op0 << "\n";
 			}
 			if (op1->getType()->isFloatTy() || op1->getType()->isDoubleTy())
 			{
 				op1 = Builder.CreateFPToSI(op1, quantizedType);
+				llvm::errs() << "Converted Operand 1 to fixed-point: " << *op1 << "\n";
 			}
 			newInst = Builder.CreateSub(op0, op1);
+			llvm::errs() << "Created Sub instruction: " << *newInst << "\n";
 			break;
 		}
+
+
 
 		case Instruction::FRem:
 		{
@@ -808,9 +834,16 @@ quantizeSimpleFPInstruction(Instruction * inInstruction, Type * quantizedType)
 		{
 			llvm::errs() << "Handling FNeg\n";
 			// Replace floating-point negation with integer negation
+			Value * op = inInstruction->getOperand(0);
+			if (op->getType()->isFloatTy() || op->getType()->isDoubleTy())
+			{
+				op = Builder.CreateFPToSI(op, quantizedType);
+			}
 			auto constZero = ConstantInt::get(quantizedType, 0, true);
-			newInst	       = Builder.CreateSub(constZero, inInstruction->getOperand(0));
+			newInst = Builder.CreateSub(constZero, op);
 			break;
+
+
 		}
 		default:
 			llvm::errs() << "Unhandled floating point instruction\n";
@@ -844,16 +877,63 @@ adaptTypeCast(llvm::Function & llvmIrFunction, Type * quantizedType)
 				case Instruction::FPToUI:
 				case Instruction::FPToSI:
 				case Instruction::SIToFP:
+//				case Instruction::UIToFP:
+//				{
+//					auto sourceOp = llvmIrInstruction->getOperand(0);
+//					IRBuilder<> Builder(llvmIrInstruction);
+//
+//					// 如果源操作数类型和指令类型相同，直接替换
+//					if (sourceOp->getType() == llvmIrInstruction->getType())
+//					{
+//						llvmIrInstruction->replaceAllUsesWith(sourceOp);
+//						llvmIrInstruction->removeFromParent();
+//					}
+//					else
+//					{
+//						llvm::errs() << "Handling UIToFP: Source type does not match instruction type, adjusting types\n";
+//						if (sourceOp->getType()->isIntegerTy())
+//						{
+//							// 如果源操作数是整数类型，转换为浮点类型
+//							sourceOp = Builder.CreateSIToFP(sourceOp, llvmIrInstruction->getType());
+//						}
+//						else if (sourceOp->getType()->isFloatTy() || sourceOp->getType()->isDoubleTy())
+//						{
+//							// 如果源操作数是浮点类型，转换为整数类型
+//							sourceOp = Builder.CreateFPToSI(sourceOp, quantizedType);
+//						}
+//
+//						// 创建新的 UIToFP 指令
+//						Value * newInst = Builder.CreateUIToFP(sourceOp, llvmIrInstruction->getType());
+//						llvmIrInstruction->replaceAllUsesWith(newInst);
+//						llvmIrInstruction->removeFromParent();
+//					}
+//					break;
+//				}
+
+
 				case Instruction::UIToFP:
 				{
 					auto sourceOp = llvmIrInstruction->getOperand(0);
-					if (sourceOp->getType() == llvmIrInstruction->getType())
+					IRBuilder<> Builder(llvmIrInstruction);
+
+					if (sourceOp->getType()->isIntegerTy())
 					{
-						// Replace with source if types match
-						llvmIrInstruction->replaceAllUsesWith(sourceOp);
+						// 将整数类型转换为浮点类型
+						Value * newInst = Builder.CreateSIToFP(sourceOp, llvmIrInstruction->getType());
+						llvmIrInstruction->replaceAllUsesWith(newInst);
 						llvmIrInstruction->removeFromParent();
 					}
+					else if (sourceOp->getType()->isFloatTy() || sourceOp->getType()->isDoubleTy())
+					{
+						// 将浮点类型转换为整数类型
+						Value * newInst = Builder.CreateFPToSI(sourceOp, quantizedType);
+						llvmIrInstruction->replaceAllUsesWith(newInst);
+						llvmIrInstruction->removeFromParent();
+					}
+					break;
 				}
+
+
 				break;
 					//				case Instruction::ZExt:
 					//				case Instruction::SExt:
