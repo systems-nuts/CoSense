@@ -144,49 +144,57 @@ handleLoadStoreInstructions(Function & llvmIrFunction, Type * quantizedType)
 	}
 }
 
-
 // Create a quantized function with the same signature as the original function
-Function *createQuantizedFunction(Function &llvmIrFunction, Type *quantizedType) {
+Function *
+createQuantizedFunction(Function & llvmIrFunction, Type * quantizedType)
+{
 	std::vector<Type *> params;
-	for (auto &arg : llvmIrFunction.args()) {
+	for (auto & arg : llvmIrFunction.args())
+	{
 		// If the argument type is float or double, use the quantized type
-		if (arg.getType()->isFloatTy() || arg.getType()->isDoubleTy()) {
+		if (arg.getType()->isFloatTy() || arg.getType()->isDoubleTy())
+		{
 			params.push_back(quantizedType);
 			llvm::errs() << "Quantizing parameter: " << arg.getName() << " from " << *arg.getType() << " to " << *quantizedType << "\n";
-		} else {
+		}
+		else
+		{
 			params.push_back(arg.getType());
 		}
 	}
 
 	// Determine the return type: if it's float or double, use the quantized type
-	Type *returnType = llvmIrFunction.getReturnType()->isFloatTy() || llvmIrFunction.getReturnType()->isDoubleTy()
+	Type * returnType = llvmIrFunction.getReturnType()->isFloatTy() || llvmIrFunction.getReturnType()->isDoubleTy()
 				? quantizedType
 				: llvmIrFunction.getReturnType();
 	llvm::errs() << "Original Function: " << llvmIrFunction.getName() << "\n";
 	llvm::errs() << "Original Return Type: " << *llvmIrFunction.getReturnType() << "\n";
-	for (auto &arg : llvmIrFunction.args()) {
+	for (auto & arg : llvmIrFunction.args())
+	{
 		llvm::errs() << "Original Arg: " << *arg.getType() << "\n";
 	}
 	llvm::errs() << "New Function: " << llvmIrFunction.getName() + "_quantized" << "\n";
 	llvm::errs() << "New Return Type: " << *returnType << "\n";
-	for (auto &param : params) {
+	for (auto & param : params)
+	{
 		llvm::errs() << "New Arg: " << *param << "\n";
 	}
 
 	// Create a new function type with the modified parameters and return type
-	FunctionType *newFuncType = FunctionType::get(returnType, params, false);
+	FunctionType * newFuncType = FunctionType::get(returnType, params, false);
 	// Create the new function in the same module with a modified name
-	Function *newFunc = Function::Create(newFuncType, llvmIrFunction.getLinkage(), llvmIrFunction.getName() + "_quantized", llvmIrFunction.getParent());
+	Function * newFunc = Function::Create(newFuncType, llvmIrFunction.getLinkage(), llvmIrFunction.getName() + "_quantized", llvmIrFunction.getParent());
 	return newFunc;
 }
 
-
-
 // Clone the function body from the original function to the new quantized function
-void cloneFunctionBody(Function &oldFunc, Function *newFunc) {
-	ValueToValueMapTy vmap;
+void
+cloneFunctionBody(Function & oldFunc, Function * newFunc)
+{
+	ValueToValueMapTy      vmap;
 	Function::arg_iterator newArgIt = newFunc->arg_begin();
-	for (auto &oldArg : oldFunc.args()) {
+	for (auto & oldArg : oldFunc.args())
+	{
 		newArgIt->setName(oldArg.getName());
 		vmap[&oldArg] = &*newArgIt++;
 	}
@@ -195,20 +203,22 @@ void cloneFunctionBody(Function &oldFunc, Function *newFunc) {
 	llvm::CloneFunctionInto(newFunc, &oldFunc, vmap, CloneFunctionChangeType::LocalChangesOnly, returns);
 }
 
-
-
-
-//Replace all uses of the original function with the new quantized function
-void replaceFunctionUses(Function &oldFunc, Function *newFunc) {
-	std::vector<User*> users(oldFunc.user_begin(), oldFunc.user_end());
-	for (auto *U : users) {
-		if (CallInst *callInst = dyn_cast<CallInst>(U)) {
+// Replace all uses of the original function with the new quantized function
+void
+replaceFunctionUses(Function & oldFunc, Function * newFunc)
+{
+	std::vector<User *> users(oldFunc.user_begin(), oldFunc.user_end());
+	for (auto * U : users)
+	{
+		if (CallInst * callInst = dyn_cast<CallInst>(U))
+		{
 			std::vector<Value *> args;
-			for (auto &arg : callInst->args()) {
+			for (auto & arg : callInst->args())
+			{
 				args.push_back(arg);
 			}
 			// Create a new call instruction to the new function
-			CallInst *newCall = CallInst::Create(newFunc, args, "", callInst);
+			CallInst * newCall = CallInst::Create(newFunc, args, "", callInst);
 			newCall->setCallingConv(callInst->getCallingConv());
 			newCall->setDebugLoc(callInst->getDebugLoc());
 			llvm::errs() << "Replacing call: " << *callInst << " with " << *newCall << "\n";
@@ -218,52 +228,49 @@ void replaceFunctionUses(Function &oldFunc, Function *newFunc) {
 	}
 }
 
-
-
-
-bool isQuantizedFunctionName(const std::string &functionName) {
+bool
+isQuantizedFunctionName(const std::string & functionName)
+{
 	return functionName.find("_quantized") != std::string::npos;
 }
 
+// A list of functions to erase after processing
+std::vector<Function *> functionsToErase;
 
-
-//A list of functions to erase after processing
-std::vector<Function*> functionsToErase;
-
-//Track processed functions to avoid duplicate processing
+// Track processed functions to avoid duplicate processing
 std::set<std::string> processedFunctions;
 
 // Handle the function signature change for quantization
-void handleFunctionSignature(Function &llvmIrFunction, Type *quantizedType) {
+void
+handleFunctionSignature(Function & llvmIrFunction, Type * quantizedType)
+{
 	llvm::errs() << "Calling handleFunctionSignature for function: " << llvmIrFunction.getName() << "\n";
 	// Skip certain functions
 	std::string functionName = llvmIrFunction.getName().str();
-	if (functionName == "llvm.dbg.declare" || functionName == "llvm.dbg.value" || functionName == "llvm.dbg.label"||functionName == "fixmul") {
+	if (functionName == "llvm.dbg.declare" || functionName == "llvm.dbg.value" || functionName == "llvm.dbg.label" || functionName == "fixmul" || functionName == "floatIntMul")
+	// if (functionName == "llvm.dbg.declare" || functionName == "llvm.dbg.value" || functionName == "llvm.dbg.label" || functionName == "fixmul")
+	{
 		llvm::errs() << "Skipping function signature handling for: " << functionName << "\n";
 		return;
 	}
 
-	if (processedFunctions.find(functionName) != processedFunctions.end()) {
+	if (processedFunctions.find(functionName) != processedFunctions.end())
+	{
 		llvm::errs() << "Function already processed: " << functionName << "\n";
 		return;
 	}
 
-	if (isQuantizedFunctionName(functionName)) {
+	if (isQuantizedFunctionName(functionName))
+	{
 		llvm::errs() << "Skipping already quantized function: " << functionName << "\n";
 		return;
 	}
 
 	processedFunctions.insert(functionName);
 
-
-
-
-
-	Function *newFunc = createQuantizedFunction(llvmIrFunction, quantizedType);
+	Function * newFunc = createQuantizedFunction(llvmIrFunction, quantizedType);
 	cloneFunctionBody(llvmIrFunction, newFunc);
 	replaceFunctionUses(llvmIrFunction, newFunc);
-
-
 
 	// Add the old function to the list of functions to erase
 	functionsToErase.push_back(&llvmIrFunction);
@@ -271,19 +278,19 @@ void handleFunctionSignature(Function &llvmIrFunction, Type *quantizedType) {
 	llvm::errs() << "Finished handling function signature for: " << newFunc->getName() << "\n";
 }
 
-
-
 // Function to actually erase functions after processing
-void eraseOldFunctions() {
+void
+eraseOldFunctions()
+{
 	llvm::errs() << "Entering eraseOldFunctions\n";
-	for (auto *func : functionsToErase) {
+	for (auto * func : functionsToErase)
+	{
 		llvm::errs() << "Erasing old function: " << func->getName() << "\n";
 		func->eraseFromParent();
 	}
 	functionsToErase.clear();
 	llvm::errs() << "Exiting eraseOldFunctions\n";
 }
-
 
 // Quantize constants within an instruction
 
@@ -347,19 +354,55 @@ quantizeConstant(Instruction * inInstruction, Type * quantizedType)
 	}
 }
 
-// Simplify constants in the instruction
 void
-simplifyConstant(Instruction * inInstruction, Type * quantizedType)
+handleFloatIntMul(Instruction * llvmIrInstruction, Type * intType, Type * floatType, Function * floatIntMul)
+{
+	llvm::errs() << "Handling FloatIntMul\n";
+	llvm::errs() << "Original Instruction: " << *llvmIrInstruction << "\n";
+	IRBuilder<> Builder(llvmIrInstruction);
+
+	// 获取操作数
+	Value * lhs = llvmIrInstruction->getOperand(0);
+	Value * rhs = llvmIrInstruction->getOperand(1);
+
+	llvm::errs() << "LHS: " << *lhs << "\n";
+	llvm::errs() << "RHS: " << *rhs << "\n";
+
+	// 确保左操作数是浮点数，右操作数是整数
+	if (!lhs->getType()->isFloatTy() && !lhs->getType()->isDoubleTy())
+	{
+		std::swap(lhs, rhs);
+	}
+
+	if (lhs->getType()->isFloatTy() || lhs->getType()->isDoubleTy())
+	{
+		if (rhs->getType()->isIntegerTy())
+		{
+			llvm::CallInst * callInst = Builder.CreateCall(floatIntMul, {lhs, rhs});
+			llvmIrInstruction->replaceAllUsesWith(callInst);
+			llvmIrInstruction->eraseFromParent();
+			llvm::errs() << "Replaced with call to floatIntMul\n";
+		}
+		else
+		{
+			llvm::errs() << "RHS is not an integer\n";
+		}
+	}
+	else
+	{
+		llvm::errs() << "LHS is not a float\n";
+	}
+
+	llvm::errs() << "Finished handling FloatIntMul\n";
+}
+
+void
+simplifyConstant(Instruction * inInstruction, Type * quantizedType, Function * floatIntMul)
+
 {
 	llvm::errs() << "Entering simplifyConstant\n";
 	auto checkDecimal = [](float decimalNum) {
 		int digits = 0;
-		/*
-		 * Since the max value of `int16` is 32767,
-		 * we maximum multiply with 1,000 to make sure it won't exceed max_int16
-		 * */
-
-		// Ensure the decimal number can be represented within the fixed-point range
 		while (fabs(round(decimalNum) - decimalNum) > 0.001 && digits < 4)
 		{
 			decimalNum *= 10;  // Scale decimal to avoid precision issues
@@ -368,23 +411,16 @@ simplifyConstant(Instruction * inInstruction, Type * quantizedType)
 		return decimalNum;
 	};
 
-	auto compensateFP = [inInstruction, quantizedType](float quantizedNum, float decimalNum) {
-		/*
-		 * 3333.3 / 3.3333 = 1000
-		 * ===>
-		 * Example 1:
-		 * a * 3.3333 ~= a * (3333 / 1000) ~= (int)a * 3333 / 1000
-		 *
-		 * Example 2:
-		 * a / 3.3333 ~= a / (3333 / 1000) ~= (int)a * 1000 / 3333
-		 *
-		 * Example 3:
-		 * 3.3333 / a ~= (3333 / 1000) / a ~= 3333 / (int)a / 1000
-		 * */
+	auto compensateFP = [inInstruction, quantizedType, floatIntMul](float quantizedNum, float decimalNum) {
 		float compensateNum = quantizedNum / decimalNum;
+		//		Value *	 constOperand, *nonConstOperand;
+		//
+		//		unsigned constIdx, nonConstIdx;
+		Value *	 constOperand	 = nullptr;
+		Value *	 nonConstOperand = nullptr;
+		unsigned constIdx	 = 0;
+		unsigned nonConstIdx	 = 0;
 
-		Value *	 constOperand, *nonConstOperand;
-		unsigned constIdx, nonConstIdx;
 		if (isa<llvm::Constant>(inInstruction->getOperand(0)))
 		{
 			constIdx	= 0;
@@ -400,60 +436,86 @@ simplifyConstant(Instruction * inInstruction, Type * quantizedType)
 			nonConstOperand = inInstruction->getOperand(0);
 		}
 
+		// auto quantizeNumValue = ConstantInt::get(quantizedType, round(quantizedNum), true);
+		// auto quantizeNumValue = ConstantFP::get(nonConstOperand->getType(), quantizedNum);
 		auto quantizeNumValue = ConstantInt::get(quantizedType, round(quantizedNum), true);
 
 		if (compensateNum == 1)
 		{
-			// If the compensation factor is 1, directly set the quantized value
+			llvm::errs() << "Compensation factor is 1, directly setting the quantized value\n";
+			llvm::errs() << "Original Instruction: " << *inInstruction << "\n";
+			llvm::errs() << "Quantized value: " << *quantizeNumValue << "\n";
 			inInstruction->setOperand(constIdx, quantizeNumValue);
-		}
-		else
-		{
-			// Otherwise, apply compensation to the fixed-point arithmetic
-			auto compensateNumValue = ConstantInt::get(quantizedType, round(compensateNum), true);
 
+
+			IRBuilder<> Builder(inInstruction);
+
+			if (nonConstOperand->getType()->isFloatTy() || nonConstOperand->getType()->isDoubleTy())
+			{
+				// 调用 handleFloatIntMul 处理浮点数和整数相乘
+				llvm::errs() << "Calling handleFloatIntMul\n";
+				llvm::CallInst * callInst = Builder.CreateCall(floatIntMul, {nonConstOperand, quantizeNumValue});
+				inInstruction->replaceAllUsesWith(callInst);
+			}
+			else
+			{
+				// Replace the original fmul instruction with integer mul
+				llvm::errs() << "Replacing original fmul instruction with integer mul\n";
+				Value *	    newMulValue = Builder.CreateMul(nonConstOperand, quantizeNumValue);
+				inInstruction->replaceAllUsesWith(newMulValue);
+			}
+			inInstruction->eraseFromParent();
+		}
+		else{
+			llvm::errs() << "Applying compensation to the fixed-point arithmetic\n";
+			auto	      compensateNumValue = ConstantInt::get(quantizedType, round(compensateNum), true);
 			IRBuilder<>   Builder(inInstruction);
 			Instruction * insertPoint = inInstruction->getNextNode();
 			Builder.SetInsertPoint(insertPoint);
-			Value * newFisrtInst  = nullptr;
+
+			Value * newFirstInst  = nullptr;
 			Value * newSecondInst = nullptr;
 			auto	instOpCode    = inInstruction->getOpcode();
+
 			if (instOpCode == Instruction::FMul)
 			{
-				// Replace floating-point multiplication with fixed-point equivalent
-				newFisrtInst  = Builder.CreateMul(nonConstOperand, quantizeNumValue);
-				newSecondInst = Builder.CreateSDiv(newFisrtInst, compensateNumValue);
+				newFirstInst  = Builder.CreateMul(nonConstOperand, quantizeNumValue);
+				newSecondInst = Builder.CreateSDiv(newFirstInst, compensateNumValue);
 			}
 			else if (instOpCode == Instruction::FDiv && isa<llvm::Constant>(inInstruction->getOperand(1)))
 			{
-				// Replace floating-point division with fixed-point equivalent (divisor is constant)
-				newFisrtInst  = Builder.CreateMul(nonConstOperand, compensateNumValue);
-				newSecondInst = Builder.CreateSDiv(newFisrtInst, quantizeNumValue);
+				newFirstInst  = Builder.CreateMul(nonConstOperand, compensateNumValue);
+				newSecondInst = Builder.CreateSDiv(newFirstInst, quantizeNumValue);
 			}
 			else if (instOpCode == Instruction::FDiv && isa<llvm::Constant>(inInstruction->getOperand(0)))
 			{
-				// Handle fixed-point division (constant dividend)
-				newFisrtInst  = Builder.CreateSDiv(quantizeNumValue, nonConstOperand);
-				newSecondInst = Builder.CreateSDiv(newFisrtInst, compensateNumValue);
+				newFirstInst  = Builder.CreateSDiv(quantizeNumValue, nonConstOperand);
+				newSecondInst = Builder.CreateSDiv(newFirstInst, compensateNumValue);
 			}
 
-			inInstruction->replaceAllUsesWith(newSecondInst);
-			inInstruction->removeFromParent();
+			if (newSecondInst)
+			{
+				inInstruction->replaceAllUsesWith(newSecondInst);
+				inInstruction->eraseFromParent();
+			}
+			else
+			{
+				llvm::errs() << "Failed to create new compensated instruction\n";
+			}
 		}
 	};
 
 	for (size_t idx = 0; idx < inInstruction->getNumOperands(); idx++)
 	{
 		Value * inValue = inInstruction->getOperand(idx);
-
 		if (!isa<llvm::ConstantFP>(inValue))
 		{
-			// Skip non-floating-point constants
 			continue;
 		}
 
-		ConstantFP * constFp  = llvm::dyn_cast<llvm::ConstantFP>(inValue);
+		ConstantFP * constFp  = dyn_cast<ConstantFP>(inValue);
 		Value *	     newValue = nullptr;
+
 		if (inValue->getType()->isFloatTy())
 		{
 			float constValue = constFp->getValueAPF().convertToFloat();
@@ -469,39 +531,114 @@ simplifyConstant(Instruction * inInstruction, Type * quantizedType)
 			assert(false && "unknown floating type");
 		}
 	}
+	llvm::errs() << "Exiting simplifyConstant\n";
+}
+
+void
+substituteHardcodeFunc(Instruction * inInstruction, Type * quantizedType, llvm::Function * func)
+{
+	llvm::errs() << "Entering substituteHardcodeFunc\n";
+	llvm::errs() << "Original Instruction: " << *inInstruction << "\n";
+	IRBuilder<>   Builder(inInstruction);
+	Instruction * insertPoint = inInstruction->getNextNode();
+	Builder.SetInsertPoint(insertPoint);
+
+	Value * lhs = inInstruction->getOperand(0);
+	Value * rhs = inInstruction->getOperand(1);
+
+	llvm::errs() << "LHS: " << *lhs << "\n";
+	llvm::errs() << "RHS: " << *rhs << "\n";
+
+	llvm::CallInst * callInst = Builder.CreateCall(func, {lhs, rhs});
+	llvm::errs() << "Created call instruction: " << *callInst << "\n";
+
+	inInstruction->replaceAllUsesWith(callInst);
+	inInstruction->removeFromParent();
+	llvm::errs() << "Exiting substituteHardcodeFunc\n";
+}
+
+llvm::Function *
+createFloatIntMul(Module * irModule, Type * intType, Type * floatType, std::vector<llvm::Function *> & functionsToInsert)
+{
+	llvm::errs() << "Entering createFloatIntMul\n";
+
+	// 检查 irModule 是否有效
+	if (!irModule)
+	{
+		llvm::errs() << "Error: irModule is nullptr\n";
+		return nullptr;
+	}
+
+	std::string floatIntMulFuncName = "floatIntMul";
+	for (auto & function : *irModule)
+	{
+		if (function.getName() == floatIntMulFuncName)
+		{
+			llvm::errs() << "floatIntMul already exists\n";
+			return &function;
+		}
+	}
+
+	llvm::FunctionType * funcType = llvm::FunctionType::get(intType, {floatType, intType}, false);
+	llvm::Function *     func     = llvm::Function::Create(funcType, llvm::Function::PrivateLinkage, floatIntMulFuncName, irModule);
+
+	llvm::BasicBlock * entryBB = llvm::BasicBlock::Create(irModule->getContext(), "entry", func);
+	llvm::IRBuilder<>  builder(entryBB);
+	builder.SetInsertPoint(entryBB);
+
+	// Get function arguments
+
+	llvm::Function::arg_iterator arg1     = &*(func->arg_begin());
+	llvm::Value *		     floatArg = &*arg1;
+	llvm::Function::arg_iterator arg2     = &*(++arg1);
+	llvm::Value *		     intArg   = &*arg2;
+
+	// Generate float * int multiplication instruction
+	llvm::Value * intToFloat = builder.CreateSIToFP(intArg, floatType);
+	llvm::Value * mulInst	 = builder.CreateFMul(floatArg, intToFloat);
+	llvm::Value * floatToInt = builder.CreateFPToSI(mulInst, intType);
+
+	builder.CreateRet(floatToInt);
+
+	functionsToInsert.emplace_back(func);
+	llvm::errs() << "Created floatIntMul function: " << func->getName() << "\n";
+	return func;
 }
 
 // Create a fixed-point multiplication function
-//llvm::Function *createFixMul(llvm::Function * inFunction, Type * quantizedType, std::vector<llvm::Function *> & functionsToInsert)
-
-// 创建一个固定点乘法函数
-llvm::Function* createFixMul(Module *irModule, Type *quantizedType, std::vector<llvm::Function *> &functionsToInsert) {
+llvm::Function *
+createFixMul(Module * irModule, Type * quantizedType, std::vector<llvm::Function *> & functionsToInsert)
+{
 	llvm::errs() << "Entering createFixMul\n";
 
 	// 检查 irModule 是否有效
-	if (!irModule) {
+	if (!irModule)
+	{
 		llvm::errs() << "Error: irModule is nullptr\n";
 		return nullptr;
 	}
 
 	std::string fixmulFuncName = "fixmul";
-	for (auto &function : *irModule) {
-		if (function.getName() == fixmulFuncName) {
+	for (auto & function : *irModule)
+	{
+		if (function.getName() == fixmulFuncName)
+		{
 			llvm::errs() << "fixmul already exists\n";
 			return &function;
 		}
 	}
 
-	llvm::FunctionType *funcType = llvm::FunctionType::get(quantizedType, {quantizedType, quantizedType}, false);
-	llvm::Function *func = llvm::Function::Create(funcType, llvm::Function::PrivateLinkage, fixmulFuncName, irModule);
+	llvm::FunctionType * funcType = llvm::FunctionType::get(quantizedType, {quantizedType, quantizedType}, false);
+	llvm::Function *     func     = llvm::Function::Create(funcType, llvm::Function::PrivateLinkage, fixmulFuncName, irModule);
 
-	llvm::BasicBlock *entryBB = llvm::BasicBlock::Create(irModule->getContext(), "entry", func);
-	llvm::IRBuilder<> builder(entryBB);
+	llvm::BasicBlock * entryBB = llvm::BasicBlock::Create(irModule->getContext(), "entry", func);
+	llvm::IRBuilder<>  builder(entryBB);
 	builder.SetInsertPoint(entryBB);
 
 	// 生成 fixed-point 乘法指令
-	Type *higherQuantizedType;
-	switch (BIT_WIDTH) {
+	Type * higherQuantizedType;
+	switch (BIT_WIDTH)
+	{
 		case 8:
 			higherQuantizedType = Type::getInt16Ty(irModule->getContext());
 			break;
@@ -513,37 +650,18 @@ llvm::Function* createFixMul(Module *irModule, Type *quantizedType, std::vector<
 			break;
 	}
 
-	llvm::Function::arg_iterator arg1 = &*(func->arg_begin());
-	llvm::Value *sext1 = builder.CreateSExt(arg1, higherQuantizedType);
-	llvm::Function::arg_iterator arg2 = &*(++arg1);
-	llvm::Value *sext2 = builder.CreateSExt(arg2, higherQuantizedType);
-	llvm::Value *mulInst = builder.CreateMul(sext1, sext2);
-	llvm::Value *ashrInst = builder.CreateAShr(mulInst, ConstantInt::get(higherQuantizedType, FRAC_Q));
-	llvm::Value *truncInst = builder.CreateTrunc(ashrInst, quantizedType);
+	llvm::Function::arg_iterator arg1      = &*(func->arg_begin());
+	llvm::Value *		     sext1     = builder.CreateSExt(arg1, higherQuantizedType);
+	llvm::Function::arg_iterator arg2      = &*(++arg1);
+	llvm::Value *		     sext2     = builder.CreateSExt(arg2, higherQuantizedType);
+	llvm::Value *		     mulInst   = builder.CreateMul(sext1, sext2);
+	llvm::Value *		     ashrInst  = builder.CreateAShr(mulInst, ConstantInt::get(higherQuantizedType, FRAC_Q));
+	llvm::Value *		     truncInst = builder.CreateTrunc(ashrInst, quantizedType);
 	builder.CreateRet(truncInst);
 
 	functionsToInsert.emplace_back(func);
 	llvm::errs() << "Created fixmul function: " << func->getName() << "\n";
 	return func;
-}
-
-
-// Substitute hardcoded functions like multiplication with fixed-point versions
-void
-substituteHardcodeFunc(Instruction * inInstruction, Type * quantizedType, llvm::Function * func)
-{
-	llvm::errs() << "Entering substituteHardcodeFunc\n";
-	IRBuilder<>   Builder(inInstruction);
-	Instruction * insertPoint = inInstruction->getNextNode();
-	Builder.SetInsertPoint(insertPoint);
-	//    Value * newInst = nullptr;
-
-	llvm::CallInst * callInst = Builder.CreateCall(func, {inInstruction->getOperand(0), inInstruction->getOperand(1)});
-	//    InlineFunctionInfo inlineFuncInfo;
-	//    llvm::InlineFunction(*callInst, inlineFuncInfo);
-
-	inInstruction->replaceAllUsesWith(callInst);
-	inInstruction->removeFromParent();
 }
 
 // Quantize simple floating-point instructions
@@ -631,21 +749,6 @@ quantizeSimpleFPInstruction(Instruction * inInstruction, Type * quantizedType)
 				op1 = Builder.CreateFPToSI(op1, quantizedType);
 			}
 			newInst = Builder.CreateSub(op0, op1);
-			break;
-		}
-
-		case Instruction::FMul:
-		{
-			llvm::errs() << "Handling FMul\n";
-			// Replace floating-point multiplication with integer multiplication
-			newInst = Builder.CreateMul(inInstruction->getOperand(0), inInstruction->getOperand(1));
-			break;
-		}
-		case Instruction::FDiv:
-		{
-			llvm::errs() << "Handling FDiv\n";
-			// Replace floating-point division with integer division
-			newInst = Builder.CreateSDiv(inInstruction->getOperand(0), inInstruction->getOperand(1));
 			break;
 		}
 
@@ -799,6 +902,63 @@ adaptTypeCast(llvm::Function & llvmIrFunction, Type * quantizedType)
 }
 }
 
+void
+handleFMul(Instruction * llvmIrInstruction, Type * quantizedType, Function * fixmul, Function * floatIntMul)
+{
+	llvm::errs() << "Handling FMul\n";
+	llvm::errs() << "Original Instruction: " << *llvmIrInstruction << "\n";
+	IRBuilder<> Builder(llvmIrInstruction);
+
+	// Ensure operands are correctly converted to fixed-point integers
+	Value * lhs = llvmIrInstruction->getOperand(0);
+	Value * rhs = llvmIrInstruction->getOperand(1);
+
+	llvm::errs() << "LHS: " << *lhs << "\n";
+	llvm::errs() << "RHS: " << *rhs << "\n";
+
+	bool lhsIsFloat = lhs->getType()->isFloatTy() || lhs->getType()->isDoubleTy();
+	bool rhsIsFloat = rhs->getType()->isFloatTy() || rhs->getType()->isDoubleTy();
+
+	// If either operand is a float, convert both to fixed-point
+	if (lhsIsFloat)
+	{
+		lhs = Builder.CreateFPToSI(lhs, quantizedType);
+		llvm::errs() << "Converted LHS to fixed-point: " << *lhs << "\n";
+	}
+	if (rhsIsFloat)
+	{
+		rhs = Builder.CreateFPToSI(rhs, quantizedType);
+		llvm::errs() << "Converted RHS to fixed-point: " << *rhs << "\n";
+	}
+
+	// Ensure both operands are now integers
+	bool lhsIsInteger = lhs->getType()->isIntegerTy();
+	bool rhsIsInteger = rhs->getType()->isIntegerTy();
+
+	if (lhsIsInteger && rhsIsInteger)
+	{
+		// Handle constant simplification if one of the operands is a constant
+		if (isa<llvm::Constant>(lhs) || isa<llvm::Constant>(rhs))
+		{
+			llvm::errs() << "One of the operands is a constant, simplifying...\n";
+			simplifyConstant(llvmIrInstruction, quantizedType, floatIntMul);
+		}
+		else
+		{
+			llvm::errs() << "Both operands are integers, substituting with fixmul function...\n";
+			llvm::CallInst * callInst = Builder.CreateCall(fixmul, {lhs, rhs});
+			llvmIrInstruction->replaceAllUsesWith(callInst);
+			llvmIrInstruction->eraseFromParent();
+		}
+	}
+	else
+	{
+		llvm::errs() << "Operands are not both integers, cannot handle FMul\n";
+	}
+
+	llvm::errs() << "Finished handling FMul\n";
+}
+
 // Main function to perform LLVM IR auto quantization
 void
 irPassLLVMIRAutoQuantization(State * N, llvm::Function & llvmIrFunction, std::vector<llvm::Function *> & functionsToInsert)
@@ -808,11 +968,12 @@ irPassLLVMIRAutoQuantization(State * N, llvm::Function & llvmIrFunction, std::ve
 
 	// Skip certain functions
 	std::string functionName = llvmIrFunction.getName().str();
-	if (functionName == "llvm.dbg.declare" || functionName == "llvm.dbg.value" || functionName == "llvm.dbg.label"|| functionName == "fixmul" ) {
+	if (functionName == "llvm.dbg.declare" || functionName == "llvm.dbg.value" || functionName == "llvm.dbg.label" || functionName == "fixmul" || functionName == "floatIntMul")
+	// if (functionName == "llvm.dbg.declare" || functionName == "llvm.dbg.value" || functionName == "llvm.dbg.label" || functionName == "fixmul" )
+	{
 		llvm::errs() << "Skipping function: " << functionName << "\n";
 		return;
 	}
-
 
 	Type * quantizedType;
 	switch (BIT_WIDTH)
@@ -835,19 +996,22 @@ irPassLLVMIRAutoQuantization(State * N, llvm::Function & llvmIrFunction, std::ve
 			return;
 	}
 
-	// 保存模块指针
-	Module *module = llvmIrFunction.getParent();
-	if (!module) {
+	// Save the parent module
+	Module * module = llvmIrFunction.getParent();
+	if (!module)
+	{
 		llvm::errs() << "Error: Function does not have a parent module.\n";
 		return;
 	}
 
-	// 处理函数签名
+	// Ensure types are correctly defined
+	Type* floatType = Type::getFloatTy(llvmIrFunction.getContext());
+	Type* intType = Type::getInt32Ty(llvmIrFunction.getContext());
+
+	// Deal with function signature
 	llvm::errs() << "Calling handleFunctionSignature for function: " << llvmIrFunction.getName() << "\n";
 	handleFunctionSignature(llvmIrFunction, quantizedType);
 	llvm::errs() << "Finished calling handleFunctionSignature for function: " << llvmIrFunction.getName() << "\n";
-
-
 
 	/*
 	 * generate hardcode function - fixmul and fixdiv
@@ -855,41 +1019,52 @@ irPassLLVMIRAutoQuantization(State * N, llvm::Function & llvmIrFunction, std::ve
 
 	llvm::errs() << "Calling createFixMul for function: " << llvmIrFunction.getName() << "\n";
 	llvm::errs() << "inFunction address: " << &llvmIrFunction << "\n";
-	//lvm::Function * fixmul = createFixMul(&llvmIrFunction, quantizedType, functionsToInsert);
-	llvm::Function *fixmul = createFixMul(module, quantizedType, functionsToInsert);
+	llvm::Function * fixmul = createFixMul(module, quantizedType, functionsToInsert);
 	llvm::errs() << "Created fixmul function: " << (fixmul ? "Success" : "Failed") << "\n";
+
+	// Create floatIntMul function
+	llvm::errs() << "Calling createFloatIntMul for function: " << llvmIrFunction.getName() << "\n";
+	//llvm::Function * floatIntMul = createFloatIntMul(llvmIrFunction.getParent(), intType, floatType, functionsToInsert);
+	llvm::Function *floatIntMul = createFloatIntMul(module, quantizedType, Type::getFloatTy(llvmIrFunction.getContext()), functionsToInsert);
+
+	llvm::errs()
+	    << "Created floatIntMul function: " << (floatIntMul ? "Success" : "Failed") << "\n";
 
 	/*
 	 * quantize the arguments type
 	 * */
 
 	llvm::errs() << "Quantizing arguments for function: " << llvmIrFunction.getName() << "\n";
-	for (size_t idx = 0; idx < llvmIrFunction.arg_size(); idx++){
+	for (size_t idx = 0; idx < llvmIrFunction.arg_size(); idx++)
+	{
 		llvm::errs() << "Quantizing parameter at index " << idx << "\n";
 		llvm::Function::arg_iterator argIt = llvmIrFunction.arg_begin();
 		std::advance(argIt, idx);
 
-		if (argIt == llvmIrFunction.arg_end()) {
+		if (argIt == llvmIrFunction.arg_end())
+		{
 			llvm::errs() << "Error: Reached end of arguments while trying to access index " << idx << "\n";
 			continue;
 		}
 
-		llvm::Argument *paramOp = &*argIt;
+		llvm::Argument * paramOp = &*argIt;
 		llvm::errs() << "Processing parameter: " << paramOp->getName() << "\n";
-		if (!paramOp) {
+		if (!paramOp)
+		{
 			llvm::errs() << "Error: paramOp is nullptr at index " << idx << "\n";
 			continue;
 		}
 
-		if (paramOp->getType()->isFloatTy() || paramOp->getType()->isDoubleTy()) {
+		if (paramOp->getType()->isFloatTy() || paramOp->getType()->isDoubleTy())
+		{
 			llvm::errs() << "Quantizing parameter from " << *paramOp->getType() << " to " << *quantizedType << "\n";
 			setQuantizedType(paramOp, quantizedType);
-		} else {
+		}
+		else
+		{
 			llvm::errs() << "Parameter at index " << idx << " is not a floating-point type, skipping\n";
 		}
 	}
-
-
 
 	for (BasicBlock & llvmIrBasicBlock : llvmIrFunction)
 	{
@@ -897,6 +1072,8 @@ irPassLLVMIRAutoQuantization(State * N, llvm::Function & llvmIrFunction, std::ve
 		{
 			Instruction * llvmIrInstruction = &*itBB++;
 			llvm::errs() << "Processing instruction in adaptTypeCast: " << *llvmIrInstruction << "\n";
+
+			IRBuilder<> Builder(llvmIrInstruction);
 			switch (llvmIrInstruction->getOpcode())
 			{
 				case Instruction::Alloca:
@@ -1059,12 +1236,16 @@ irPassLLVMIRAutoQuantization(State * N, llvm::Function & llvmIrFunction, std::ve
 				 * else substitute this instruction to a pre-implemented function: mulfix/divfix.
 				 * */
 				case Instruction::FMul:
+					llvm::errs() << "Found FMul instruction.\n";
+					handleFMul(llvmIrInstruction, quantizedType, fixmul, floatIntMul);
+					break;
+
 				case Instruction::FDiv:
 				{
 					if (isa<llvm::Constant>(llvmIrInstruction->getOperand(0)) ||
 					    isa<llvm::Constant>(llvmIrInstruction->getOperand(1)))
 					{
-						simplifyConstant(llvmIrInstruction, quantizedType);
+						simplifyConstant(llvmIrInstruction, quantizedType, floatIntMul);
 					}
 					else
 					{
