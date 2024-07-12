@@ -124,7 +124,20 @@ handleLoadStoreInstructions(Function & llvmIrFunction, Type * quantizedType)
 					if (ptr->getType()->getPointerElementType()->isFloatTy() ||
 					    ptr->getType()->getPointerElementType()->isDoubleTy())
 					{
-						ptr->mutateType(quantizedType->getPointerTo());
+						// 如果是全局变量，确保它的类型已经被转换
+						if (isa<GlobalVariable>(ptr))
+						{
+							auto globalVar = dyn_cast<GlobalVariable>(ptr);
+							if (globalVar->getType()->getElementType()->isFloatTy() ||
+							    globalVar->getType()->getElementType()->isDoubleTy())
+							{
+								ptr->mutateType(quantizedType->getPointerTo());
+							}
+						}
+						else
+						{
+							ptr->mutateType(quantizedType->getPointerTo());
+						}
 					}
 				}
 			}
@@ -136,7 +149,17 @@ handleLoadStoreInstructions(Function & llvmIrFunction, Type * quantizedType)
 					if (ptr->getType()->getPointerElementType()->isFloatTy() ||
 					    ptr->getType()->getPointerElementType()->isDoubleTy())
 					{
-						ptr->mutateType(quantizedType->getPointerTo());
+						// 如果是全局变量，确保它的类型已经被转换
+						if (isa<GlobalVariable>(ptr)) {
+							auto globalVar = dyn_cast<GlobalVariable>(ptr);
+							if (globalVar->getType()->getElementType()->isFloatTy() ||
+							    globalVar->getType()->getElementType()->isDoubleTy()) {
+								ptr->mutateType(quantizedType->getPointerTo());
+							}
+						}
+						else {
+							ptr->mutateType(quantizedType->getPointerTo());
+						}
 					}
 				}
 			}
@@ -247,8 +270,8 @@ handleFunctionSignature(Function & llvmIrFunction, Type * quantizedType)
 	llvm::errs() << "Calling handleFunctionSignature for function: " << llvmIrFunction.getName() << "\n";
 	// Skip certain functions
 	std::string functionName = llvmIrFunction.getName().str();
-	if (functionName == "llvm.dbg.declare" || functionName == "llvm.dbg.value" || functionName == "llvm.dbg.label" || functionName == "fixmul" || functionName == "floatIntMul")
-	// if (functionName == "llvm.dbg.declare" || functionName == "llvm.dbg.value" || functionName == "llvm.dbg.label" || functionName == "fixmul")
+	if (functionName == "llvm.dbg.declare" || functionName == "llvm.dbg.value" || functionName == "llvm.dbg.label" || functionName == "fixmul" || functionName == "floatIntMul"|| functionName == "sqrt")
+
 	{
 		llvm::errs() << "Skipping function signature handling for: " << functionName << "\n";
 		return;
@@ -278,6 +301,29 @@ handleFunctionSignature(Function & llvmIrFunction, Type * quantizedType)
 	llvm::errs() << "Finished handling function signature for: " << newFunc->getName() << "\n";
 }
 
+
+// A list of global variables to erase after processing
+std::vector<GlobalVariable *> globalsToErase;
+
+
+
+// Function to actually erase global variables after processing
+void eraseOldGlobals() {
+	llvm::errs() << "Entering eraseOldGlobals\n";
+	std::set<llvm::GlobalVariable *> uniqueGlobals(globalsToErase.begin(), globalsToErase.end());
+	for (auto *global : uniqueGlobals) {
+		if (global) {
+			llvm::errs() << "Erasing old global variable: " << global->getName() << "\n";
+			global->eraseFromParent();
+		} else {
+			llvm::errs() << "Skipping null global variable\n";
+		}
+	}
+	globalsToErase.clear();
+	llvm::errs() << "Exiting eraseOldGlobals\n";
+}
+
+
 // Function to actually erase functions after processing
 void
 eraseOldFunctions()
@@ -291,6 +337,95 @@ eraseOldFunctions()
 	functionsToErase.clear();
 	llvm::errs() << "Exiting eraseOldFunctions\n";
 }
+
+
+// Function to update global variables from floating-point to integer types
+//void updateGlobalVariables(llvm::Module *module, llvm::Type *quantizedType) {
+//	for (llvm::GlobalVariable &globalVar : module->globals()) {
+//		if (globalVar.getType()->getElementType()->isFloatTy() || globalVar.getType()->getElementType()->isDoubleTy()) {
+//			llvm::errs() << "Quantizing global variable: " << globalVar.getName() << "\n";
+//
+//			// Create the new integer type pointer
+//			llvm::Type* newType = quantizedType->getPointerTo();
+//
+//			// Update the initializer of the global variable
+//			llvm::Constant *newInitializer = nullptr;
+//			if (llvm::Constant *init = globalVar.getInitializer()) {
+//				if (llvm::ConstantFP *constFp = llvm::dyn_cast<llvm::ConstantFP>(init)) {
+//					double value = constFp->getValueAPF().convertToDouble();
+//					int64_t quantizedValue = static_cast<int64_t>(round(value * FRAC_BASE));
+//					newInitializer = llvm::ConstantInt::get(quantizedType, quantizedValue);
+//				}
+//			}
+//
+//			// Create a new global variable with the updated type and initializer
+//			llvm::GlobalVariable *newGlobalVar = new llvm::GlobalVariable(
+//			    *module,
+//			    quantizedType,
+//			    globalVar.isConstant(),
+//			    globalVar.getLinkage(),
+//			    newInitializer,
+//			    globalVar.getName() + "_quantized",
+//			    nullptr,
+//			    globalVar.getThreadLocalMode(),
+//			    globalVar.getType()->getAddressSpace(),
+//			    globalVar.isExternallyInitialized()
+//			);
+//
+//			// Replace all uses of the old global variable with the new one
+//			globalVar.replaceAllUsesWith(newGlobalVar);
+//
+//			// Add the old global variable to the list of globals to erase
+//			globalsToErase.push_back(&globalVar);
+//		}
+//	}
+//}
+
+void updateGlobalVariables(Module *module, Type *quantizedType) {
+	llvm::errs() << "Updating global variables\n";
+
+	for (GlobalVariable &globalVar : module->globals()) {
+		if (globalVar.getType()->getElementType()->isFloatTy() || globalVar.getType()->getElementType()->isDoubleTy()) {
+			llvm::errs() << "Quantizing global variable: " << globalVar.getName() << "\n";
+
+			// Create the new integer type pointer
+			Type *newType = quantizedType->getPointerTo();
+
+			// Update the initializer of the global variable
+			if (llvm::Constant *init = globalVar.getInitializer()) {
+				if (llvm::ConstantFP *constFp = llvm::dyn_cast<llvm::ConstantFP>(init)) {
+					double value = constFp->getValueAPF().convertToDouble();
+					int64_t quantizedValue = static_cast<int64_t>(round(value * FRAC_BASE));
+					globalVar.setInitializer(llvm::ConstantInt::get(quantizedType, quantizedValue));
+				}
+			}
+
+			// Check if a quantized version of the global variable already exists
+			std::string quantizedName = globalVar.getName().str() + "_quantized";
+			if (GlobalVariable *existingGlobalVar = module->getNamedGlobal(quantizedName)) {
+				// Replace all uses of the old global variable with the existing quantized one
+				globalVar.replaceAllUsesWith(existingGlobalVar);
+			} else {
+				// Create a new global variable with the updated type and initializer
+				GlobalVariable *newGlobalVar = new GlobalVariable(
+				    *module,
+				    quantizedType,
+				    globalVar.isConstant(),
+				    globalVar.getLinkage(),
+				    globalVar.getInitializer(),
+				    quantizedName
+				);
+
+				// Replace all uses of the old global variable with the new one
+				globalVar.replaceAllUsesWith(newGlobalVar);
+			}
+
+			// Add the old global variable to the list of globals to erase
+			globalsToErase.push_back(&globalVar);
+		}
+	}
+}
+
 
 // Quantize constants within an instruction
 
@@ -354,47 +489,47 @@ quantizeConstant(Instruction * inInstruction, Type * quantizedType)
 	}
 }
 
-void
-handleFloatIntMul(Instruction * llvmIrInstruction, Type * intType, Type * floatType, Function * floatIntMul)
-{
-	llvm::errs() << "Handling FloatIntMul\n";
-	llvm::errs() << "Original Instruction: " << *llvmIrInstruction << "\n";
-	IRBuilder<> Builder(llvmIrInstruction);
-
-	// 获取操作数
-	Value * lhs = llvmIrInstruction->getOperand(0);
-	Value * rhs = llvmIrInstruction->getOperand(1);
-
-	llvm::errs() << "LHS: " << *lhs << "\n";
-	llvm::errs() << "RHS: " << *rhs << "\n";
-
-	// 确保左操作数是浮点数，右操作数是整数
-	if (!lhs->getType()->isFloatTy() && !lhs->getType()->isDoubleTy())
-	{
-		std::swap(lhs, rhs);
-	}
-
-	if (lhs->getType()->isFloatTy() || lhs->getType()->isDoubleTy())
-	{
-		if (rhs->getType()->isIntegerTy())
-		{
-			llvm::CallInst * callInst = Builder.CreateCall(floatIntMul, {lhs, rhs});
-			llvmIrInstruction->replaceAllUsesWith(callInst);
-			llvmIrInstruction->eraseFromParent();
-			llvm::errs() << "Replaced with call to floatIntMul\n";
-		}
-		else
-		{
-			llvm::errs() << "RHS is not an integer\n";
-		}
-	}
-	else
-	{
-		llvm::errs() << "LHS is not a float\n";
-	}
-
-	llvm::errs() << "Finished handling FloatIntMul\n";
-}
+//void
+//handleFloatIntMul(Instruction * llvmIrInstruction, Type * intType, Type * floatType, Function * floatIntMul)
+//{
+//	llvm::errs() << "Handling FloatIntMul\n";
+//	llvm::errs() << "Original Instruction: " << *llvmIrInstruction << "\n";
+//	IRBuilder<> Builder(llvmIrInstruction);
+//
+//	// 获取操作数
+//	Value * lhs = llvmIrInstruction->getOperand(0);
+//	Value * rhs = llvmIrInstruction->getOperand(1);
+//
+//	llvm::errs() << "LHS: " << *lhs << "\n";
+//	llvm::errs() << "RHS: " << *rhs << "\n";
+//
+//	// 确保左操作数是浮点数，右操作数是整数
+//	if (!lhs->getType()->isFloatTy() && !lhs->getType()->isDoubleTy())
+//	{
+//		std::swap(lhs, rhs);
+//	}
+//
+//	if (lhs->getType()->isFloatTy() || lhs->getType()->isDoubleTy())
+//	{
+//		if (rhs->getType()->isIntegerTy())
+//		{
+//			llvm::CallInst * callInst = Builder.CreateCall(floatIntMul, {lhs, rhs});
+//			llvmIrInstruction->replaceAllUsesWith(callInst);
+//			llvmIrInstruction->eraseFromParent();
+//			llvm::errs() << "Replaced with call to floatIntMul\n";
+//		}
+//		else
+//		{
+//			llvm::errs() << "RHS is not an integer\n";
+//		}
+//	}
+//	else
+//	{
+//		llvm::errs() << "LHS is not a float\n";
+//	}
+//
+//	llvm::errs() << "Finished handling FloatIntMul\n";
+//}
 
 void
 simplifyConstant(Instruction * inInstruction, Type * quantizedType, Function * floatIntMul)
@@ -1046,14 +1181,14 @@ irPassLLVMIRAutoQuantization(State * N, llvm::Function & llvmIrFunction, std::ve
 	flexprint(N->Fe, N->Fm, N->Fpinfo, "\tauto quantization.\n");
 	llvm::errs() << "Entering irPassLLVMIRAutoQuantization\n";
 
-	// Skip certain functions
-	std::string functionName = llvmIrFunction.getName().str();
-	if (functionName == "llvm.dbg.declare" || functionName == "llvm.dbg.value" || functionName == "llvm.dbg.label" || functionName == "fixmul" || functionName == "floatIntMul")
-	// if (functionName == "llvm.dbg.declare" || functionName == "llvm.dbg.value" || functionName == "llvm.dbg.label" || functionName == "fixmul" )
-	{
-		llvm::errs() << "Skipping function: " << functionName << "\n";
-		return;
-	}
+//	// Skip certain functions
+//	std::string functionName = llvmIrFunction.getName().str();
+//	if (functionName == "llvm.dbg.declare" || functionName == "llvm.dbg.value" || functionName == "llvm.dbg.label" || functionName == "fixmul" || functionName == "floatIntMul")
+//	// if (functionName == "llvm.dbg.declare" || functionName == "llvm.dbg.value" || functionName == "llvm.dbg.label" || functionName == "fixmul" )
+//	{
+//		llvm::errs() << "Skipping function: " << functionName << "\n";
+//		return;
+//	}
 
 	Type * quantizedType;
 	switch (BIT_WIDTH)
@@ -1092,6 +1227,13 @@ irPassLLVMIRAutoQuantization(State * N, llvm::Function & llvmIrFunction, std::ve
 	llvm::errs() << "Calling handleFunctionSignature for function: " << llvmIrFunction.getName() << "\n";
 	handleFunctionSignature(llvmIrFunction, quantizedType);
 	llvm::errs() << "Finished calling handleFunctionSignature for function: " << llvmIrFunction.getName() << "\n";
+
+
+
+	// Update global variable type to integer type
+	llvm::errs() << "Calling handleGlobalVariable for function: " << llvmIrFunction.getName() << "\n";
+	// Update global variables
+	updateGlobalVariables(module, quantizedType);
 
 	/*
 	 * generate hardcode function - fixmul and fixdiv
