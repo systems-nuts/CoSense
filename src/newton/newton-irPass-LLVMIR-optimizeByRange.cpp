@@ -495,7 +495,7 @@ irPassLLVMIROptimizeByRange(State * N, bool enableQuantization, bool enableOverl
 	// Finally, erase old functions
 	eraseOldFunctions();
 
-
+	eraseOldGlobals();
 
 	// 打印处理后的模块IR并保存到文件
 	saveModuleIR(*Mod, "/home/xyf/CoSense/applications/newton/llvm-ir/MadgwickAHRS_opt.ll");
