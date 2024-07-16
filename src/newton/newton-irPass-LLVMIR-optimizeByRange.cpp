@@ -88,7 +88,18 @@ void saveModuleIR(llvm::Module &M, const std::string &fileName) {
 	file.close();
 }
 
-
+void removeQuantizedSuffixInModule(llvm::Module &M) {
+	for (auto &F : M) {
+		if (F.hasName()) {
+			std::string FuncName = F.getName().str();
+			size_t pos = FuncName.find("_quantized");
+			if (pos != std::string::npos) {
+				FuncName.erase(pos, 10); // Remove "_quantized"
+				F.setName(FuncName);
+			}
+		}
+	}
+}
 
 void
 dumpIR(State * N, std::string fileSuffix, const std::unique_ptr<Module> & Mod)
@@ -497,7 +508,10 @@ irPassLLVMIROptimizeByRange(State * N, bool enableQuantization, bool enableOverl
 
 	eraseOldGlobals();
 
-	// 打印处理后的模块IR并保存到文件
+	// Perform text replacement to remove "_quantized" suffixes
+	removeQuantizedSuffixInModule(*Mod);
+
+	// Save the optimized IR to a file
 	saveModuleIR(*Mod, "/home/xyf/CoSense/applications/newton/llvm-ir/MadgwickAHRS_opt.ll");
 
 
