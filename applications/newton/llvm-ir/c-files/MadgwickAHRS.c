@@ -16,6 +16,7 @@
 // Header files
 
 #include "MadgwickAHRS.h"
+#include <stdio.h> // for printf
 
 //---------------------------------------------------------------------------------------------------
 // Definitions
@@ -70,6 +71,7 @@ void MadgwickAHRSupdate(float gx, float gy, float gz, float ax, float ay, float 
     float q1 = *q1_ptr;
     float q2 = *q2_ptr;
     float q3 = *q3_ptr;
+    printf("Initial quaternion: q0=%f, q1=%f, q2=%f, q3=%f\n", q0, q1, q2, q3);
 #ifdef ASSUME
     __builtin_assume(ax > lowerBound && ax < upperBound);
     __builtin_assume(ay > lowerBound && ay < upperBound);
@@ -93,6 +95,8 @@ void MadgwickAHRSupdate(float gx, float gy, float gz, float ax, float ay, float 
 	qDot3 = 0.5f * (q0 * gy - q1 * gz + q3 * gx);
 	qDot4 = 0.5f * (q0 * gz + q1 * gy - q2 * gx);
 
+	printf("qDot values: qDot1=%f, qDot2=%f, qDot3=%f, qDot4=%f\n", qDot1, qDot2, qDot3, qDot4);
+
 	// Compute feedback only if accelerometer measurement valid (avoids NaN in accelerometer normalisation)
 	if(!((ax == 0.0f) && (ay == 0.0f) && (az == 0.0f))) {
 
@@ -103,11 +107,15 @@ void MadgwickAHRSupdate(float gx, float gy, float gz, float ax, float ay, float 
 		ay *= recipNorm;
 		az *= recipNorm;
 
+		printf("Normalized accelerometer: ax=%f, ay=%f, az=%f\n", ax, ay, az);
+
 		// Normalise magnetometer measurement
 		recipNorm = invSqrt(mx * mx + my * my + mz * mz);
 		mx *= recipNorm;
 		my *= recipNorm;
 		mz *= recipNorm;
+
+		printf("Normalized magnetometer: mx=%f, my=%f, mz=%f\n", mx, my, mz);
 
 		// Auxiliary variables to avoid repeated arithmetic
 		_2q0mx = 2.0f * q0 * mx;
@@ -139,6 +147,8 @@ void MadgwickAHRSupdate(float gx, float gy, float gz, float ax, float ay, float 
 		_4bx = 2.0f * _2bx;
 		_4bz = 2.0f * _2bz;
 
+		printf("hx=%f, hy=%f, _2bx=%f, _2bz=%f, _4bx=%f, _4bz=%f\n", hx, hy, _2bx, _2bz, _4bx, _4bz);
+
 		// Gradient decent algorithm corrective step
 		s0 = -_2q2 * (2.0f * q1q3 - _2q0q2 - ax) + _2q1 * (2.0f * q0q1 + _2q2q3 - ay) - _2bz * q2 * (_2bx * (0.5f - q2q2 - q3q3) + _2bz * (q1q3 - q0q2) - mx) + (-_2bx * q3 + _2bz * q1) * (_2bx * (q1q2 - q0q3) + _2bz * (q0q1 + q2q3) - my) + _2bx * q2 * (_2bx * (q0q2 + q1q3) + _2bz * (0.5f - q1q1 - q2q2) - mz);
 		s1 = _2q3 * (2.0f * q1q3 - _2q0q2 - ax) + _2q0 * (2.0f * q0q1 + _2q2q3 - ay) - 4.0f * q1 * (1 - 2.0f * q1q1 - 2.0f * q2q2 - az) + _2bz * q3 * (_2bx * (0.5f - q2q2 - q3q3) + _2bz * (q1q3 - q0q2) - mx) + (_2bx * q2 + _2bz * q0) * (_2bx * (q1q2 - q0q3) + _2bz * (q0q1 + q2q3) - my) + (_2bx * q3 - _4bz * q1) * (_2bx * (q0q2 + q1q3) + _2bz * (0.5f - q1q1 - q2q2) - mz);
@@ -149,6 +159,8 @@ void MadgwickAHRSupdate(float gx, float gy, float gz, float ax, float ay, float 
 		s1 *= recipNorm;
 		s2 *= recipNorm;
 		s3 *= recipNorm;
+
+		printf("s values: s0=%f, s1=%f, s2=%f, s3=%f\n", s0, s1, s2, s3);
 
 		// Apply feedback step
 		qDot1 -= beta * s0;
@@ -163,6 +175,10 @@ void MadgwickAHRSupdate(float gx, float gy, float gz, float ax, float ay, float 
 	q2 += qDot3 * (1.0f / sampleFreq);
 	q3 += qDot4 * (1.0f / sampleFreq);
 
+	printf("Updated quaternion (before normalization): q0=%f, q1=%f, q2=%f, q3=%f\n", q0, q1, q2, q3);
+
+	recipNorm = invSqrt(q0 * q0 + q1 * q1 + q2 * q2 + q3 * q3);
+
 	// Normalise quaternion
 	recipNorm = invSqrt(q0 * q0 + q1 * q1 + q2 * q2 + q3 * q3);
 //    printf("q0=%f, q1=%f, q2=%f, q3=%f, recipNorm=%f\n",
@@ -171,6 +187,8 @@ void MadgwickAHRSupdate(float gx, float gy, float gz, float ax, float ay, float 
 	q1 *= recipNorm;
 	q2 *= recipNorm;
 	q3 *= recipNorm;
+
+	printf("Normalized quaternion: q0=%f, q1=%f, q2=%f, q3=%f\n", q0, q1, q2, q3);
     *q0_ptr = q0;
     *q1_ptr = q1;
     *q2_ptr = q2;
@@ -188,6 +206,9 @@ void MadgwickAHRSupdateIMU(float gx, float gy, float gz, float ax, float ay, flo
     float q1 = *q1_ptr;
     float q2 = *q2_ptr;
     float q3 = *q3_ptr;
+
+    printf("Initial quaternion (IMU): q0=%f, q1=%f, q2=%f, q3=%f\n", q0, q1, q2, q3);
+
 	float recipNorm;
 	float s0, s1, s2, s3;
 	float qDot1, qDot2, qDot3, qDot4;
@@ -199,6 +220,8 @@ void MadgwickAHRSupdateIMU(float gx, float gy, float gz, float ax, float ay, flo
 	qDot3 = 0.5f * (q0 * gy - q1 * gz + q3 * gx);
 	qDot4 = 0.5f * (q0 * gz + q1 * gy - q2 * gx);
 
+	printf("qDot values (IMU): qDot1=%f, qDot2=%f, qDot3=%f, qDot4=%f\n", qDot1, qDot2, qDot3, qDot4);
+
 	// Compute feedback only if accelerometer measurement valid (avoids NaN in accelerometer normalisation)
 	if(!((ax == 0.0f) && (ay == 0.0f) && (az == 0.0f))) {
 
@@ -206,7 +229,9 @@ void MadgwickAHRSupdateIMU(float gx, float gy, float gz, float ax, float ay, flo
 		recipNorm = invSqrt(ax * ax + ay * ay + az * az);
 		ax *= recipNorm;
 		ay *= recipNorm;
-		az *= recipNorm;   
+		az *= recipNorm;
+
+		printf("Normalized accelerometer (IMU): ax=%f, ay=%f, az=%f\n", ax, ay, az);
 
 		// Auxiliary variables to avoid repeated arithmetic
 		_2q0 = 2.0f * q0;
@@ -234,6 +259,8 @@ void MadgwickAHRSupdateIMU(float gx, float gy, float gz, float ax, float ay, flo
 		s2 *= recipNorm;
 		s3 *= recipNorm;
 
+		printf("s values (IMU): s0=%f, s1=%f, s2=%f, s3=%f\n", s0, s1, s2, s3);
+
 		// Apply feedback step
 		qDot1 -= beta * s0;
 		qDot2 -= beta * s1;
@@ -247,12 +274,18 @@ void MadgwickAHRSupdateIMU(float gx, float gy, float gz, float ax, float ay, flo
 	q2 += qDot3 * (1.0f / sampleFreq);
 	q3 += qDot4 * (1.0f / sampleFreq);
 
+	printf("Updated quaternion (before normalization, IMU): q0=%f, q1=%f, q2=%f, q3=%f\n", q0, q1, q2, q3);
+
+
+
 	// Normalise quaternion
 	recipNorm = invSqrt(q0 * q0 + q1 * q1 + q2 * q2 + q3 * q3);
 	q0 *= recipNorm;
 	q1 *= recipNorm;
 	q2 *= recipNorm;
 	q3 *= recipNorm;
+
+	printf("Normalized quaternion (IMU): q0=%f, q1=%f, q2=%f, q3=%f\n", q0, q1, q2, q3);
     *q0_ptr = q0;
     *q1_ptr = q1;
     *q2_ptr = q2;
