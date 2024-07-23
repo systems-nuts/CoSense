@@ -101,6 +101,37 @@ void removeQuantizedSuffixInModule(llvm::Module &M) {
 	}
 }
 
+void finalCorrectionPass(Module &M, Type *quantizedType) {
+	llvm::errs() << "Entering finalCorrectionPass\n";
+	for (Function &F : M) {
+		for (BasicBlock &BB : F) {
+			for (Instruction &I : BB) {
+				// Correct Load Instructions
+				if (auto *loadInst = dyn_cast<LoadInst>(&I)) {
+					if (loadInst->getType() != quantizedType) {
+						llvm::errs() << "Correcting load instruction: " << *loadInst << "\n";
+						loadInst->mutateType(quantizedType);
+					}
+				}
+
+				// Correct Store Instructions
+				if (auto *storeInst = dyn_cast<StoreInst>(&I)) {
+					if (storeInst->getValueOperand()->getType() != quantizedType) {
+						llvm::errs() << "Correcting store instruction: " << *storeInst << "\n";
+						storeInst->getValueOperand()->mutateType(quantizedType);
+					}
+					if (storeInst->getPointerOperand()->getType()->getPointerElementType() != quantizedType) {
+						llvm::errs() << "Correcting store pointer operand: " << *storeInst << "\n";
+						storeInst->getPointerOperand()->mutateType(quantizedType->getPointerTo());
+					}
+				}
+			}
+		}
+	}
+	llvm::errs() << "Exiting finalCorrectionPass\n";
+}
+
+
 void
 dumpIR(State * N, std::string fileSuffix, const std::unique_ptr<Module> & Mod)
 {
@@ -512,7 +543,11 @@ irPassLLVMIROptimizeByRange(State * N, bool enableQuantization, bool enableOverl
 	removeQuantizedSuffixInModule(*Mod);
 
 	// Save the optimized IR to a file
-	saveModuleIR(*Mod, "/home/xyf/CoSense/applications/newton/llvm-ir/MadgwickAHRS_opt.ll");
+	//saveModuleIR(*Mod, "/home/xyf/CoSense/applications/newton/llvm-ir/MadgwickAHRS_opt.ll");
+
+	//finalCorrectionPass(*Mod, quantizedType);
+	finalCorrectionPass(*Mod, Type::getInt32Ty(Context)); // Assuming 32-bit quantization
+	saveModuleIR(*Mod, "/home/xyf/CoSense/applications/newton/llvm-ir/floating_point_operations_output.ll");
 
 
 
