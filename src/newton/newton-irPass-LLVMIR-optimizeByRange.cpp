@@ -44,6 +44,10 @@
 #include "newton-irPass-LLVMIR-optimizeByRange.h"
 #include "newton-irPass-LLVMIR-memoryAlignment.h"
 #include "newton-irPass-LLVMIR-emitAssume.h"
+
+
+//added code
+#include "myRangeAnalysis.h"
 #endif /* __cplusplus */
 
 #include <algorithm>
@@ -110,6 +114,7 @@ void finalCorrectionPass(Module &M, Type *quantizedType) {
 				if (auto *loadInst = dyn_cast<LoadInst>(&I)) {
 					if (loadInst->getType() != quantizedType) {
 						llvm::errs() << "Correcting load instruction: " << *loadInst << "\n";
+
 						loadInst->mutateType(quantizedType);
 					}
 				}
@@ -396,6 +401,21 @@ irPassLLVMIROptimizeByRange(State * N, bool enableQuantization, bool enableOverl
 		}
 	}
 
+
+
+	//Range Analysis
+
+//	for (auto & mi : *Mod)
+//	{
+//		rangeAnalysis(mi);
+//
+//	}
+
+
+
+
+
+
 //	/*
 //	 * analyze the range of all local variables in each function
 //	 * */
@@ -546,8 +566,8 @@ irPassLLVMIROptimizeByRange(State * N, bool enableQuantization, bool enableOverl
 	//saveModuleIR(*Mod, "/home/xyf/CoSense/applications/newton/llvm-ir/MadgwickAHRS_opt.ll");
 
 	//finalCorrectionPass(*Mod, quantizedType);
-	finalCorrectionPass(*Mod, Type::getInt32Ty(Context)); // Assuming 32-bit quantization
-	saveModuleIR(*Mod, "/home/xyf/CoSense/applications/newton/llvm-ir/floating_point_operations_output.ll");
+	//finalCorrectionPass(*Mod, Type::getInt32Ty(Context)); // Assuming 32-bit quantization
+	//saveModuleIR(*Mod, "/home/xyf/CoSense/applications/newton/llvm-ir/floating_point_operations_output.ll");
 
 
 
