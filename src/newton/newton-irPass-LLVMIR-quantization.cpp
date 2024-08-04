@@ -70,7 +70,7 @@ setQuantizedType(Value * inValue, Type * quantizedType)
 			valueType   = valueType->getPointerElementType();
 		}
 
-		// 跳过整数类型和结构体类型
+		//Skip integer and struct types
 		if (valueType->isIntegerTy() || valueType->isStructTy())
 		{
 			llvm::errs() << "Skipping quantization for type: " << *valueType << "\n";
@@ -286,7 +286,7 @@ handleFunctionSignature(Function & llvmIrFunction, Type * quantizedType)
 	// Skip certain functions
 	std::string functionName = llvmIrFunction.getName().str();
 	// if (functionName == "llvm.dbg.declare" || functionName == "llvm.dbg.value" || functionName == "llvm.dbg.label" || functionName == "fixmul" || functionName == "floatIntMul" || functionName == "sqrt" ||functionName == "printf")
-	if (functionName == "llvm.dbg.declare" || functionName == "llvm.dbg.value" || functionName == "llvm.dbg.label" || functionName == "fixmul" || functionName == "floatIntMul" || functionName == "sqrt"||functionName =="sin")
+	if (functionName == "llvm.dbg.declare" || functionName == "llvm.dbg.value" || functionName == "llvm.dbg.label" || functionName == "fixmul" || functionName == "floatIntMul" || functionName == "sqrt"||functionName =="sinf" ||functionName == "sqrtf" )
 
 	{
 		llvm::errs() << "Skipping function signature handling for: " << functionName << "\n";
@@ -365,23 +365,37 @@ handleSqrtCall(CallInst * llvmIrCallInstruction, Type * quantizedType)
 	IRBuilder<> Builder(llvmIrCallInstruction);
 	auto	    operand = llvmIrCallInstruction->getOperand(0);
 
-	llvm::errs() << "Operand type: " << *operand->getType() << "\n";
+	// Cast the instruction to CallInst to access getCalledFunction method
+	CallInst *callInst = dyn_cast<CallInst>(llvmIrCallInstruction);
+	if (!callInst) {
+		llvm::errs() << "Error: Instruction is not a CallInst.\n";
+		return;
+	}
+
+
 	if (operand->getType()->isIntegerTy())
 	{
 		Value * newOperand = Builder.CreateSIToFP(operand, llvmIrCallInstruction->getType());
 		llvmIrCallInstruction->setOperand(0, newOperand);
 	}
 
-	auto	cloneInst  = llvmIrCallInstruction->clone();
-	llvm::errs() << "Cloned instruction: " << *cloneInst << "\n";
-	Value * fptosiInst = Builder.CreateFPToSI(cloneInst, quantizedType);
+	// The sequence should be:
+	// 1. sitofp: Convert int to float
+	// 2. call sqrtf: Compute sqrt in float
+	// 3. fptosi: Convert float result to int
+	// 4. shl: Left shift the integer result for scaling
+	// Create call to sqrt function
+	Value *sqrtResult = Builder.CreateCall(callInst->getCalledFunction(), {callInst->getOperand(0)});
+	// Convert the result back to integer
+	Value *fptosiInst = Builder.CreateFPToSI(sqrtResult, quantizedType);
+	// Perform left shift for scaling
 	Value * shlInst	   = Builder.CreateShl(fptosiInst, FRAC_Q / 2);
 	Value * resInst	   = nullptr;
 
 	/*
 	 * if (FRAC_Q%2) then multiply with 1.414213562;
 	 * */
-
+	// If FRAC_Q is odd, apply compensation
 	if (FRAC_Q % 2)
 	{
 		Value * lhsCompensateInst = Builder.CreateSIToFP(shlInst, llvmIrCallInstruction->getType());
@@ -396,8 +410,8 @@ handleSqrtCall(CallInst * llvmIrCallInstruction, Type * quantizedType)
 	}
 
 	llvmIrCallInstruction->replaceAllUsesWith(resInst);
-	ReplaceInstWithInst(llvmIrCallInstruction, cloneInst);
-	llvm::errs() << "Exiting handleSinCall\n";
+	//ReplaceInstWithInst(llvmIrCallInstruction, cloneInst);
+	llvmIrCallInstruction->eraseFromParent();
 }
 }
 
@@ -1576,15 +1590,20 @@ void handleCall(CallInst *llvmIrCallInstruction, Type *quantizedType) {
 			if (calledFunction->getName().str() == "sqrt") {
 				// For sqrt
 				handleSqrtCall(llvmIrCallInstruction, quantizedType);
-			} else if  (calledFunction->getName().str() == "sin") {
-				//For sin
+
+
+			} else if (calledFunction->getName().str() == "sqrtf") {
+				// For sqrtf
+				handleSqrtCall(llvmIrCallInstruction, quantizedType);
+			} else if (calledFunction->getName().str() == "sin") {
+				// For sin
 				handleSinCall(llvmIrCallInstruction, quantizedType);
-			}
-			else {
+			} else {
 				/*
-                 * for other lib functions, de-quantize the arguments and quantize the return value
+		 * for other lib functions, de-quantize the arguments and quantize the return value
 				 */
 				dequantizeArgumentsAndQuantizeReturn(llvmIrCallInstruction, quantizedType);
+
 			}
 		} else {
 			/*
@@ -1801,7 +1820,7 @@ irPassLLVMIRAutoQuantization(State * N, llvm::Function & llvmIrFunction, std::ve
 	// Skip certain functions
 	std::string functionName = llvmIrFunction.getName().str();
 	if (functionName == "llvm.dbg.declare" || functionName == "llvm.dbg.value" || functionName == "llvm.dbg.label" || functionName == "fixmul" || functionName == "floatIntMul"
-	    || functionName == "fixdiv" || functionName == "constantMulDiv"||functionName=="sin" )
+	    || functionName == "fixdiv" || functionName == "constantMulDiv"||functionName=="sinf"  )
 	// if (functionName == "llvm.dbg.declare" || functionName == "llvm.dbg.value" || functionName == "llvm.dbg.label" || functionName == "fixmul" )
 	{
 		llvm::errs() << "Skipping function: " << functionName << "\n";
