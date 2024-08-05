@@ -68,6 +68,10 @@ isMatrixOperation(Instruction * instr)
 	return false;  // 如果没有匹配到矩阵操作的特征
 }
 
+bool isMathFunction(const std::string &funcName) {
+	return funcName == "sqrt" || funcName == "sqrtf" || funcName == "sin";
+}
+
 // Set the quantized type for a given value
 void
 setQuantizedType(Value * inValue, Type * quantizedType)
@@ -128,67 +132,7 @@ setQuantizedType(Value * inValue, Type * quantizedType)
 // Quantize constants within an instruction
 std::unordered_map<ConstantFP *, Value *> quantizedValueCache;
 
-// Ensure load and store instructions have matching types
-// void
-// handleLoadStoreInstructions(Function & llvmIrFunction, Type * quantizedType)
-//{
-//	llvm::errs() << "Entering handleLoadStoreInstructions\n";
-//	for (BasicBlock & llvmIrBasicBlock : llvmIrFunction)
-//	{
-//		for (BasicBlock::iterator itBB = llvmIrBasicBlock.begin(); itBB != llvmIrBasicBlock.end();)
-//		{
-//			Instruction * llvmIrInstruction = &*itBB++;
-//			if (llvmIrInstruction->getOpcode() == Instruction::Load)
-//			{
-//				if (auto loadInst = dyn_cast<LoadInst>(llvmIrInstruction))
-//				{
-//					auto ptr = loadInst->getPointerOperand();
-//					if (ptr->getType()->getPointerElementType()->isFloatTy() ||
-//					    ptr->getType()->getPointerElementType()->isDoubleTy())
-//					{
-//						// 如果是全局变量，确保它的类型已经被转换
-//						if (auto globalVar = dyn_cast<GlobalVariable>(ptr))
-//						{
-//							if (globalVar->getType()->getElementType()->isFloatTy() ||
-//							    globalVar->getType()->getElementType()->isDoubleTy())
-//							{
-//								globalVar->mutateType(quantizedType->getPointerTo());
-//							}
-//						}
-//						else
-//						{
-//							ptr->mutateType(quantizedType->getPointerTo());
-//						}
-//					}
-//				}
-//			}
-//			else if (llvmIrInstruction->getOpcode() == Instruction::Store)
-//			{
-//				if (auto storeInst = dyn_cast<StoreInst>(llvmIrInstruction))
-//				{
-//					auto ptr = storeInst->getPointerOperand();
-//					if (ptr->getType()->getPointerElementType()->isFloatTy() ||
-//					    ptr->getType()->getPointerElementType()->isDoubleTy())
-//					{
-//						// 如果是全局变量，确保它的类型已经被转换
-//						if (auto globalVar = dyn_cast<GlobalVariable>(ptr))
-//						{
-//							if (globalVar->getType()->getElementType()->isFloatTy() ||
-//							    globalVar->getType()->getElementType()->isDoubleTy())
-//							{
-//								globalVar->mutateType(quantizedType->getPointerTo());
-//							}
-//						}
-//						else
-//						{
-//							ptr->mutateType(quantizedType->getPointerTo());
-//						}
-//					}
-//				}
-//			}
-//		}
-//	}
-//}
+
 
 void
 fixLoadStoreTypes(Function & F, Type * quantizedType)
@@ -324,6 +268,12 @@ handleFunctionSignature(Function & llvmIrFunction, Type * quantizedType)
 	if (isQuantizedFunctionName(functionName))
 	{
 		llvm::errs() << "Skipping already quantized function: " << functionName << "\n";
+		return;
+	}
+
+	// Skip if the function returns void
+	if (llvmIrFunction.getReturnType()->isVoidTy()) {
+		llvm::errs() << "Skipping function with void return type: " << functionName << "\n";
 		return;
 	}
 
@@ -1248,21 +1198,6 @@ dequantizeArgumentsAndQuantizeReturn(CallInst * llvmIrCallInstruction, Type * qu
 	llvmIrCallInstruction->eraseFromParent();
 }
 
-//void
-//handleFAdd(Instruction * inInstruction, Type * quantizedType)
-//{
-//	llvm::errs() << "Handling FSub\n";
-//	IRBuilder<> Builder(inInstruction);
-//
-//	// quantizeConstant(inInstruction, quantizedType);
-//	Value * op0 = inInstruction->getOperand(0);
-//	Value * op1 = inInstruction->getOperand(1);
-//
-//	Value * newInst = Builder.CreateAdd(op0, op1);
-//	inInstruction->replaceAllUsesWith(newInst);
-//	inInstruction->eraseFromParent();
-//	llvm::errs() << "Finished handling FSub\n";
-//}
 
 float
 checkDecimal(float decimalNum)
@@ -1502,6 +1437,21 @@ handleMatrixOperations(Instruction * instr, Type * quantizedType)
 		}
 	}
 }
+
+Value* convertToQuantizedType(Value *value, Type *quantizedType, IRBuilder<> &Builder) {
+	if (value->getType()->isFloatTy() || value->getType()->isDoubleTy()) {
+		// 如果是浮点类型，首先乘以 FRAC_BASE，然后转换为量化后的整数类型
+		Value *scaledValue = Builder.CreateFMul(value, ConstantFP::get(value->getType(), FRAC_BASE));
+		return Builder.CreateFPToSI(scaledValue, quantizedType);
+	} else if (value->getType()->isIntegerTy()) {
+		// 如果已经是整数类型，则直接返回
+		return value;
+	} else {
+		llvm::errs() << "Unsupported type for quantization: " << *value->getType() << "\n";
+		return nullptr;
+	}
+}
+
 
 void
 handleFMul(Instruction * llvmIrInstruction, Type * quantizedType, Function * fixmul)
