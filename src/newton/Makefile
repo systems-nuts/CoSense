@@ -2,7 +2,7 @@ TREEROOT	= ../..
 
 include		$(TREEROOT)/config.local
 
-PRECOMMITHOOK = precommitStatisticsHook-$(OSTYPE).sh 
+PRECOMMITHOOK = precommitStatisticsHook-$(OSTYPE).sh
 
 COMMONPATH	= ../common
 NOISYPATH	= ../noisy
@@ -100,8 +100,6 @@ SOURCES		=\
 		newton-irPass-LLVMIR-constantSubstitution.cpp\
 		newton-irPass-LLVMIR-shrinkTypeByRange.cpp\
 		newton-irPass-LLVMIR-quantization.cpp\
-
-        newton-irPass-LLVMIR-dequantization.cpp\
 		newton-irPass-LLVMIR-memoryAlignment.cpp\
 		newton-irPass-LLVMIR-emitAssume.cpp\
 
@@ -139,7 +137,6 @@ OBJS		=\
 		newton-irPass-LLVMIR-constantSubstitution.$(OBJECTEXTENSION)\
 		newton-irPass-LLVMIR-shrinkTypeByRange.$(OBJECTEXTENSION)\
 		newton-irPass-LLVMIR-quantization.$(OBJECTEXTENSION)\
-		newton-irPass-LLVMIR-dequantization.$(OBJECTEXTENSION)\
 		newton-irPass-LLVMIR-emitAssume.$(OBJECTEXTENSION)\
 		newton-irPass-invariantSignalAnnotation.$(OBJECTEXTENSION)\
 		newton-irPass-piGroupsSignalAnnotation.$(OBJECTEXTENSION)\
@@ -189,7 +186,6 @@ CGIOBJS		=\
 		newton-irPass-LLVMIR-constantSubstitution.$(OBJECTEXTENSION)\
 		newton-irPass-LLVMIR-shrinkTypeByRange.$(OBJECTEXTENSION)\
 		newton-irPass-LLVMIR-quantization.$(OBJECTEXTENSION)\
-		newton-irPass-LLVMIR-dequantization.$(OBJECTEXTENSION)\
 		newton-irPass-LLVMIR-emitAssume.$(OBJECTEXTENSION)\
 		newton-irPass-invariantSignalAnnotation.$(OBJECTEXTENSION)\
 		newton-irPass-piGroupsSignalAnnotation.$(OBJECTEXTENSION)\
@@ -238,7 +234,6 @@ LIBNEWTONOBJS =\
 		newton-irPass-LLVMIR-constantSubstitution.$(OBJECTEXTENSION)\
 		newton-irPass-LLVMIR-shrinkTypeByRange.$(OBJECTEXTENSION)\
 		newton-irPass-LLVMIR-quantization.$(OBJECTEXTENSION)\
-		newton-irPass-LLVMIR-dequantization.$(OBJECTEXTENSION)\
 		newton-irPass-LLVMIR-emitAssume.$(OBJECTEXTENSION)\
 		newton-irPass-invariantSignalAnnotation.$(OBJECTEXTENSION)\
 		newton-irPass-piGroupsSignalAnnotation.$(OBJECTEXTENSION)\
@@ -318,24 +313,24 @@ installhooks:
 #			Libraries
 #
 
-lib$(LIBNEWTON)-$(OSTYPE)-$(NEWTON_L10N).a: $(LIBNEWTONOBJS) $(CONFIGPATH)/config.$(OSTYPE)-$(MACHTYPE).$(COMPILERVARIANT) $(COMMONPATH)/config.$(OSTYPE)-$(MACHTYPE).$(COMPILERVARIANT) Makefile 
+lib$(LIBNEWTON)-$(OSTYPE)-$(NEWTON_L10N).a: $(LIBNEWTONOBJS) $(CONFIGPATH)/config.$(OSTYPE)-$(MACHTYPE).$(COMPILERVARIANT) $(COMMONPATH)/config.$(OSTYPE)-$(MACHTYPE).$(COMPILERVARIANT) Makefile
 	$(AR) $(ARFLAGS) $@ $(LIBNEWTONOBJS)
 
 #
 #			Executables
 #
-target: $(OBJS) $(CONFIGPATH)/config.$(OSTYPE)-$(MACHTYPE).$(COMPILERVARIANT) $(COMMONPATH)/config.$(OSTYPE)-$(MACHTYPE).$(COMPILERVARIANT) Makefile 
+target: $(OBJS) $(CONFIGPATH)/config.$(OSTYPE)-$(MACHTYPE).$(COMPILERVARIANT) $(COMMONPATH)/config.$(OSTYPE)-$(MACHTYPE).$(COMPILERVARIANT) Makefile
 	$(LD) $(LINKDIRS) $(LDFLAGS) $(OBJS) $(LLVMLIBS) $(SYSTEMLIBS) -lflex-$(OSTYPE) -lm $(LINKDIRS) $(LDFLAGS) -o $(TARGET) -lstdc++
 
 
-cgi:lib$(LIBNEWTON)-$(OSTYPE)-$(NEWTON_L10N).a $(CGIOBJS) $(CONFIGPATH)/config.$(OSTYPE)-$(MACHTYPE).$(COMPILERVARIANT) $(COMMONPATH)/config.$(OSTYPE)-$(MACHTYPE).$(COMPILERVARIANT) Makefile 
+cgi:lib$(LIBNEWTON)-$(OSTYPE)-$(NEWTON_L10N).a $(CGIOBJS) $(CONFIGPATH)/config.$(OSTYPE)-$(MACHTYPE).$(COMPILERVARIANT) $(COMMONPATH)/config.$(OSTYPE)-$(MACHTYPE).$(COMPILERVARIANT) Makefile
 	$(LD) $(LINKDIRS) $(LDFLAGS) $(CGIOBJS) $(LLVMLIBS) $(SYSTEMLIBS) -lflex-$(OSTYPE) $(LINKDIRS) $(LDFLAGS) -o $(CGI_TARGET) -lstdc++
 
 
 #
 #			Objects
 #
-%.$(OBJECTEXTENSION): %.c $(HEADERS) $(CONFIGPATH)/config.$(OSTYPE)-$(MACHTYPE).$(COMPILERVARIANT) $(COMMONPATH)/config.$(OSTYPE)-$(MACHTYPE).$(COMPILERVARIANT) Makefile 
+%.$(OBJECTEXTENSION): %.c $(HEADERS) $(CONFIGPATH)/config.$(OSTYPE)-$(MACHTYPE).$(COMPILERVARIANT) $(COMMONPATH)/config.$(OSTYPE)-$(MACHTYPE).$(COMPILERVARIANT) Makefile
 	$(CC) $(FLEXFLAGS) $(INCDIRS) $(CCFLAGS) $(WFLAGS) $(OPTFLAGS) $(LINTFLAGS) $<
 	$(CC) $(FLEXFLAGS) $(INCDIRS) $(CCFLAGS) $(WFLAGS) $(OPTFLAGS) $<
 
@@ -374,10 +369,6 @@ newton-irPass-LLVMIR-shrinkTypeByRange.$(OBJECTEXTENSION): newton-irPass-LLVMIR-
 newton-irPass-LLVMIR-quantization.$(OBJECTEXTENSION): newton-irPass-LLVMIR-quantization.cpp
 	$(CXX) $(FLEXFLAGS) $(INCDIRS) $(CXXFLAGS) $(WFLAGS) $(OPTFLAGS) $(LINTFLAGS) $<
 	$(CXX) $(FLEXFLAGS) $(INCDIRS) $(CXXFLAGS) $(WFLAGS) $(OPTFLAGS) $<
-
-newton-irPass-LLVMIR-quantization.$(OBJECTEXTENSION): newton-irPass-LLVMIR-dequantization.cpp
-    	$(CXX) $(FLEXFLAGS) $(INCDIRS) $(CXXFLAGS) $(WFLAGS) $(OPTFLAGS) $(LINTFLAGS) $<
-    	$(CXX) $(FLEXFLAGS) $(INCDIRS) $(CXXFLAGS) $(WFLAGS) $(OPTFLAGS) $<
 
 newton-irPass-LLVMIR-memoryAlignment.$(OBJECTEXTENSION): newton-irPass-LLVMIR-memoryAlignment.cpp
 	$(CXX) $(FLEXFLAGS) $(INCDIRS) $(CXXFLAGS) $(WFLAGS) $(OPTFLAGS) $(LINTFLAGS) $<
@@ -446,12 +437,12 @@ examples: $(EXAMPLES) target
 installcgi: cgi
 	sudo cp $(CGI_TARGET) $(CGI_BIN)
 	sudo mkdir -p $(HTMLBASEPATH)
-	sudo cp ../icons/* $(HTMLBASEPATH)/ 
-	sudo chmod 777 $(HTMLBASEPATH) 
+	sudo cp ../icons/* $(HTMLBASEPATH)/
+	sudo chmod 777 $(HTMLBASEPATH)
 	sudo chmod 755 $(HTMLBASEPATH)/*.png
 
 test:
-	./$(TARGET) --dot 0 $(EXAMPLESPATH)/invariants.nt | dot -Tpdf -O ; open noname.gv.pdf 
+	./$(TARGET) --dot 0 $(EXAMPLESPATH)/invariants.nt | dot -Tpdf -O ; open noname.gv.pdf
 
 
 clean:
