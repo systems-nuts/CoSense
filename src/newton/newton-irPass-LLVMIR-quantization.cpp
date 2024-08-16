@@ -1919,19 +1919,17 @@ handleFMul(Instruction * llvmIrInstruction, Type * quantizedType, Function * fix
 
 
 	// If either operand is a float, convert both to fixed-point
-//	if (lhsIsFloat)
-//	{
-//		lhs = Builder.CreateFPToSI(lhs, quantizedType);
-//		llvm::errs() << "Converted LHS to fixed-point: " << *lhs << "\n";
-//	}else {
-//		allOperandsAreInt &= rhs->getType()->isIntegerTy();
-//	}
-//
-//	if (rhsIsFloat)
-//	{
-//		rhs = Builder.CreateFPToSI(rhs, quantizedType);
-//		llvm::errs() << "Converted RHS to fixed-point: " << *rhs << "\n";
-//	}
+	if (lhsIsFloat)
+	{
+		lhs = Builder.CreateFPToSI(lhs, quantizedType);
+		llvm::errs() << "Converted LHS to fixed-point: " << *lhs << "\n";
+	}
+
+	if (rhsIsFloat)
+	{
+		rhs = Builder.CreateFPToSI(rhs, quantizedType);
+		llvm::errs() << "Converted RHS to fixed-point: " << *rhs << "\n";
+	}
 
 
 	// If both operands are integers, but neither is a constant, use fixmul
@@ -2098,7 +2096,7 @@ handleFNeg(Instruction * inInstruction, Type * quantizedType)
 	// If the operand is a floating-point type, quantize it
 	if (operand->getType()->isFloatingPointTy())
 	{
-		operand = Builder.CreateFMul(operand, ConstantFP::get(operand->getType(), -1.0));
+		//operand = Builder.CreateFMul(operand, ConstantFP::get(operand->getType(), -1.0));
 		operand = Builder.CreateFPToSI(operand, quantizedType);
 	}
 
@@ -2532,6 +2530,7 @@ handleFPExt(Instruction * llvmIrInstruction, Type * quantizedType)
 	auto   destType	   = fptruncInst->getDestTy();
 
 	Value *operand = llvmIrInstruction->getOperand(0);
+	llvm::errs() << "Operand type before conversion: " << *operand->getType() << "\n";
 
 	if (srcType->isFloatingPointTy() && destType->isFloatingPointTy())
 	{
@@ -2569,13 +2568,18 @@ handleFPExt(Instruction * llvmIrInstruction, Type * quantizedType)
 //	if (operand->getType()->isIntegerTy())
 //	{
 //		// If it's an integer, convert it to a floating-point value
+//		llvm::errs() << "Operand is an integer, converting to floating-point type.\n";
 //		newInst = Builder.CreateSIToFP(operand, llvmIrInstruction->getType());
 //	}
 //	else
 //	{
 //		// Otherwise, perform the FPTrunc as a floating-point cast
+//		llvm::errs() << "Operand is a floating-point, performing FPTrunc.\n";
 //		newInst = Builder.CreateFPCast(operand, llvmIrInstruction->getType());
 //	}
+//
+//	// Log the type of the new instruction created
+//	llvm::errs() << "New instruction type after conversion: " << *newInst->getType() << "\n";
 //
 //	// Replace all uses of the original FPTrunc with the new instruction
 //	llvmIrInstruction->replaceAllUsesWith(newInst);
@@ -2640,15 +2644,15 @@ adaptTypeCast(llvm::Function & llvmIrFunction, Type * quantizedType)
 
 			switch (llvmIrInstruction->getOpcode())
 			{
-				case Instruction::Alloca:
-					handleAlloca(llvmIrInstruction, quantizedType);
-					break;
-				case Instruction::Store:
-					handleStore(llvmIrInstruction, quantizedType);
-					break;
-				case Instruction::Load:
-					handleLoad(llvmIrInstruction, quantizedType);
-					break;
+//				case Instruction::Alloca:
+//					handleAlloca(llvmIrInstruction, quantizedType);
+//					break;
+//				case Instruction::Store:
+//					handleStore(llvmIrInstruction, quantizedType);
+//					break;
+//				case Instruction::Load:
+//					handleLoad(llvmIrInstruction, quantizedType);
+//					break;
 				case Instruction::FPToUI:
 				case Instruction::FPToSI:
 				case Instruction::SIToFP:
