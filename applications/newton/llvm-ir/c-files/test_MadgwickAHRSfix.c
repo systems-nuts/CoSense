@@ -19,6 +19,23 @@ extern int32_t sqrt_rsqrt(int32_t x, int recip);
  * Timer functions of the test framework
  ***************************************/
 
+
+typedef struct {
+	int quantized1;
+	int quantized2;
+	int quantized3;
+	int quantized4;
+} QuantizedValues;
+
+typedef struct{
+	float dequantized1;
+	float dequantized2;
+	float dequantized3;
+	float dequantized4;
+} DequantizedValues;
+
+
+
 typedef struct timespec timespec;
 timespec
 diff(timespec start, timespec end)
@@ -65,6 +82,24 @@ int
 quantize(float value, int frac_base)
 {
 	return round(value * frac_base);
+}
+
+QuantizedValues quantize4(float value1, float value2, float value3, float value4, int frac_base) {
+	QuantizedValues result;
+	result.quantized1 = round(value1 * frac_base);
+	result.quantized2 = round(value2 * frac_base);
+	result.quantized3 = round(value3 * frac_base);
+	result.quantized4 = round(value4 * frac_base);
+	return result;
+}
+
+DequantizedValues dequantize4(int quantized1, int quantized2, int quantized3, int quantized4) {
+	DequantizedValues result;
+	result.dequantized1 = (float)(quantized1 >> FRAC_Q);
+	result.dequantized2 = (float)(quantized2 >> FRAC_Q);
+	result.dequantized3 = (float)(quantized3 >> FRAC_Q);
+	result.dequantized4 = (float)(quantized4 >> FRAC_Q);
+	return result;
 }
 
 // Dequantization function
@@ -118,6 +153,12 @@ main()
 	float num12 = -0.00567953;
 	float num13 = -0.76526684;
 
+	//result
+	int num14 = 657;
+	int num15 = 28;
+	int num16 = -6;
+	int num17 = -785;
+
 	int32_t mag_x = quantize(num1, FRAC_BASE);
 	int32_t mag_y = quantize(num2, FRAC_BASE);
 	int32_t mag_z = quantize(num3, FRAC_BASE);
@@ -152,6 +193,22 @@ main()
 		time_slots[idx] = toc(&timer, "computation delay").tv_nsec;
 	}
 
+	//tic toc quantize4耗时
+	timespec timer = tic();
+	QuantizedValues quantizedValues = quantize4(num10, num11, num12, num13, FRAC_BASE);
+	timespec durationQuantize = toc(&timer, "Quantize");
+	printf("quantization time = %lu nm\n", durationQuantize.tv_nsec);
+
+
+	//tic toc dequantize4耗时
+	timer = tic();
+	DequantizedValues dequantizedValues = dequantize4(num14, num15, num16, num17);
+	timespec durationDequantize = toc(&timer, "Dequantize");
+	printf("dequantization time = %lu nm\n", durationDequantize.tv_nsec);
+
+
+
+
 	u_int64_t average_time = 0;
 	for (size_t idx = 0; idx < ITERATION; idx++)
 	{
@@ -159,4 +216,8 @@ main()
 	}
 	average_time /= ITERATION;
 	printf("average time = %lu nm\n", average_time);
+
+	//计算total time, quantize+dequantize+average
+	u_int64_t totalTime = durationQuantize.tv_nsec + durationDequantize.tv_nsec + average_time;
+	printf("total time = %lu nm\n", totalTime);
 }
