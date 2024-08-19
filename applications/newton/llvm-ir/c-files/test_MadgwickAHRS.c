@@ -6,14 +6,24 @@
 #include <sys/time.h>
 #include <time.h>
 #define FRAC_Q 10
+#define FRAC_BASE (1 << FRAC_Q)
 #define BIT_WIDTH 32
 #define ITERATION 1
-#include "MadgwickAHRSfix.h"
+/*
+ * void MadgwickAHRSupdate(float gx, float gy, float gz, float ax, float ay, float az, float mx, float my, float mz,
+float* q0_ptr, float* q1_ptr, float* q2_ptr, float* q3_ptr);
+void MadgwickAHRSupdateIMU(float gx, float gy, float gz, float ax, float ay, float az,
+   float* q0_ptr, float* q1_ptr, float* q2_ptr, float* q3_ptr);
+ */
+//#include "MadgwickAHRS.h"
 extern volatile int32_t q0, q1, q2, q3;
+//extern volatile float q0, q1, q2, q3;
+//extern void MadgwickAHRSupdate(float gx, float gy, float gz, float ax, float ay, float az, float mx, float my, float mz,
+//			  float* q0_ptr, float* q1_ptr, float* q2_ptr, float* q3_ptr);
+//extern void MadgwickAHRSupdateIMU(float gx, float gy, float gz, float ax, float ay, float az,float * q0_ptr, float * q1_ptr, float * q2_ptr, float * q3_ptr);
+
 extern void MadgwickAHRSupdate(int32_t gx, int32_t gy, int32_t gz, int32_t ax, int32_t ay, int32_t az, int32_t mx, int32_t my, int32_t mz, int32_t * q0_ptr, int32_t * q1_ptr, int32_t * q2_ptr, int32_t * q3_ptr);
 extern void MadgwickAHRSupdateIMU(int32_t gx, int32_t gy, int32_t gz, int32_t ax, int32_t ay, int32_t az, int32_t * q0_ptr, int32_t * q1_ptr, int32_t * q2_ptr, int32_t * q3_ptr);
-extern int32_t sqrt_rsqrt(int32_t x, int recip);
-// #include "MadgwickAHRS.h"
 
 /***************************************
  * Timer functions of the test framework
@@ -131,19 +141,17 @@ main()
 	int32_t q1 = quantize(num11, FRAC_BASE);
 	int32_t q2 = quantize(num12, FRAC_BASE);
 	int32_t q3 = quantize(num13, FRAC_BASE);
+//	float q0 = num10;
+//	float q1 = num11;
+//	float q2 = num12;
+//	float q3 = num13;
 
 	u_int64_t time_slots[ITERATION];
 
 	for (size_t idx = 0; idx < ITERATION; idx++)
 	{
 		timespec timer = tic();
-		// for (size_t ts = 0; ts < DATA_SIZE; ts++)
-		//{
-//		MadgwickAHRSupdate(gyr_x[ts], gyr_y[ts], gyr_z[ts],
-//				   acc_x[ts], acc_y[ts], acc_z[ts],
-//				   mag_x[ts], mag_y[ts], mag_z[ts],
-//				   &q0[ts], &q1[ts], &q2[ts], &q3[ts]);
-		//}
+
 
 		MadgwickAHRSupdate(gyr_x, gyr_y, gyr_z,
 				   acc_x, acc_y, acc_z,

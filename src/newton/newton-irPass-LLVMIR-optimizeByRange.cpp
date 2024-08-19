@@ -79,6 +79,49 @@
 using namespace llvm;
 
 
+
+void handleSpecialNumber(llvm::Module &M, llvm::LLVMContext &Context) {
+	llvm::errs() << "Starting special number handling in the module.\n";
+
+	// 创建一个特定的 NaN 值（双精度浮点数的 IEEE NaN 表示）
+	uint64_t NaNBits = 0x7FF8000000000000;
+	llvm::APFloat SpecialNaN(llvm::APFloat::IEEEdouble(), llvm::APInt(64, NaNBits));
+
+	// 创建一个特殊的整数值作为替换，这里使用 INT_MAX
+	llvm::Constant *specialValue = llvm::ConstantInt::get(llvm::Type::getInt32Ty(Context), 0x7FFFFFFF);
+
+	// 遍历模块中的所有函数和指令
+	for (llvm::Function &F : M) {
+		for (llvm::BasicBlock &BB : F) {
+			for (llvm::Instruction &I : BB) {
+				if (auto *fpInst = llvm::dyn_cast<llvm::FPMathOperator>(&I)) {
+					for (unsigned opIdx = 0; opIdx < fpInst->getNumOperands(); ++opIdx) {
+						if (auto *cst = llvm::dyn_cast<llvm::ConstantFP>(fpInst->getOperand(opIdx))) {
+							// 使用 bitcast 检查操作数是否是特定的 NaN 值
+							if (cst->getValueAPF().bitcastToAPInt() == SpecialNaN.bitcastToAPInt()) {
+								// 日志输出
+								llvm::errs() << "Replacing special NaN in function " << F.getName() << " at instruction " << *fpInst << "\n";
+
+								// 替换操作数
+								fpInst->setOperand(opIdx, specialValue);
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	llvm::errs() << "Completed special number handling in the module.\n";
+}
+
+
+
+
+
+
+
+
 // Function to save the IR of a module to a file
 void saveModuleIR(llvm::Module &M, const std::string &fileName) {
 	std::error_code EC;
@@ -559,15 +602,31 @@ irPassLLVMIROptimizeByRange(State * N, bool enableQuantization, bool enableOverl
 
 	eraseOldGlobals();
 
+
+
 	// Perform text replacement to remove "_quantized" suffixes
 	removeQuantizedSuffixInModule(*Mod);
 
+	//correct fmul
+	//correctAllFMulsInModule(Mod.get());
+
+	eraseOldInstructions();
+
+
+
+
+
+
+	// 处理特殊的数值
+	//handleSpecialNumber(*Mod, Mod->getContext());
+
+
 	// Save the optimized IR to a file
-	//saveModuleIR(*Mod, "/home/xyf/CoSense/applications/newton/llvm-ir/MadgwickAHRS_opt.ll");
+	saveModuleIR(*Mod, "/home/xyf/CoSense/applications/newton/llvm-ir/MadgwickAHRS_opt.ll");
 
 	//finalCorrectionPass(*Mod, quantizedType);
 	//finalCorrectionPass(*Mod, Type::getInt32Ty(Context)); // Assuming 32-bit quantization
-	//saveModuleIR(*Mod, "/home/xyf/CoSense/applications/newton/llvm-ir/floating_point_operations_output.ll");
+	saveModuleIR(*Mod, "/home/xyf/CoSense/applications/newton/llvm-ir/floating_point_operations_output.ll");
 
 
 

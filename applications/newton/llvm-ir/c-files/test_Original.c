@@ -7,13 +7,13 @@
 #include <time.h>
 #define FRAC_Q 10
 #define BIT_WIDTH 32
-#define ITERATION 1
-#include "MadgwickAHRSfix.h"
-extern volatile int32_t q0, q1, q2, q3;
-extern void MadgwickAHRSupdate(int32_t gx, int32_t gy, int32_t gz, int32_t ax, int32_t ay, int32_t az, int32_t mx, int32_t my, int32_t mz, int32_t * q0_ptr, int32_t * q1_ptr, int32_t * q2_ptr, int32_t * q3_ptr);
-extern void MadgwickAHRSupdateIMU(int32_t gx, int32_t gy, int32_t gz, int32_t ax, int32_t ay, int32_t az, int32_t * q0_ptr, int32_t * q1_ptr, int32_t * q2_ptr, int32_t * q3_ptr);
-extern int32_t sqrt_rsqrt(int32_t x, int recip);
-// #include "MadgwickAHRS.h"
+#define ITERATION 100000
+
+extern volatile float q0, q1, q2, q3;
+extern void MadgwickAHRSupdate(float gx, float gy, float gz, float ax, float ay, float az, float mx, float my, float mz,
+					 float* q0_ptr, float* q1_ptr, float* q2_ptr, float* q3_ptr);
+extern void MadgwickAHRSupdateIMU(float gx, float gy, float gz, float ax, float ay, float az,
+					    float* q0_ptr, float* q1_ptr, float* q2_ptr, float* q3_ptr);
 
 /***************************************
  * Timer functions of the test framework
@@ -103,47 +103,49 @@ main()
 0.07969094,-7.249095917,26.43893433,-37.16656494,-0.1184487343,0.001258035656,0.008988874033,-0.3570917249,0.3941296637,9.963726044
 	 */
 
-	float num1 = -7.249095917;
-	float num2 = 26.43893433;
-	float num3 = -37.16656494;
-	float num4 = -0.1184487343;
-	float num5 = 0.001258035656;
-	float num6 = 0.008988874033;
-	float num7 = -0.3570917249;
-	float num8 = 0.3941296637;
-	float num9 = 9.963726044;
+//	float num1 = -7.249095917;
+//	float num2 = 26.43893433;
+//	float num3 = -37.16656494;
+//	float num4 = -0.1184487343;
+//	float num5 = 0.001258035656;
+//	float num6 = 0.008988874033;
+//	float num7 = -0.3570917249;
+//	float num8 = 0.3941296637;
+//	float num9 = 9.963726044;
+//
+//	float num10 = 0.64306622;
+//	float num11 = 0.02828862;
+//	float num12 = -0.00567953;
+//	float num13 = -0.76526684;
 
-	float num10 = 0.64306622;
-	float num11 = 0.02828862;
-	float num12 = -0.00567953;
-	float num13 = -0.76526684;
+	float mag_x = -7.249095917;
+	float mag_y = 26.43893433;
+	float mag_z = -37.16656494;
+	float gyr_x = -0.1184487343;
+	float gyr_y = 0.001258035656;
+	float gyr_z = 0.008988874033;
+	float acc_x = -0.3570917249;
+	float acc_y = 0.3941296637;
+	float acc_z = 9.963726044;
+	float q0 = 0.64306622;
+	float q1 = 0.02828862;
+	float q2 = -0.00567953;
+	float q3 = -0.76526684;
 
-	int32_t mag_x = quantize(num1, FRAC_BASE);
-	int32_t mag_y = quantize(num2, FRAC_BASE);
-	int32_t mag_z = quantize(num3, FRAC_BASE);
-	int32_t gyr_x = quantize(num4, FRAC_BASE);
-	int32_t gyr_y = quantize(num5, FRAC_BASE);
-	int32_t gyr_z = quantize(num6, FRAC_BASE);
-	int32_t acc_x = quantize(num7, FRAC_BASE);
-	int32_t acc_y = quantize(num8, FRAC_BASE);
-	int32_t acc_z = quantize(num9, FRAC_BASE);
-	int32_t q0 = quantize(num10, FRAC_BASE);
-	int32_t q1 = quantize(num11, FRAC_BASE);
-	int32_t q2 = quantize(num12, FRAC_BASE);
-	int32_t q3 = quantize(num13, FRAC_BASE);
+
 
 	u_int64_t time_slots[ITERATION];
 
 	for (size_t idx = 0; idx < ITERATION; idx++)
 	{
 		timespec timer = tic();
-		// for (size_t ts = 0; ts < DATA_SIZE; ts++)
-		//{
-//		MadgwickAHRSupdate(gyr_x[ts], gyr_y[ts], gyr_z[ts],
-//				   acc_x[ts], acc_y[ts], acc_z[ts],
-//				   mag_x[ts], mag_y[ts], mag_z[ts],
-//				   &q0[ts], &q1[ts], &q2[ts], &q3[ts]);
-		//}
+//		 for (size_t ts = 0; ts < DATA_SIZE; ts++)
+//		{
+//				MadgwickAHRSupdate(gyr_x[ts], gyr_y[ts], gyr_z[ts],
+//						   acc_x[ts], acc_y[ts], acc_z[ts],
+//						   mag_x[ts], mag_y[ts], mag_z[ts],
+//						   &q0[ts], &q1[ts], &q2[ts], &q3[ts]);
+//		}
 
 		MadgwickAHRSupdate(gyr_x, gyr_y, gyr_z,
 				   acc_x, acc_y, acc_z,

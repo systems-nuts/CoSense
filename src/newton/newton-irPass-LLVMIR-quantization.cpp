@@ -272,6 +272,7 @@ shouldSkipFunction(const std::string & functionName)
 	    "floatIntMul",
 	    "fixdiv",
 	    "fixsqrt",
+	    "fixrsqrt"
 	    "constantMulDiv",
 	    "sinf",
 	    "llvm.sqrt.f64",
@@ -1062,58 +1063,7 @@ substituteHardcodeFunc(Instruction * inInstruction, Type * quantizedType, llvm::
 	inInstruction->removeFromParent();
 }
 
-// llvm::Function *
-// createFixSqrt(llvm::Module * irModule, Type * quantizedType, std::vector<llvm::Function *> & functionsToInsert)
-//{
-//	// check if irModule is valid
-//	if (!irModule)
-//	{
-//		llvm::errs() << "Error: irModule is nullptr\n";
-//		return nullptr;
-//	}
-//
-//	std::string fixSqrtFuncName = "fixsqrt";
-//	for (auto & function : *irModule)
-//	{
-//		if (function.getName() == fixSqrtFuncName)
-//		{
-//			llvm::errs() << "fixsqrt already exists\n";
-//			return &function;
-//		}
-//	}
-//
-//	llvm::FunctionType * funcType = llvm::FunctionType::get(quantizedType, {quantizedType}, false);
-//	llvm::Function *     func     = llvm::Function::Create(funcType, llvm::Function::PrivateLinkage, "fixsqrt", irModule);
-//
-//	llvm::BasicBlock * entryBB = llvm::BasicBlock::Create(irModule->getContext(), "entry", func);
-//	llvm::IRBuilder<>  builder(entryBB);
-//
-//	llvm::Function::arg_iterator args = func->arg_begin();
-//	llvm::Value *		     x	  = &*args++;
-//
-//	// Initial approximation: x / 2
-//	llvm::Value * approx   = builder.CreateLShr(x, 1);
-//	llvm::Value * halfBase = builder.CreateLShr(ConstantInt::get(quantizedType, FRAC_BASE), 1);
-//
-//	for (int i = 0; i < 5; ++i)
-//	{  // Run the approximation a few times
-//		llvm::Value * div = builder.CreateSDiv(x, approx);
-//		llvm::Value * avg = builder.CreateAdd(approx, div);
-//		approx		  = builder.CreateLShr(avg, 1);	 // approx = (approx + x / approx) / 2
-//	}
-//
-//	llvm::Value * result = approx;	// Final square root approximation
-//
-//	// Apply scaling: multiply by FRAC_BASE to maintain fixed-point representation
-//	result = builder.CreateMul(result, halfBase);
-//
-//	builder.CreateRet(result);
-//
-//	// Add the created function to the vector of functions to be inserted
-//	functionsToInsert.push_back(func);
-//
-//	return func;
-// }
+
 
 llvm::Function *
 createFixSqrt(llvm::Module * irModule, Type * quantizedType, std::vector<llvm::Function *> & functionsToInsert)
@@ -1430,49 +1380,75 @@ createFixDiv(Module * irModule, Type * quantizedType, std::vector<llvm::Function
 	return func;
 }
 
-// Create a fixed-point reversed square root function
-// llvm::Function* createFixRsqrt(llvm::Module* irModule, Type* quantizedType, std::vector<llvm::Function*>& functionsToInsert) {
-//
-//	// Define the function type for fixrsqrt: int32_t fixrsqrt(int32_t x)
-//	llvm::FunctionType* funcType = llvm::FunctionType::get(quantizedType, {quantizedType}, false);
-//	// Create the function and insert it into the module
-//	llvm::Function* func = llvm::Function::Create(funcType, llvm::Function::PrivateLinkage, "fixrsqrt", irModule);
-//
-//	llvm::BasicBlock* entryBB = llvm::BasicBlock::Create(irModule->getContext(), "entry", func);
-//	llvm::IRBuilder<> builder(entryBB);
-//
-//	// Get the function argument (x)
-//	llvm::Function::arg_iterator args = func->arg_begin();
-//	llvm::Value* x = &*args++;
-//
-//	// Create the fixed-point multiplication function
-//	llvm::Function* fixMulFunc = createFixMul(irModule, quantizedType, functionsToInsert);
-//
-//	// Step 1: int_halfx = mulfix(0.5 * FRAC_BASE, x);
-//	llvm::Value* halfBase = builder.CreateCall(fixMulFunc, {ConstantInt::get(quantizedType, FRAC_BASE / 2), x});
-//
-//	// Step 2: Convert x to floating-point and perform the initial approximation
-//	llvm::Value* fp_y = builder.CreateSIToFP(x, llvm::Type::getFloatTy(irModule->getContext()));
-//	llvm::Value* i = builder.CreateBitCast(fp_y, llvm::Type::getInt32Ty(irModule->getContext()));
-//	i = builder.CreateSub(ConstantInt::get(llvm::Type::getInt32Ty(irModule->getContext()), 0x5f3759df), builder.CreateLShr(i, 1));
-//	fp_y = builder.CreateBitCast(i, llvm::Type::getFloatTy(irModule->getContext()));
-//
-//	// Step 3: int_y = fp_y * FRAC_BASE;
-//	llvm::Value* int_y = builder.CreateFPToSI(builder.CreateFMul(fp_y, ConstantFP::get(llvm::Type::getFloatTy(irModule->getContext()), FRAC_BASE)), quantizedType);
-//
-//	// Step 4: int_y = mulfix(int_y, ((int32_t)(1.5f * FRAC_BASE) - (mulfix(mulfix(int_halfx, int_y), int_y))));
-//	llvm::Value* mulfix1 = builder.CreateCall(fixMulFunc, {halfBase, int_y});
-//	llvm::Value* mulfix2 = builder.CreateCall(fixMulFunc, {mulfix1, int_y});
-//	llvm::Value* correction = builder.CreateSub(ConstantInt::get(quantizedType, static_cast<int>(1.5f * FRAC_BASE)), mulfix2);
-//	llvm::Value* final_y = builder.CreateCall(fixMulFunc, {int_y, correction});
-//
-//
-//	// Return the final fixed-point result
-//	builder.CreateRet(final_y);
-//	functionsToInsert.emplace_back(func);
-//
-//	return func;
-//}
+
+
+ //Create a fixed-point reversed square root function
+ llvm::Function* createFixRsqrt(llvm::Module* irModule, Type* quantizedType, std::vector<llvm::Function*>& functionsToInsert) {
+
+	 llvm::errs() << "Entering createFixRsqrt\n";
+
+	 // Check if irModule is valid
+	 if (!irModule)
+	 {
+		 llvm::errs() << "Error: irModule is nullptr\n";
+		 return nullptr;
+	 }
+
+	 std::string fixrsqrtFuncName = "fixrsqrt";
+	 for (auto & function : *irModule)
+	 {
+		 if (function.getName() == fixrsqrtFuncName)
+		 {
+			 llvm::errs() << "fixrsqrt already exists\n";
+			 return &function;
+		 }
+	 }
+
+	// Define the function type for fixrsqrt: int32_t fixrsqrt(int32_t x)
+	llvm::FunctionType* funcType = llvm::FunctionType::get(quantizedType, {quantizedType}, false);
+	// Create the function and insert it into the module
+	llvm::Function* func = llvm::Function::Create(funcType, llvm::Function::PrivateLinkage, "fixrsqrt", irModule);
+
+	llvm::BasicBlock* entryBB = llvm::BasicBlock::Create(irModule->getContext(), "entry", func);
+	llvm::IRBuilder<> builder(entryBB);
+
+	// Get the function argument (x)
+	llvm::Function::arg_iterator args = func->arg_begin();
+	llvm::Value* x = &*args++;
+
+	// Create the fixed-point multiplication function
+	llvm::Function* fixMulFunc = createFixMul(irModule, quantizedType, functionsToInsert);
+
+	// Step 1: int_halfx = mulfix(0.5 * FRAC_BASE, x);
+	llvm::Value* halfBase = builder.CreateCall(fixMulFunc, {ConstantInt::get(quantizedType, FRAC_BASE / 2), x});
+
+	// Step 2: Convert x to floating-point and perform the initial approximation
+	llvm::Value* fp_y = builder.CreateSIToFP(x, llvm::Type::getFloatTy(irModule->getContext()));
+	//fdiv
+
+
+
+
+	llvm::Value* i = builder.CreateBitCast(fp_y, llvm::Type::getInt32Ty(irModule->getContext()));
+	i = builder.CreateSub(ConstantInt::get(llvm::Type::getInt32Ty(irModule->getContext()), 0x5f3759df), builder.CreateLShr(i, 1));
+	fp_y = builder.CreateBitCast(i, llvm::Type::getFloatTy(irModule->getContext()));
+
+	// Step 3: int_y = fp_y * FRAC_BASE;
+	llvm::Value* int_y = builder.CreateFPToSI(builder.CreateFMul(fp_y, ConstantFP::get(llvm::Type::getFloatTy(irModule->getContext()), FRAC_BASE)), quantizedType);
+
+	// Step 4: int_y = mulfix(int_y, ((int32_t)(1.5f * FRAC_BASE) - (mulfix(mulfix(int_halfx, int_y), int_y))));
+	llvm::Value* mulfix1 = builder.CreateCall(fixMulFunc, {halfBase, int_y});
+	llvm::Value* mulfix2 = builder.CreateCall(fixMulFunc, {mulfix1, int_y});
+	llvm::Value* correction = builder.CreateSub(ConstantInt::get(quantizedType, static_cast<int>(1.5f * FRAC_BASE)), mulfix2);
+	llvm::Value* final_y = builder.CreateCall(fixMulFunc, {int_y, correction});
+
+
+	// Return the final fixed-point result
+	builder.CreateRet(final_y);
+	functionsToInsert.emplace_back(func);
+
+	return func;
+}
 
 // Quantize simple floating-point instructions
 CmpInst::Predicate
@@ -2305,6 +2281,7 @@ handleAlloca(Instruction * llvmIrInstruction, Type * quantizedType)
 // }
 
 void
+//handleCall(CallInst * llvmIrCallInstruction, Type * quantizedType, std::vector<llvm::Function *> & functionsToInsert, llvm::Function * fixsqrt, llvm::Function * fixrsqrt)
 handleCall(CallInst * llvmIrCallInstruction, Type * quantizedType, std::vector<llvm::Function *> & functionsToInsert, llvm::Function * fixsqrt)
 {
 	Function * calledFunction = llvmIrCallInstruction->getCalledFunction();
@@ -2337,10 +2314,11 @@ handleCall(CallInst * llvmIrCallInstruction, Type * quantizedType, std::vector<l
 			//				handlePowCall(llvmIrCallInstruction, quantizedType, functionsToInsert);
 			//			}
 
-			//			if (calledFunction && calledFunction->getName() == "rsqrt") {
-			//				Function* fixrsqrt = createFixRsqrt(irModule, quantizedType);
-			//				handleRsqrtCall(llvmIrCallInstruction, quantizedType, fixrsqrt);
-			//			}
+//			else if (funcName == "invSqrt")
+//			{
+//				//Function * fixrsqrt = createFixRsqrt(irModule, quantizedType);
+//				handleRsqrtCall(llvmIrCallInstruction, quantizedType, fixrsqrt);
+//			}
 
 			else if (funcName == "sin")
 			{
@@ -2891,6 +2869,7 @@ irPassLLVMIRAutoQuantization(State * N, llvm::Function & llvmIrFunction, std::ve
 	llvm::Function * fixdiv	 = createFixDiv(module, quantizedType, functionsToInsert);
 	llvm::Function * fixmul	 = createFixMul(module, quantizedType, functionsToInsert);
 	llvm::Function * fixsqrt = createFixSqrt(module, quantizedType, functionsToInsert);
+	//llvm::Function * fixrsqrt = createFixRsqrt(module, quantizedType, functionsToInsert);
 
 	/*
 	 * quantize the arguments type
@@ -2913,6 +2892,7 @@ irPassLLVMIRAutoQuantization(State * N, llvm::Function & llvmIrFunction, std::ve
 					handleAlloca(llvmIrInstruction, quantizedType);
 					break;
 				case Instruction::Call:
+					//handleCall(cast<CallInst>(llvmIrInstruction), quantizedType, functionsToInsert, fixsqrt,fixrsqrt);
 					handleCall(cast<CallInst>(llvmIrInstruction), quantizedType, functionsToInsert, fixsqrt);
 					break;
 				case Instruction::GetElementPtr:
