@@ -177,10 +177,10 @@ void MadgwickAHRSupdate(float gx, float gy, float gz, float ax, float ay, float 
 	*q3_ptr = q3;
 
 	//q0,q1,q2,q3
-	printf("Final quaternion value: q0 = %d\n", q0);
-	printf("Final quaternion value: q1 = %d\n", q1);
-	printf("Final quaternion value: q2 = %d\n", q2);
-	printf("Final quaternion value: q3 = %d\n", q3);
+//	printf("Final quaternion value: q0 = %d\n", q0);
+//	printf("Final quaternion value: q1 = %d\n", q1);
+//	printf("Final quaternion value: q2 = %d\n", q2);
+//	printf("Final quaternion value: q3 = %d\n", q3);
 
 	//    printf("Original: q0 = %f\n", q0);
 }
