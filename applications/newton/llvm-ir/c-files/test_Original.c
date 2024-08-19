@@ -7,7 +7,7 @@
 #include <time.h>
 #define FRAC_Q 10
 #define BIT_WIDTH 32
-#define ITERATION 100000
+#define ITERATION 1
 
 extern volatile float q0, q1, q2, q3;
 extern void MadgwickAHRSupdate(float gx, float gy, float gz, float ax, float ay, float az, float mx, float my, float mz,
@@ -18,8 +18,23 @@ extern void MadgwickAHRSupdateIMU(float gx, float gy, float gz, float ax, float 
 /***************************************
  * Timer functions of the test framework
  ***************************************/
+typedef struct {
+	int quantized1;
+	int quantized2;
+	int quantized3;
+	int quantized4;
+} QuantizedValues;
+
+typedef struct{
+	float dequantized1;
+	float dequantized2;
+	float dequantized3;
+	float dequantized4;
+} DequantizedValues;
 
 typedef struct timespec timespec;
+
+
 timespec
 diff(timespec start, timespec end)
 {
@@ -72,6 +87,24 @@ float
 dequantize(int quantized_value)
 {
 	return (float)(quantized_value >> FRAC_Q);
+}
+
+QuantizedValues quantize4(float value1, float value2, float value3, float value4, int frac_base) {
+	QuantizedValues result;
+	result.quantized1 = round(value1 * frac_base);
+	result.quantized2 = round(value2 * frac_base);
+	result.quantized3 = round(value3 * frac_base);
+	result.quantized4 = round(value4 * frac_base);
+	return result;
+}
+
+DequantizedValues dequantize4(int quantized1, int quantized2, int quantized3, int quantized4) {
+	DequantizedValues result;
+	result.dequantized1 = (float)(quantized1 >> FRAC_Q);
+	result.dequantized2 = (float)(quantized2 >> FRAC_Q);
+	result.dequantized3 = (float)(quantized3 >> FRAC_Q);
+	result.dequantized4 = (float)(quantized4 >> FRAC_Q);
+	return result;
 }
 
 extern int perform_addition(float a, float b);
@@ -133,6 +166,13 @@ main()
 	float q3 = -0.76526684;
 
 
+	//result
+	int num14 = 657;
+	int num15 = 28;
+	int num16 = -6;
+	int num17 = -785;
+
+
 
 	u_int64_t time_slots[ITERATION];
 
@@ -153,6 +193,8 @@ main()
 				   &q0, &q1, &q2, &q3);
 		time_slots[idx] = toc(&timer, "computation delay").tv_nsec;
 	}
+
+
 
 	u_int64_t average_time = 0;
 	for (size_t idx = 0; idx < ITERATION; idx++)
