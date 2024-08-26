@@ -47,7 +47,7 @@
 
 
 //added code
-#include "myRangeAnalysis.h"
+//#include "myRangeAnalysis.h"
 #endif /* __cplusplus */
 
 #include <algorithm>
@@ -620,13 +620,23 @@ irPassLLVMIROptimizeByRange(State * N, bool enableQuantization, bool enableOverl
 	// 处理特殊的数值
 	//handleSpecialNumber(*Mod, Mod->getContext());
 
-
+	const char* homeDir = getenv("HOME");
+	if (!homeDir) {
+		llvm::errs() << "Error: HOME environment variable not set.\n";
+		return;
+	}
 	// Save the optimized IR to a file
-	saveModuleIR(*Mod, "/home/xyf/CoSense/applications/newton/llvm-ir/MadgwickAHRS_opt.ll");
+	std::string fileName = std::string(homeDir) + "/CoSense/applications/newton/llvm-ir/MadgwickAHRS_opt.ll";
+	saveModuleIR(*Mod, fileName);
+	// Save the optimized IR to a file
+	//saveModuleIR(*Mod, "/home/xyf/CoSense/applications/newton/llvm-ir/MadgwickAHRS_opt.ll");
 
 	//finalCorrectionPass(*Mod, quantizedType);
 	//finalCorrectionPass(*Mod, Type::getInt32Ty(Context)); // Assuming 32-bit quantization
-	saveModuleIR(*Mod, "/home/xyf/CoSense/applications/newton/llvm-ir/floating_point_operations_output.ll");
+	//saveModuleIR(*Mod, "/home/xyf/CoSense/applications/newton/llvm-ir/floating_point_operations_output.ll");
+
+	//替换为$HOMR
+	
 
 
 

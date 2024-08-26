@@ -1,7 +1,15 @@
 USER_HOME=$HOME
 
 # Step 1: Generate LLVM IR file
-clang -g -O0 -Xclang -disable-O0-optnone -S -emit-llvm -Wall -Wextra -o $HOME/CoSense/applications/newton/llvm-ir/MadgwickAHRSfix.ll $HOME/CoSense/applications/newton/llvm-ir/c-files/MadgwickAHRSfix.c
+#clang -g -O0 -Xclang -disable-O0-optnone     -S -emit-llvm -Wall -Wextra -o $HOME/CoSense/applications/newton/llvm-ir/MadgwickAHRSfix.ll $HOME/CoSense/applications/newton/llvm-ir/c-files/MadgwickAHRSfix.c
+
+#clang -g -O0 -Xclang -disable-O0-optnone    -fno-math-errno   -S -emit-llvm -Wall -Wextra -o $HOME/CoSense/applications/newton/llvm-ir/MadgwickAHRSfix.ll $HOME/CoSense/applications/newton/llvm-ir/c-files/MadgwickAHRSfix.c
+
+
+clang -g0 -O0 -Xclang -disable-O0-optnone    -S -emit-llvm -Wall -Wextra -o $HOME/CoSense/applications/newton/llvm-ir/MadgwickAHRSfix.ll $HOME/CoSense/applications/newton/llvm-ir/c-files/MadgwickAHRSfix.c
+
+
+#clang -O0 -ffast-math -S -emit-llvm -Wall -Wextra -o $HOME/CoSense/applications/newton/llvm-ir/MadgwickAHRSfix.ll $HOME/CoSense/applications/newton/llvm-ir/c-files/MadgwickAHRSfix.c
 
 
 # Step 4: Optimize the generated LLVM IR file

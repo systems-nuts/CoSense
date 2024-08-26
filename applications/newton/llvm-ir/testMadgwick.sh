@@ -7,7 +7,12 @@ FILE_PATH="$USER_HOME/CoSense/applications/newton/llvm-ir/MadgwickAHRS_opt.ll"
 
  #Step 1: Generate LLVM IR file
 echo "Step 1: Generate LLVM IR file"
-clang -g -O0 -Xclang -disable-O0-optnone -S -emit-llvm -Wall -Wextra -o $USER_HOME/CoSense/applications/newton/llvm-ir/MadgwickAHRS.ll $USER_HOME/CoSense/applications/newton/llvm-ir/c-files/MadgwickAHRS.c
+clang -g0 -O0 -Xclang -disable-O0-optnone -S -emit-llvm -Wall -Wextra -o $USER_HOME/CoSense/applications/newton/llvm-ir/MadgwickAHRS.ll $USER_HOME/CoSense/applications/newton/llvm-ir/c-files/MadgwickAHRS.c
+
+#clang -g -O0 -Xclang -disable-O0-optnone -fno-math-errno  -S -emit-llvm -Wall -Wextra -o $USER_HOME/CoSense/applications/newton/llvm-ir/MadgwickAHRS.ll $USER_HOME/CoSense/applications/newton/llvm-ir/c-files/MadgwickAHRS.c
+
+#clang -O3 -ffast-math -S -emit-llvm -Wall -Wextra -o $HOME/CoSense/applications/newton/llvm-ir/MadgwickAHRS.ll
+#$HOME/CoSense/applications/newton/llvm-ir/c-files/MadgwickAHRS.c
 
 # Step 2: Use newton for optimization and quantization
 echo "Step 2: Use newton for optimization and quantization"
@@ -24,7 +29,7 @@ python3 replace.py
 
 # Step 4: Optimize the generated LLVM IR file
 echo "Step 4: Optimize the generated LLVM IR file"
-opt $USER_HOME/CoSense/applications/newton/llvm-ir/MadgwickAHRS_opt.ll --simplifycfg --instsimplify -O3 -Os -S -o $USER_HOME/CoSense/applications/newton/llvm-ir/out.llperformace
+opt $USER_HOME/CoSense/applications/newton/llvm-ir/MadgwickAHRS_opt.ll --simplifycfg --instsimplify  -O3 -Os -S -o $USER_HOME/CoSense/applications/newton/llvm-ir/out.llperformace
 
 # Step 5: Compile the optimized LLVM IR file to bitcode
 echo "Step 5: Compile the optimized LLVM IR file to bitcode"

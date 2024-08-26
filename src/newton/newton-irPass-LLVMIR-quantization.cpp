@@ -2302,7 +2302,7 @@ handleCall(CallInst * llvmIrCallInstruction, Type * quantizedType, std::vector<l
 
 			std::string funcName = calledFunction->getName().str();
 
-			if (funcName == "sqrt" || funcName == "sqrtf")
+			if (funcName == "sqrt" || funcName == "sqrtf" ||funcName =="llvm.sqrt.f64" )
 			{
 				// For sqrt
 				handleSqrtCall(llvmIrCallInstruction, quantizedType, fixsqrt);

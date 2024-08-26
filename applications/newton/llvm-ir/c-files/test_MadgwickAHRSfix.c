@@ -7,18 +7,18 @@
 #include <time.h>
 #define FRAC_Q 10
 #define BIT_WIDTH 32
-#define ITERATION 1
+#define ITERATION 10
+#define DATA_SIZE 10000
 #include "MadgwickAHRSfix.h"
 extern volatile int32_t q0, q1, q2, q3;
-extern void MadgwickAHRSupdate(int32_t gx, int32_t gy, int32_t gz, int32_t ax, int32_t ay, int32_t az, int32_t mx, int32_t my, int32_t mz, int32_t * q0_ptr, int32_t * q1_ptr, int32_t * q2_ptr, int32_t * q3_ptr);
-extern void MadgwickAHRSupdateIMU(int32_t gx, int32_t gy, int32_t gz, int32_t ax, int32_t ay, int32_t az, int32_t * q0_ptr, int32_t * q1_ptr, int32_t * q2_ptr, int32_t * q3_ptr);
-extern int32_t sqrt_rsqrt(int32_t x, int recip);
+extern void		MadgwickAHRSupdate(int32_t gx, int32_t gy, int32_t gz, int32_t ax, int32_t ay, int32_t az, int32_t mx, int32_t my, int32_t mz, int32_t * q0_ptr, int32_t * q1_ptr, int32_t * q2_ptr, int32_t * q3_ptr);
+extern void		MadgwickAHRSupdateIMU(int32_t gx, int32_t gy, int32_t gz, int32_t ax, int32_t ay, int32_t az, int32_t * q0_ptr, int32_t * q1_ptr, int32_t * q2_ptr, int32_t * q3_ptr);
+extern int32_t		sqrt_rsqrt(int32_t x, int recip);
 // #include "MadgwickAHRS.h"
 
 /***************************************
  * Timer functions of the test framework
  ***************************************/
-
 
 typedef struct {
 	int quantized1;
@@ -27,13 +27,45 @@ typedef struct {
 	int quantized4;
 } QuantizedValues;
 
-typedef struct{
+typedef struct {
 	float dequantized1;
 	float dequantized2;
 	float dequantized3;
 	float dequantized4;
 } DequantizedValues;
 
+
+
+typedef struct {
+	uint64_t start;
+	uint64_t current;
+	uint64_t min;
+	uint64_t max;
+} ELAPSED_TIME;
+
+ELAPSED_TIME elapsed_time_tbl[10];
+
+static inline uint64_t rdtsc() {
+	uint32_t lo, hi;
+	__asm__ __volatile__ ("rdtsc" : "=a" (lo), "=d" (hi));
+	return ((uint64_t)hi << 32) | lo;
+}
+
+void elapsed_time_start(uint32_t i) {
+	elapsed_time_tbl[i].start = rdtsc();
+}
+
+void elapsed_time_stop(uint32_t i) {
+	uint64_t stop = rdtsc();
+	ELAPSED_TIME *p_tbl = &elapsed_time_tbl[i];
+	p_tbl->current = stop - p_tbl->start;
+	if (p_tbl->max < p_tbl->current) {
+		p_tbl->max = p_tbl->current;
+	}
+	if (p_tbl->min == 0 || p_tbl->min > p_tbl->current) {
+		p_tbl->min = p_tbl->current;
+	}
+}
 
 
 typedef struct timespec timespec;
@@ -84,7 +116,9 @@ quantize(float value, int frac_base)
 	return round(value * frac_base);
 }
 
-QuantizedValues quantize4(float value1, float value2, float value3, float value4, int frac_base) {
+QuantizedValues
+quantize4(float value1, float value2, float value3, float value4, int frac_base)
+{
 	QuantizedValues result;
 	result.quantized1 = round(value1 * frac_base);
 	result.quantized2 = round(value2 * frac_base);
@@ -93,7 +127,9 @@ QuantizedValues quantize4(float value1, float value2, float value3, float value4
 	return result;
 }
 
-DequantizedValues dequantize4(int quantized1, int quantized2, int quantized3, int quantized4) {
+DequantizedValues
+dequantize4(int quantized1, int quantized2, int quantized3, int quantized4)
+{
 	DequantizedValues result;
 	result.dequantized1 = (float)(quantized1 >> FRAC_Q);
 	result.dequantized2 = (float)(quantized2 >> FRAC_Q);
@@ -114,7 +150,6 @@ extern int perform_addition(float a, float b);
 timespec
 tic()
 {
-
 	timespec start_time;
 	clock_gettime(CLOCK_REALTIME, &start_time);
 	return start_time;
@@ -130,96 +165,223 @@ toc(timespec * start_time, const char * prefix)
 	*start_time = current_time;
 	return time_consump;
 }
-int
-main()
+ int
+ main()
 {
-	/*
-	 * Time (s),Magnetic field x (µT),Magnetic field y (µT),Magnetic field z (µT),Gyroscope x (rad/s),Gyroscope y (rad/s),Gyroscope z (rad/s),Acceleration x (m/s^2),Acceleration y (m/s^2),Acceleration z (m/s^2)
-0.07969094,-7.249095917,26.43893433,-37.16656494,-0.1184487343,0.001258035656,0.008988874033,-0.3570917249,0.3941296637,9.963726044
-	 */
+	FILE * fp = fopen("input.csv", "r");
 
-	float num1 = -7.249095917;
-	float num2 = 26.43893433;
-	float num3 = -37.16656494;
-	float num4 = -0.1184487343;
-	float num5 = 0.001258035656;
-	float num6 = 0.008988874033;
-	float num7 = -0.3570917249;
-	float num8 = 0.3941296637;
-	float num9 = 9.963726044;
+	if (!fp)
+	{
+		printf("Can't open file\n");
+		return -1;
+	}
+	double time[DATA_SIZE];
 
-	float num10 = 0.64306622;
-	float num11 = 0.02828862;
-	float num12 = -0.00567953;
-	float num13 = -0.76526684;
+	int32_t q0[DATA_SIZE], q1[DATA_SIZE], q2[DATA_SIZE], q3[DATA_SIZE];
+	// quaternion of sensor frame relative to auxiliary frame
+	for (int i = 0; i < DATA_SIZE; i++)
+	{
+		q0[i] = (0.64306622f * FRAC_BASE);
+		q1[i] = (0.02828862f * FRAC_BASE);
+		q2[i] = (-0.00567953f * FRAC_BASE);
+		q3[i] = (-0.76526684f * FRAC_BASE);
+	}
 
-	//result
-	int num14 = 657;
-	int num15 = 28;
-	int num16 = -6;
-	int num17 = -785;
+	int32_t mag_x[DATA_SIZE], mag_y[DATA_SIZE], mag_z[DATA_SIZE],
+	    gyr_x[DATA_SIZE], gyr_y[DATA_SIZE], gyr_z[DATA_SIZE],
+	    acc_x[DATA_SIZE], acc_y[DATA_SIZE], acc_z[DATA_SIZE];
 
-	int32_t mag_x = quantize(num1, FRAC_BASE);
-	int32_t mag_y = quantize(num2, FRAC_BASE);
-	int32_t mag_z = quantize(num3, FRAC_BASE);
-	int32_t gyr_x = quantize(num4, FRAC_BASE);
-	int32_t gyr_y = quantize(num5, FRAC_BASE);
-	int32_t gyr_z = quantize(num6, FRAC_BASE);
-	int32_t acc_x = quantize(num7, FRAC_BASE);
-	int32_t acc_y = quantize(num8, FRAC_BASE);
-	int32_t acc_z = quantize(num9, FRAC_BASE);
-	int32_t q0 = quantize(num10, FRAC_BASE);
-	int32_t q1 = quantize(num11, FRAC_BASE);
-	int32_t q2 = quantize(num12, FRAC_BASE);
-	int32_t q3 = quantize(num13, FRAC_BASE);
+	char buffer[1024];
+	int  row = 0, column = 0;
+	while (fgets(buffer, 1024, fp))
+	{
+		column = 0;
+		row++;
+
+		if (row == 1)
+			continue;
+
+		char * value = strtok(buffer, ", ");
+
+		while (value)
+		{
+			switch (column)
+			{
+				case 0:
+					time[row - 2] = atof(value);
+					break;
+				case 1:
+					//mag_x[row - 2] = round(atof(value) * FRAC_BASE);
+					mag_x[row - 2] = quantize(atof(value), FRAC_BASE);
+					break;
+				case 2:
+					//mag_y[row - 2] = round(atof(value) * FRAC_BASE);
+					mag_y[row - 2] = quantize(atof(value), FRAC_BASE);
+					break;
+				case 3:
+					mag_z[row - 2] = round(atof(value) * FRAC_BASE);
+					break;
+				case 4:
+					gyr_x[row - 2] = round(atof(value) * FRAC_BASE) * 61;
+					break;
+				case 5:
+					gyr_y[row - 2] = round(atof(value) * FRAC_BASE) * 61;
+					break;
+				case 6:
+					gyr_z[row - 2] = round(atof(value) * FRAC_BASE) * 61;
+					break;
+				case 7:
+					acc_x[row - 2] = round(atof(value) * FRAC_BASE) * 2;
+					break;
+				case 8:
+					acc_y[row - 2] = round(atof(value) * FRAC_BASE) * 2;
+					break;
+				case 9:
+					acc_z[row - 2] = round(atof(value) * FRAC_BASE) * 2;
+					break;
+				default:
+					break;
+			}
+
+			value = strtok(NULL, ", ");
+			column++;
+		}
+	}
+
+	fclose(fp);
 
 	u_int64_t time_slots[ITERATION];
 
-	for (size_t idx = 0; idx < ITERATION; idx++)
-	{
+	for (size_t idx = 0; idx < ITERATION; idx++) {
+		elapsed_time_start(idx);  // 开始计时
 		timespec timer = tic();
-		// for (size_t ts = 0; ts < DATA_SIZE; ts++)
-		//{
-//		MadgwickAHRSupdate(gyr_x[ts], gyr_y[ts], gyr_z[ts],
-//				   acc_x[ts], acc_y[ts], acc_z[ts],
-//				   mag_x[ts], mag_y[ts], mag_z[ts],
-//				   &q0[ts], &q1[ts], &q2[ts], &q3[ts]);
-		//}
+		for (size_t ts = 0; ts < DATA_SIZE; ts++) {
+			MadgwickAHRSupdate(gyr_x[ts], gyr_y[ts], gyr_z[ts],
+					   acc_x[ts], acc_y[ts], acc_z[ts],
+					   mag_x[ts], mag_y[ts], mag_z[ts],
+					   &q0[ts], &q1[ts], &q2[ts], &q3[ts]);
 
-		MadgwickAHRSupdate(gyr_x, gyr_y, gyr_z,
-				   acc_x, acc_y, acc_z,
-				   mag_x, mag_y, mag_z,
-				   &q0, &q1, &q2, &q3);
+
+
+		}
+		elapsed_time_stop(idx);  // 结束计时
 		time_slots[idx] = toc(&timer, "computation delay").tv_nsec;
 	}
 
-	//tic toc quantize4耗时
-	timespec timer = tic();
-	QuantizedValues quantizedValues = quantize4(num10, num11, num12, num13, FRAC_BASE);
-	timespec durationQuantize = toc(&timer, "Quantize");
-	printf("quantization time = %lu nm\n", durationQuantize.tv_nsec);
-
-
-	//tic toc dequantize4耗时
-	timer = tic();
-	DequantizedValues dequantizedValues = dequantize4(num14, num15, num16, num17);
-	timespec durationDequantize = toc(&timer, "Dequantize");
-	printf("dequantization time = %lu nm\n", durationDequantize.tv_nsec);
-
-
-
-
-
-
 	u_int64_t average_time = 0;
-	for (size_t idx = 0; idx < ITERATION; idx++)
-	{
+	for (size_t idx = 0; idx < ITERATION; idx++) {
 		average_time += time_slots[idx];
 	}
 	average_time /= ITERATION;
 	printf("average time = %lu nm\n", average_time);
 
-	//计算total time, quantize+dequantize+average
-	u_int64_t totalTime = durationQuantize.tv_nsec + durationDequantize.tv_nsec + average_time;
-	printf("total time = %lu nm\n", totalTime);
-}
+	// 打印出每次迭代的最大、最小和当前时间
+	for (size_t idx = 0; idx < ITERATION; idx++) {
+		printf("Iteration %zu: Current Time = %lu, Max Time = %lu, Min Time = %lu\n",
+		       idx, elapsed_time_tbl[idx].current, elapsed_time_tbl[idx].max, elapsed_time_tbl[idx].min);
+	}
+
+	FILE *fptr = fopen("int_result.txt", "w");
+	for (size_t ts = 0; ts < DATA_SIZE; ts++) {
+		//        printf("FIX: q0[%d]=%f, q1[%d]=%f, q2[%d]=%f, q3[%d]=%f\n",
+		//               ts, (double)q0[ts]/FRAC_BASE,
+		//               ts, (double)q1[ts]/FRAC_BASE,
+		//               ts, (double)q2[ts]/FRAC_BASE,
+		//               ts, (double)q3[ts]/FRAC_BASE);
+		fprintf(fptr, "FIX: q0[%d]=%f, q1[%d]=%f, q2[%d]=%f, q3[%d]=%f\n",
+			ts, (double)q0[ts]/FRAC_BASE,
+			ts, (double)q1[ts]/FRAC_BASE,
+			ts, (double)q2[ts]/FRAC_BASE,
+			ts, (double)q3[ts]/FRAC_BASE);
+	}
+	fclose(fptr);
+	return 0;
+ }
+
+//int main ()
+//{
+//	/*
+//	 * Time (s),Magnetic field x (µT),Magnetic field y (µT),Magnetic field z (µT),Gyroscope x (rad/s),Gyroscope y (rad/s),Gyroscope z (rad/s),Acceleration x (m/s^2),Acceleration y (m/s^2),Acceleration z (m/s^2)
+// 0.07969094,-7.249095917,26.43893433,-37.16656494,-0.1184487343,0.001258035656,0.008988874033,-0.3570917249,0.3941296637,9.963726044
+//	 */
+//
+//	float num1 = -7.249095917;
+//	float num2 = 26.43893433;
+//	float num3 = -37.16656494;
+//	float num4 = -0.1184487343;
+//	float num5 = 0.001258035656;
+//	float num6 = 0.008988874033;
+//	float num7 = -0.3570917249;
+//	float num8 = 0.3941296637;
+//	float num9 = 9.963726044;
+//
+//	float num10 = 0.64306622;
+//	float num11 = 0.02828862;
+//	float num12 = -0.00567953;
+//	float num13 = -0.76526684;
+//
+//	// result
+//	int num14 = 657;
+//	int num15 = 28;
+//	int num16 = -6;
+//	int num17 = -785;
+//
+//	int32_t mag_x = quantize(num1, FRAC_BASE);
+//	int32_t mag_y = quantize(num2, FRAC_BASE);
+//	int32_t mag_z = quantize(num3, FRAC_BASE);
+//	int32_t gyr_x = quantize(num4, FRAC_BASE);
+//	int32_t gyr_y = quantize(num5, FRAC_BASE);
+//	int32_t gyr_z = quantize(num6, FRAC_BASE);
+//	int32_t acc_x = quantize(num7, FRAC_BASE);
+//	int32_t acc_y = quantize(num8, FRAC_BASE);
+//	int32_t acc_z = quantize(num9, FRAC_BASE);
+//	int32_t q0    = quantize(num10, FRAC_BASE);
+//	int32_t q1    = quantize(num11, FRAC_BASE);
+//	int32_t q2    = quantize(num12, FRAC_BASE);
+//	int32_t q3    = quantize(num13, FRAC_BASE);
+//
+//	u_int64_t time_slots[ITERATION];
+//
+//	for (size_t idx = 0; idx < ITERATION; idx++)
+//	{
+//		timespec timer = tic();
+//
+//
+//		MadgwickAHRSupdate(gyr_x, gyr_y, gyr_z,
+//				   acc_x, acc_y, acc_z,
+//				   mag_x, mag_y, mag_z,
+//				   &q0, &q1, &q2, &q3);
+//		time_slots[idx] = toc(&timer, "computation delay").tv_nsec;
+//	}
+//
+//	// tic toc quantize4耗时
+//	timespec	timer		 = tic();
+//	QuantizedValues quantizedValues	 = quantize4(num10, num11, num12, num13, FRAC_BASE);
+//	timespec	durationQuantize = toc(&timer, "Quantize");
+//	printf("quantization time = %lu nm\n", durationQuantize.tv_nsec);
+//
+//	// tic toc dequantize4耗时
+//	timer				     = tic();
+//	DequantizedValues dequantizedValues  = dequantize4(num14, num15, num16, num17);
+//	timespec	  durationDequantize = toc(&timer, "Dequantize");
+//	printf("dequantization time = %lu nm\n", durationDequantize.tv_nsec);
+//
+////	u_int64_t average_time = 0;
+////	for (size_t idx = 0; idx < ITERATION; idx++)
+////	{
+////		average_time += time_slots[idx];
+////	}
+////	average_time /= ITERATION;
+////	printf("average time = %lu nm\n", average_time);
+//
+//	u_int64_t totalTime = 0;
+//	for (size_t idx = 0; idx < ITERATION; idx++)
+//	{
+//		totalTime += time_slots[idx];
+//	}
+//	printf("total time = %lu nm\n", totalTime);
+//
+//	// 计算total time, quantize+dequantize+average
+//	//u_int64_t totalTime = durationQuantize.tv_nsec + durationDequantize.tv_nsec + average_time;
+//	//printf("total time = %lu nm\n", totalTime);
+//}
