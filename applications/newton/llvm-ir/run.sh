@@ -27,4 +27,4 @@ clang $USER_HOME/CoSense/applications/newton/llvm-ir/c-files/test_MadgwickAHRS.c
 
 # Step 10: Run the test executable
 echo "Step 10: Run the test executable"
-/home/xyf/CoSense/applications/newton/llvm-ir/main_out
+$HOME/CoSense/applications/newton/llvm-ir/main_out
