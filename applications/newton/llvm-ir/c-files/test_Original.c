@@ -38,38 +38,38 @@ typedef struct {
 
 typedef struct timespec timespec;
 
-typedef struct {
-	uint64_t start;
-	uint64_t current;
-	uint64_t min;
-	uint64_t max;
-} ELAPSED_TIME;
-
-ELAPSED_TIME elapsed_time_tbl[10]; // 示例，根据需要调整大小
-
-static inline uint64_t rdtsc() {
-	uint32_t lo, hi;
-	__asm__ __volatile__ ("rdtsc" : "=a" (lo), "=d" (hi));
-	return ((uint64_t)hi << 32) | lo;
-}
-
-
-
-void elapsed_time_start(uint32_t i) {
-	elapsed_time_tbl[i].start = rdtsc();
-}
-
-void elapsed_time_stop(uint32_t i) {
-	uint64_t stop = rdtsc();
-	ELAPSED_TIME *p_tbl = &elapsed_time_tbl[i];
-	p_tbl->current = stop - p_tbl->start;
-	if (p_tbl->max < p_tbl->current) {
-		p_tbl->max = p_tbl->current;
-	}
-	if (p_tbl->min == 0 || p_tbl->min > p_tbl->current) {
-		p_tbl->min = p_tbl->current;
-	}
-}
+//typedef struct {
+//	uint64_t start;
+//	uint64_t current;
+//	uint64_t min;
+//	uint64_t max;
+//} ELAPSED_TIME;
+//
+//ELAPSED_TIME elapsed_time_tbl[10]; // 示例，根据需要调整大小
+//
+//static inline uint64_t rdtsc() {
+//	uint32_t lo, hi;
+//	__asm__ __volatile__ ("rdtsc" : "=a" (lo), "=d" (hi));
+//	return ((uint64_t)hi << 32) | lo;
+//}
+//
+//
+//
+//void elapsed_time_start(uint32_t i) {
+//	elapsed_time_tbl[i].start = rdtsc();
+//}
+//
+//void elapsed_time_stop(uint32_t i) {
+//	uint64_t stop = rdtsc();
+//	ELAPSED_TIME *p_tbl = &elapsed_time_tbl[i];
+//	p_tbl->current = stop - p_tbl->start;
+//	if (p_tbl->max < p_tbl->current) {
+//		p_tbl->max = p_tbl->current;
+//	}
+//	if (p_tbl->min == 0 || p_tbl->min > p_tbl->current) {
+//		p_tbl->min = p_tbl->current;
+//	}
+//}
 
 
 
@@ -261,7 +261,7 @@ main()
 
 	for (size_t idx = 0; idx < ITERATION; idx++)
 	{
-		elapsed_time_start(idx);  // 开始计时
+		//elapsed_time_start(idx);  // 开始计时
 		timespec timer = tic();
 		for (size_t ts = 0; ts < DATA_SIZE; ts++)
 		{
@@ -273,11 +273,7 @@ main()
 
 		}
 
-		//								MadgwickAHRSupdate(gyr_x, gyr_y, gyr_z,
-		//										   acc_x, acc_y, acc_z,
-		//										   mag_x, mag_y, mag_z,
-		//										   &q0, &q1, &q2, &q3);
-		elapsed_time_stop(idx);  // 结束计时
+		//elapsed_time_stop(idx);  // 结束计时
 		time_slots[idx] = toc(&timer, "computation delay").tv_nsec;
 	}
 
@@ -291,11 +287,11 @@ main()
 	average_time /= ITERATION;
 	printf("average time = %lu nm\n", average_time);
 
-	// 打印出每次迭代的最大、最小和当前时间
-	for (size_t idx = 0; idx < ITERATION; idx++) {
-		printf("Iteration %zu: Current Time = %lu, Max Time = %lu, Min Time = %lu\n",
-		       idx, elapsed_time_tbl[idx].current, elapsed_time_tbl[idx].max, elapsed_time_tbl[idx].min);
-	}
+//	// 打印出每次迭代的最大、最小和当前时间
+//	for (size_t idx = 0; idx < ITERATION; idx++) {
+//		printf("Iteration %zu: Current Time = %lu, Max Time = %lu, Min Time = %lu\n",
+//		       idx, elapsed_time_tbl[idx].current, elapsed_time_tbl[idx].max, elapsed_time_tbl[idx].min);
+//	}
 
 	FILE * fptr = fopen("fp_result.txt", "w");
 	for (size_t ts = 0; ts < DATA_SIZE; ts++)
