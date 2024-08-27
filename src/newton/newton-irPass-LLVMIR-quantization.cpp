@@ -1773,7 +1773,8 @@ handleFAdd(Instruction * inInstruction, Type * quantizedType)
 	}
 
 	// Create fixed-point addition
-	Value * newInst = Builder.CreateAdd(op0, op1);
+	//Value * newInst = Builder.CreateAdd(op0, op1);
+	Value *newInst = Builder.CreateNSWAdd(op0, op1, "nswadd");
 
 	// Replace the original FAdd instruction with the new fixed-point addition
 	inInstruction->replaceAllUsesWith(newInst);
@@ -1838,7 +1839,8 @@ handleFSub(Instruction * inInstruction, Type * quantizedType)
 	}
 
 	// Create fixed-point subtraction
-	Value * newInst = Builder.CreateSub(op0, op1);
+	//Value * newInst = Builder.CreateSub(op0, op1);
+	Value *newInst = Builder.CreateNSWSub(op0, op1, "nswsub");
 
 	// Replace the original FSub instruction with the new fixed-point subtraction
 	inInstruction->replaceAllUsesWith(newInst);
