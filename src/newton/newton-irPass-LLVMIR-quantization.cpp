@@ -37,6 +37,7 @@ using namespace llvm;
 #define FRAC_BASE (1 << FRAC_Q)
 #define BIT_WIDTH 32
 
+
 extern "C" {
 
 // check if the type is a floating type
@@ -997,7 +998,8 @@ simplifyConstant(Instruction * inInstruction, Type * quantizedType)
 			if (instOpCode == Instruction::FMul)
 			{
 				llvm::errs() << "Handling FMul instruction\n";
-				newFisrtInst  = Builder.CreateMul(nonConstOperand, quantizeNumValue);
+				//newFisrtInst  = Builder.CreateMul(nonConstOperand, quantizeNumValue);
+				newFisrtInst  = Builder.CreateNSWMul(nonConstOperand, quantizeNumValue);
 				newSecondInst = Builder.CreateSDiv(newFisrtInst, compensateNumValue);
 			}
 			else if (instOpCode == Instruction::FDiv && isa<llvm::Constant>(inInstruction->getOperand(1)))
@@ -1308,7 +1310,9 @@ createFixMul(Module * irModule, Type * quantizedType, std::vector<llvm::Function
 	llvm::Value *		     sext1     = builder.CreateSExt(arg1, higherQuantizedType);
 	llvm::Function::arg_iterator arg2      = &*(++arg1);
 	llvm::Value *		     sext2     = builder.CreateSExt(arg2, higherQuantizedType);
-	llvm::Value *		     mulInst   = builder.CreateMul(sext1, sext2);
+	//llvm::Value *		     mulInst   = builder.CreateMul(sext1, sext2);
+	//nsw
+	llvm::Value *		     mulInst   = builder.CreateNSWMul(sext1, sext2);
 	llvm::Value *		     ashrInst  = builder.CreateAShr(mulInst, ConstantInt::get(higherQuantizedType, FRAC_Q));
 	llvm::Value *		     truncInst = builder.CreateTrunc(ashrInst, quantizedType);
 	builder.CreateRet(truncInst);
@@ -1600,13 +1604,15 @@ compensateFP(Instruction * inInstruction, float quantizedNum, float decimalNum, 
 		if (instOpCode == Instruction::FMul)
 		{
 			llvm::errs() << "Handling FMul instruction\n";
-			newFirstInst  = Builder.CreateMul(nonConstOperand, quantizeNumValue);
+			//newFirstInst  = Builder.CreateMul(nonConstOperand, quantizeNumValue);
+			newFirstInst  = Builder.CreateNSWMul(nonConstOperand, quantizeNumValue);
 			newSecondInst = Builder.CreateSDiv(newFirstInst, compensateNumValue);
 		}
 		else if (instOpCode == Instruction::FDiv && isa<llvm::Constant>(inInstruction->getOperand(1)))
 		{
 			llvm::errs() << "Handling FDiv instruction with constant denominator\n";
-			newFirstInst  = Builder.CreateMul(nonConstOperand, compensateNumValue);
+			//newFirstInst  = Builder.CreateMul(nonConstOperand, compensateNumValue);
+			newFirstInst  = Builder.CreateNSWMul(nonConstOperand, compensateNumValue);
 			newSecondInst = Builder.CreateSDiv(newFirstInst, quantizeNumValue);
 		}
 		else if (instOpCode == Instruction::FDiv && isa<llvm::Constant>(inInstruction->getOperand(0)))
@@ -1774,7 +1780,7 @@ handleFAdd(Instruction * inInstruction, Type * quantizedType)
 
 	// Create fixed-point addition
 	//Value * newInst = Builder.CreateAdd(op0, op1);
-	Value *newInst = Builder.CreateNSWAdd(op0, op1, "nswadd");
+	Value *newInst = Builder.CreateNSWAdd(op0, op1);
 
 	// Replace the original FAdd instruction with the new fixed-point addition
 	inInstruction->replaceAllUsesWith(newInst);
@@ -1840,7 +1846,7 @@ handleFSub(Instruction * inInstruction, Type * quantizedType)
 
 	// Create fixed-point subtraction
 	//Value * newInst = Builder.CreateSub(op0, op1);
-	Value *newInst = Builder.CreateNSWSub(op0, op1, "nswsub");
+	Value *newInst = Builder.CreateNSWSub(op0, op1 );
 
 	// Replace the original FSub instruction with the new fixed-point subtraction
 	inInstruction->replaceAllUsesWith(newInst);
@@ -1963,7 +1969,8 @@ handleFMul(Instruction * llvmIrInstruction, Type * quantizedType, Function * fix
 	if (isa<ConstantInt>(lhs) || isa<ConstantInt>(rhs))
 	{
 		llvm::errs() << "One of the operands is an integer constant, using mul\n";
-		Value * newInst = Builder.CreateMul(lhs, rhs);
+		//Value * newInst = Builder.CreateMul(lhs, rhs);
+		Value * newInst = Builder.CreateNSWMul(lhs, rhs);
 		llvmIrInstruction->replaceAllUsesWith(newInst);
 		llvmIrInstruction->eraseFromParent();
 		return;
@@ -2002,58 +2009,7 @@ handleFMul(Instruction * llvmIrInstruction, Type * quantizedType, Function * fix
 	//	}
 }
 
-// void
-// handleFMul(Instruction * llvmIrInstruction, Type * quantizedType, Function * fixmul)
-//{
-//	llvm::errs() << "Handling FMul\n";
-//	llvm::errs() << "Original Instruction: " << *llvmIrInstruction << "\n";
-//	IRBuilder<> Builder(llvmIrInstruction);
-//
-//	// Ensure operands are correctly converted to fixed-point integers
-//	Value * lhs = llvmIrInstruction->getOperand(0);
-//	Value * rhs = llvmIrInstruction->getOperand(1);
-//
-//	llvm::errs() << "LHS: " << *lhs << "\n";
-//	llvm::errs() << "RHS: " << *rhs << "\n";
-//
-//	bool lhsIsFloat = lhs->getType()->isFloatTy() || lhs->getType()->isDoubleTy();
-//	bool rhsIsFloat = rhs->getType()->isFloatTy() || rhs->getType()->isDoubleTy();
-//
-//	// If either operand is a float, convert both to fixed-point
-//	if (lhsIsFloat)
-//	{
-//		lhs = Builder.CreateFPToSI(lhs, quantizedType);
-//		llvm::errs() << "Converted LHS to fixed-point: " << *lhs << "\n";
-//	}
-//	if (rhsIsFloat)
-//	{
-//		rhs = Builder.CreateFPToSI(rhs, quantizedType);
-//		llvm::errs() << "Converted RHS to fixed-point: " << *rhs << "\n";
-//	}
-//
-//	// Ensure both operands are now integers
-//	bool lhsIsInteger = lhs->getType()->isIntegerTy();
-//	bool rhsIsInteger = rhs->getType()->isIntegerTy();
-//
-//	if (lhsIsInteger && rhsIsInteger)
-//	{
-//		if (isa<llvm::Constant>(lhs) || isa<llvm::Constant>(rhs))
-//		{
-//			llvm::errs() << "One of the operands is a constant, simplifying...\n";
-//			handleConstant(llvmIrInstruction, quantizedType);
-//		}
-//		else
-//		{
-//			llvm::errs() << "Both operands are integers, substituting with fixmul function...\n";
-//			{
-//				llvm::errs() << "Both operands are integers, substituting with fixmul function...\n";
-//				llvm::CallInst * callInst = Builder.CreateCall(fixmul, {lhs, rhs});
-//				llvmIrInstruction->replaceAllUsesWith(callInst);
-//				llvmIrInstruction->eraseFromParent();
-//			}
-//		}
-//	}
-// }
+
 
 void
 handleFDiv(Instruction * llvmIrInstruction, Type * quantizedType, Function * fixdiv)
@@ -2097,9 +2053,8 @@ handleFDiv(Instruction * llvmIrInstruction, Type * quantizedType, Function * fix
 		}
 		else
 		{
-			llvm::errs() << "Both operands are integers, substituting with fixmul function...\n";
+			llvm::errs() << "Both operands are integers, substituting with fixdiv function...\n";
 			{
-				// Value * newInst = Builder.CreateMul(lhs, rhs);
 				Value * newInst = Builder.CreateCall(fixdiv, {lhs, rhs});
 				llvmIrInstruction->replaceAllUsesWith(newInst);
 				llvmIrInstruction->eraseFromParent();
