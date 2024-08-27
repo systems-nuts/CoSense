@@ -47,6 +47,26 @@ isValidFloatingType(Type * type)
 	return type->isFloatTy() || type->isDoubleTy();
 }
 
+bool checkForSpecialFloat(BinaryOperator *MulInst) {
+	// 确保指令是乘法
+	if (MulInst->getOpcode() == Instruction::FMul) {
+		Value *lhs = MulInst->getOperand(0);
+		Value *rhs = MulInst->getOperand(1);
+
+		// 检查右侧操作数是否为ConstantFP
+		if (ConstantFP *rhsConst = dyn_cast<ConstantFP>(rhs)) {
+			// 创建特定的浮点值
+			APFloat targetValue = APFloat(APFloat::IEEEdouble(), APInt(64, 0x3FA24924A0000000));
+
+			// 比较右侧操作数是否等于0x3FA24924A0000000
+			if (rhsConst->getValueAPF().bitwiseIsEqual(targetValue)) {
+				return true;  // 发现目标浮点数
+			}
+		}
+	}
+	return false;  // 未发现目标浮点数
+}
+
 bool
 isSpecialIEEE754(llvm::Value * value, llvm::IRBuilder<> & builder)
 {
@@ -1941,6 +1961,68 @@ handleFMul(Instruction * llvmIrInstruction, Type * quantizedType, Function * fix
 	bool lhsIsFloat = lhs->getType()->isFloatTy() || lhs->getType()->isDoubleTy();
 	bool rhsIsFloat = rhs->getType()->isFloatTy() || rhs->getType()->isDoubleTy();
 
+
+
+	ConstantFP *lhsConst = dyn_cast<ConstantFP>(lhs);
+	ConstantFP *rhsConst = dyn_cast<ConstantFP>(rhs);
+
+	// 检查是否存在浮点数常数0.5
+	bool lhsIsHalf = lhsConst && lhsConst->getValueAPF().convertToDouble() == 0.5;
+	bool rhsIsHalf = rhsConst && rhsConst->getValueAPF().convertToDouble() == 0.5;
+
+	//TODO HARDCODE
+	if (lhsIsHalf || rhsIsHalf) {
+		llvm::errs() << "One operand is a floating-point constant 0.5, simplifying using sdiv by 2\n";
+
+		Value *otherOperand = lhsIsHalf ? rhs : lhs;
+		Type *intType = Type::getInt32Ty(llvmIrInstruction->getContext());
+
+		// 创建常数2
+		Value *two = ConstantInt::get(intType, 2);
+
+		// 创建除法指令
+		Instruction *divInst = BinaryOperator::CreateSDiv(otherOperand, two, "divbytwo", llvmIrInstruction);
+		//Instruction *divInst = BinaryOperator::CreateSDiv(otherOperand,two);
+		// 替换原来的乘法指令
+		llvmIrInstruction->replaceAllUsesWith(divInst);
+		llvmIrInstruction->eraseFromParent();
+
+		return; // 防止后续代码执行
+	}
+
+	// 检查是否有乘以特定浮点数的操作，即乘以 0x3FA24924A0000000（大约等于 1/28）
+	//bool rhsIsDiv28 = lhsConst && lhsConst->getValueAPF().bitwiseIsEqual(APFloat(APFloat::IEEEdouble(), APInt(64, 0x3FA24924A0000000)));
+	//bool lhsIsDiv28 = rhsConst && rhsConst->getValueAPF().bitwiseIsEqual(APFloat(APFloat::IEEEdouble(), APInt(64, 0x3FA24924A0000000)));
+
+
+	bool rhsIsDiv28 = lhsConst && lhsConst->getValueAPF().bitwiseIsEqual(APFloat(APFloat::IEEEdouble(), APInt(64, 0x3FA24924A0000000)));
+	bool lhsIsDiv28 = rhsConst && rhsConst->getValueAPF().bitwiseIsEqual(APFloat(APFloat::IEEEdouble(), APInt(64, 0x3FA24924A0000000)));
+
+	if (lhsIsDiv28 || rhsIsDiv28) {
+		llvm::errs() << "One operand is a floating-point constant 0x3FA24924A0000000, simplifying using sdiv by 28\n";
+
+		// 获取另一个操作数
+		Value *otherOperand = lhsIsDiv28 ? rhs : lhs;
+		IRBuilder<> Builder(llvmIrInstruction);
+
+		// 创建浮点型常数 28.0
+		Value *twentyEight = ConstantFP::get(llvmIrInstruction->getContext(), APFloat(28.0));
+
+		// 创建除法指令
+		Value *divInstValue = Builder.CreateFDiv(otherOperand, twentyEight, "divFrequency");
+		Instruction *divInst = cast<Instruction>(divInstValue);  // 将 Value* 转换为 Instruction*
+
+		// 替换原来的乘法指令
+		llvmIrInstruction->replaceAllUsesWith(divInst);
+		llvmIrInstruction->eraseFromParent();
+
+		return; // 防止后续代码执行
+	}
+
+
+
+
+
 	// If either operand is a float constant, convert it to fixed-point using handleConstant
 	if (isa<ConstantFP>(lhs))
 	{
@@ -1960,10 +2042,7 @@ handleFMul(Instruction * llvmIrInstruction, Type * quantizedType, Function * fix
 		rhs	   = llvmIrInstruction->getOperand(1);	// Update rhs after conversion
 	}
 
-	//	if (isa<llvm::Constant>(llvmIrInstruction->getOperand(0)) ||
-	//	    isa<llvm::Constant>(llvmIrInstruction->getOperand(1))) {
-	//		simplifyConstant(llvmIrInstruction, quantizedType);
-	//	}
+
 
 	// If either operand is an integer constant, directly use mul
 	if (isa<ConstantInt>(lhs) || isa<ConstantInt>(rhs))
@@ -2001,12 +2080,6 @@ handleFMul(Instruction * llvmIrInstruction, Type * quantizedType, Function * fix
 		llvmIrInstruction->eraseFromParent();
 	}
 
-	//	if (allOperandsAreInt && llvmIrInstruction->getOpcode() == Instruction::FMul) {
-	//		llvm::errs() << "Both operands are integers, converting FMul to Mul\n";
-	//		Value *mulInst = Builder.CreateMul(lhs, rhs);
-	//		llvmIrInstruction->replaceAllUsesWith(mulInst);
-	//		llvmIrInstruction->eraseFromParent();
-	//	}
 }
 
 
@@ -2027,6 +2100,12 @@ handleFDiv(Instruction * llvmIrInstruction, Type * quantizedType, Function * fix
 
 	bool lhsIsFloat = lhs->getType()->isFloatTy() || lhs->getType()->isDoubleTy();
 	bool rhsIsFloat = rhs->getType()->isFloatTy() || rhs->getType()->isDoubleTy();
+
+
+
+
+
+
 
 	// If either operand is a float, convert both to fixed-point
 	if (lhsIsFloat)
