@@ -3,11 +3,11 @@
 # Get the current user's home directory
 USER_HOME=$HOME
 
-opt $USER_HOME/CoSense/applications/newton/llvm-ir/MadgwickAHRS_opt.ll --simplifycfg --instsimplify -O3 -Os -S -o $USER_HOME/CoSense/applications/newton/llvm-ir/out.llperformace
+opt $USER_HOME/CoSense/applications/newton/llvm-ir/MadgwickAHRS_opt.ll  -O3 -Os -S -o $USER_HOME/CoSense/applications/newton/llvm-ir/out.ll
 
 # Step 5: Compile the optimized LLVM IR file to bitcode
 echo "Step 5: Compile the optimized LLVM IR file to bitcode"
-llvm-as $USER_HOME/CoSense/applications/newton/llvm-ir/out.llperformace -o $USER_HOME/CoSense/applications/newton/llvm-ir/out.bc
+llvm-as $USER_HOME/CoSense/applications/newton/llvm-ir/out.ll -o $USER_HOME/CoSense/applications/newton/llvm-ir/out.bc
 
 # Step 6: Compile the bitcode file to assembly
 echo "Step 6: Compile the bitcode file to assembly"
@@ -23,7 +23,7 @@ ar -rc $USER_HOME/CoSense/applications/newton/llvm-ir/libout.a $USER_HOME/CoSens
 
 # Step 9: Compile the test file and link with the static library
 echo "Step 9: Compile the test file and link with the static library"
-clang $USER_HOME/CoSense/applications/newton/llvm-ir/c-files/test_MadgwickAHRS.c -no-pie -L$USER_HOME/CoSense/applications/newton/llvm-ir -lout -O3 -Os -g -fno-builtin -o $USER_HOME/CoSense/applications/newton/llvm-ir/main_out -lm
+clang $USER_HOME/CoSense/applications/newton/llvm-ir/c-files/test_MadgwickAHRS.c -D INT_DATA_TYPE -no-pie -L$USER_HOME/CoSense/applications/newton/llvm-ir -lout -O3 -Os -g -fno-builtin -o $USER_HOME/CoSense/applications/newton/llvm-ir/main_out -lm
 
 # Step 10: Run the test executable
 echo "Step 10: Run the test executable"
