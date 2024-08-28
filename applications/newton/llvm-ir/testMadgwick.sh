@@ -29,7 +29,8 @@ python3 replace.py
 
 # Step 4: Optimize the generated LLVM IR file
 echo "Step 4: Optimize the generated LLVM IR file"
-opt $USER_HOME/CoSense/applications/newton/llvm-ir/MadgwickAHRS_opt.ll   -O3 -Os -S -o $USER_HOME/CoSense/applications/newton/llvm-ir/out.ll
+#opt $USER_HOME/CoSense/applications/newton/llvm-ir/MadgwickAHRS_opt.ll   -O3 -Os -S -o $USER_HOME/CoSense/applications/newton/llvm-ir/out.ll
+opt $USER_HOME/CoSense/applications/newton/llvm-ir/MadgwickAHRS_opt.ll   -S -o $USER_HOME/CoSense/applications/newton/llvm-ir/out.ll
 
 
 

@@ -3,7 +3,8 @@
 # Get the current user's home directory
 USER_HOME=$HOME
 
-opt $USER_HOME/CoSense/applications/newton/llvm-ir/MadgwickAHRS_opt.ll  -O3 -Os -S -o $USER_HOME/CoSense/applications/newton/llvm-ir/out.ll
+#opt $USER_HOME/CoSense/applications/newton/llvm-ir/MadgwickAHRS_opt.ll  -O3 -Os -S -o $USER_HOME/CoSense/applications/newton/llvm-ir/out.ll
+opt $USER_HOME/CoSense/applications/newton/llvm-ir/MadgwickAHRS_opt.ll   -S -o $USER_HOME/CoSense/applications/newton/llvm-ir/out.ll
 
 # Step 5: Compile the optimized LLVM IR file to bitcode
 echo "Step 5: Compile the optimized LLVM IR file to bitcode"

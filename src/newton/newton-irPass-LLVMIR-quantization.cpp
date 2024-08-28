@@ -1129,6 +1129,11 @@ createFixSqrt(llvm::Module * irModule, Type * quantizedType, std::vector<llvm::F
 	// Call sqrt on the floating-point value
 	llvm::Function * sqrtFunc   = llvm::Intrinsic::getDeclaration(irModule, llvm::Intrinsic::sqrt, llvm::Type::getDoubleTy(context));
 	llvm::Value *	 sqrtResult = builder.CreateCall(sqrtFunc, {fp_x});
+	//tail
+	if (auto * call = dyn_cast<CallInst>(sqrtResult))
+	{
+		call->setTailCall(true);
+	}
 
 	// Convert the result back to a fixed-point integer
 	llvm::Value * res = builder.CreateFPToSI(sqrtResult, quantizedType);
@@ -1264,7 +1269,7 @@ createFixMul(Module * irModule, Type * quantizedType, std::vector<llvm::Function
 	llvm::Function *     func     = llvm::Function::Create(funcType, llvm::Function::PrivateLinkage, fixmulFuncName, irModule);
 
 	// 设置调用约定为 fastcc
-	// func->setCallingConv(llvm::CallingConv::Fast);
+	func->setCallingConv(llvm::CallingConv::Fast);
 
 	llvm::BasicBlock * entryBB = llvm::BasicBlock::Create(irModule->getContext(), "entry", func);
 	llvm::IRBuilder<>  builder(entryBB);
@@ -1292,9 +1297,9 @@ createFixMul(Module * irModule, Type * quantizedType, std::vector<llvm::Function
 	// llvm::Value *		     mulInst   = builder.CreateMul(sext1, sext2);
 	// nsw
 	llvm::Value * mulInst  = builder.CreateNSWMul(sext1, sext2);
-	llvm::Value * ashrInst = builder.CreateAShr(mulInst, ConstantInt::get(higherQuantizedType, FRAC_Q));
+	//llvm::Value * ashrInst = builder.CreateAShr(mulInst, ConstantInt::get(higherQuantizedType, FRAC_Q));
 	// lshr
-	// llvm::Value * ashrInst	= builder.CreateLShr(mulInst, ConstantInt::get(higherQuantizedType, FRAC_Q));
+	llvm::Value * ashrInst	= builder.CreateLShr(mulInst, ConstantInt::get(higherQuantizedType, FRAC_Q));
 	llvm::Value * truncInst = builder.CreateTrunc(ashrInst, quantizedType);
 	builder.CreateRet(truncInst);
 
@@ -2041,8 +2046,8 @@ handleFMul(Instruction * llvmIrInstruction, Type * quantizedType, Function * fix
 	{
 		llvm::errs() << "Both operands are integers, substituting with fixmul function...\n";
 		llvm::CallInst * callInst = Builder.CreateCall(fixmul, {lhs, rhs});
-		// callInst->setCallingConv(llvm::CallingConv::Fast);
-		// callInst->setTailCall(true);
+		callInst->setCallingConv(llvm::CallingConv::Fast);
+		callInst->setTailCall(true);
 		llvmIrInstruction->replaceAllUsesWith(callInst);
 		llvmIrInstruction->eraseFromParent();
 	}

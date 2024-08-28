@@ -11,7 +11,7 @@
 #define FRAC_BASE (1 << FRAC_Q)
 #define BIT_WIDTH 32
 #define ITERATION 10
-#define DATA_SIZE 10000
+#define DATA_SIZE 1000
 
 extern volatile float q0, q1, q2, q3;
 extern void	      MadgwickAHRSupdate(float gx, float gy, float gz, float ax, float ay, float az, float mx, float my, float mz,

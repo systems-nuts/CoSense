@@ -8,7 +8,7 @@
 #define FRAC_Q 10
 #define BIT_WIDTH 32
 #define ITERATION 10
-#define DATA_SIZE 10000
+#define DATA_SIZE 1000
 #include "MadgwickAHRSfix.h"
 extern volatile int32_t q0, q1, q2, q3;
 extern void		MadgwickAHRSupdate(int32_t gx, int32_t gy, int32_t gz, int32_t ax, int32_t ay, int32_t az, int32_t mx, int32_t my, int32_t mz, int32_t * q0_ptr, int32_t * q1_ptr, int32_t * q2_ptr, int32_t * q3_ptr);
@@ -211,12 +211,12 @@ toc(timespec * start_time, const char * prefix)
 					time[row - 2] = atof(value);
 					break;
 				case 1:
-					//mag_x[row - 2] = round(atof(value) * FRAC_BASE);
-					mag_x[row - 2] = quantize(atof(value), FRAC_BASE);
+					mag_x[row - 2] = round(atof(value) * FRAC_BASE);
+					//mag_x[row - 2] = quantize(atof(value), FRAC_BASE);
 					break;
 				case 2:
-					//mag_y[row - 2] = round(atof(value) * FRAC_BASE);
-					mag_y[row - 2] = quantize(atof(value), FRAC_BASE);
+					mag_y[row - 2] = round(atof(value) * FRAC_BASE);
+					//mag_y[row - 2] = quantize(atof(value), FRAC_BASE);
 					break;
 				case 3:
 					mag_z[row - 2] = round(atof(value) * FRAC_BASE);
