@@ -1129,11 +1129,6 @@ createFixSqrt(llvm::Module * irModule, Type * quantizedType, std::vector<llvm::F
 	// Call sqrt on the floating-point value
 	llvm::Function * sqrtFunc   = llvm::Intrinsic::getDeclaration(irModule, llvm::Intrinsic::sqrt, llvm::Type::getDoubleTy(context));
 	llvm::Value *	 sqrtResult = builder.CreateCall(sqrtFunc, {fp_x});
-	//tail
-	if (auto * call = dyn_cast<CallInst>(sqrtResult))
-	{
-		call->setTailCall(true);
-	}
 
 	// Convert the result back to a fixed-point integer
 	llvm::Value * res = builder.CreateFPToSI(sqrtResult, quantizedType);
@@ -1415,7 +1410,11 @@ createFixRsqrt(llvm::Module * irModule, Type * quantizedType, std::vector<llvm::
 	llvm::Value * fp_y = builder.CreateSIToFP(x, llvm::Type::getFloatTy(irModule->getContext()));
 
 	// Added step: fp_y = fp_y / 1024.0;
-	fp_y = builder.CreateFDiv(fp_y, ConstantFP::get(llvm::Type::getFloatTy(irModule->getContext()), 1024.0));
+	//fp_y = builder.CreateFDiv(fp_y, ConstantFP::get(llvm::Type::getFloatTy(irModule->getContext()), 1024.0));
+
+	// Equivalent of: %4 = fmul float %3, 0x3F50000000000000
+	fp_y = builder.CreateFMul(fp_y, llvm::ConstantFP::get(llvm::Type::getFloatTy(irModule->getContext()),  0.0009765625));
+
 
 	llvm::Value * i = builder.CreateBitCast(fp_y, llvm::Type::getInt32Ty(irModule->getContext()));
 	i		= builder.CreateSub(ConstantInt::get(llvm::Type::getInt32Ty(irModule->getContext()), 0x5f3759df), builder.CreateLShr(i, 1));
