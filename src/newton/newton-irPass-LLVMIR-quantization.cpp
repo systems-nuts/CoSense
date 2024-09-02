@@ -1404,7 +1404,9 @@ createFixRsqrt(llvm::Module * irModule, Type * quantizedType, std::vector<llvm::
 	llvm::Function * fixMulFunc = createFixMul(irModule, quantizedType, functionsToInsert);
 
 	// Step 1: int_halfx = mulfix(0.5 * FRAC_BASE, x);
-	llvm::Value * halfBase = builder.CreateCall(fixMulFunc, {ConstantInt::get(quantizedType, FRAC_BASE / 2), x});
+	//llvm::Value * halfBase = builder.CreateCall(fixMulFunc, {ConstantInt::get(quantizedType, FRAC_BASE / 2), x});
+	llvm::Value *halfBase = builder.CreateLShr(x, ConstantInt::get(quantizedType, 1));
+
 
 	// Step 2: Convert x to floating-point and perform the initial approximation
 	llvm::Value * fp_y = builder.CreateSIToFP(x, llvm::Type::getFloatTy(irModule->getContext()));
@@ -1976,19 +1978,24 @@ handleFMul(Instruction * llvmIrInstruction, Type * quantizedType, Function * fix
 
 	if (lhsIsHalf || rhsIsHalf)
 	{
-		llvm::errs() << "One operand is a floating-point constant 0.5, simplifying using sdiv by 2\n";
+		//llvm::errs() << "One operand is a floating-point constant 0.5, simplifying using sdiv by 2\n";
+		llvm::errs() << "One operand is a floating-point constant 0.5, simplifying using logical shift right by 1\n";
 
 		Value * otherOperand = lhsIsHalf ? rhs : lhs;
 		Type *	intType	     = Type::getInt32Ty(llvmIrInstruction->getContext());
 
-		// 创建常数2
-		Value * two = ConstantInt::get(intType, 2);
+		// 创建常数1，用于右移
+		Value *one = ConstantInt::get(intType, 1);
 
 		// 创建除法指令
-		Instruction * divInst = BinaryOperator::CreateSDiv(otherOperand, two, "divbytwo", llvmIrInstruction);
+		//Instruction * divInst = BinaryOperator::CreateSDiv(otherOperand, two, "divbytwo", llvmIrInstruction);
+
+		// 创建算术右移指令
+		Instruction *shrInst = BinaryOperator::CreateAShr(otherOperand, one, "divbytwo", llvmIrInstruction);
 		// Instruction *divInst = BinaryOperator::CreateSDiv(otherOperand,two);
 		//  替换原来的乘法指令
-		llvmIrInstruction->replaceAllUsesWith(divInst);
+		//llvmIrInstruction->replaceAllUsesWith(divInst);
+		llvmIrInstruction->replaceAllUsesWith(shrInst);
 		llvmIrInstruction->eraseFromParent();
 
 		return;	 // 防止后续代码执行
@@ -2045,8 +2052,8 @@ handleFMul(Instruction * llvmIrInstruction, Type * quantizedType, Function * fix
 	{
 		llvm::errs() << "Both operands are integers, substituting with fixmul function...\n";
 		llvm::CallInst * callInst = Builder.CreateCall(fixmul, {lhs, rhs});
-		callInst->setCallingConv(llvm::CallingConv::Fast);
-		callInst->setTailCall(true);
+		//callInst->setCallingConv(llvm::CallingConv::Fast);
+		//callInst->setTailCall(true);
 		llvmIrInstruction->replaceAllUsesWith(callInst);
 		llvmIrInstruction->eraseFromParent();
 	}
