@@ -299,6 +299,7 @@ shouldSkipFunction(const std::string & functionName)
 	    "constantMulDiv",
 	    "sinf",
 	    "llvm.sqrt.f64",
+	    "llvm.sqrt.f32",
 	    "sqrt",
 	    "sqrtf"};
 
@@ -1090,11 +1091,75 @@ substituteHardcodeFunc(Instruction * inInstruction, Type * quantizedType, llvm::
 	inInstruction->replaceAllUsesWith(callInst);
 	inInstruction->removeFromParent();
 }
+//TODO : Origianl double fixsqrt
+//llvm::Function *
+//createFixSqrt(llvm::Module * irModule, Type * quantizedType, std::vector<llvm::Function *> & functionsToInsert)
+//{
+//	// Check if irModule is valid
+//	if (!irModule)
+//	{
+//		llvm::errs() << "Error: irModule is nullptr\n";
+//		return nullptr;
+//	}
+//
+//	std::string fixSqrtFuncName = "fixsqrt";
+//	for (auto & function : *irModule)
+//	{
+//		if (function.getName() == fixSqrtFuncName)
+//		{
+//			llvm::errs() << "fixsqrt already exists\n";
+//			return &function;
+//		}
+//	}
+//
+//	llvm::LLVMContext & context = irModule->getContext();
+//
+//	// Function type: returns quantizedType (e.g., i32), takes one argument of quantizedType
+//	llvm::FunctionType * funcType = llvm::FunctionType::get(quantizedType, {quantizedType}, false);
+//	llvm::Function *     func     = llvm::Function::Create(funcType, llvm::Function::PrivateLinkage, fixSqrtFuncName, irModule);
+//
+//	llvm::BasicBlock * entryBB = llvm::BasicBlock::Create(context, "entry", func);
+//	llvm::IRBuilder<>  builder(entryBB);
+//
+//	llvm::Function::arg_iterator args = func->arg_begin();
+//	llvm::Value *		     x	  = &*args++;
+//
+//	// Convert the fixed-point integer to a floating-point number for sqrt computation
+//	llvm::Value * fp_x = builder.CreateSIToFP(x, llvm::Type::getDoubleTy(context));
+//
+//	// Call sqrt on the floating-point value
+//	llvm::Function * sqrtFunc   = llvm::Intrinsic::getDeclaration(irModule, llvm::Intrinsic::sqrt, llvm::Type::getDoubleTy(context));
+//	llvm::Value *	 sqrtResult = builder.CreateCall(sqrtFunc, {fp_x});
+//
+//	// Convert the result back to a fixed-point integer
+//	llvm::Value * res = builder.CreateFPToSI(sqrtResult, quantizedType);
+//
+//	// Perform a left shift to scale the result
+//	llvm::Value * shlRes = builder.CreateShl(res, FRAC_Q / 2);
+//
+//	// Apply compensation if FRAC_Q is odd
+//	llvm::Value * finalRes = shlRes;
+//	if (FRAC_Q % 2 != 0)
+//	{
+//		llvm::Value * compensationFactor = llvm::ConstantFP::get(llvm::Type::getDoubleTy(context), 1.414213562);
+//		llvm::Value * fpShlRes		 = builder.CreateSIToFP(shlRes, llvm::Type::getDoubleTy(context));
+//		llvm::Value * compensated	 = builder.CreateFMul(fpShlRes, compensationFactor);
+//		finalRes			 = builder.CreateFPToSI(compensated, quantizedType);
+//	}
+//
+//	builder.CreateRet(finalRes);
+//
+//	// Insert the newly created function into the list
+//	functionsToInsert.push_back(func);
+//
+//	llvm::errs() << "Created fixsqrt function: " << func->getName() << "\n";
+//
+//	return func;
+//}
 
-llvm::Function *
-createFixSqrt(llvm::Module * irModule, Type * quantizedType, std::vector<llvm::Function *> & functionsToInsert)
+//TODO : float version rsqrt
+llvm::Function * createFixSqrt(llvm::Module * irModule, Type * quantizedType, std::vector<llvm::Function *> & functionsToInsert)
 {
-	// Check if irModule is valid
 	if (!irModule)
 	{
 		llvm::errs() << "Error: irModule is nullptr\n";
@@ -1112,23 +1177,20 @@ createFixSqrt(llvm::Module * irModule, Type * quantizedType, std::vector<llvm::F
 	}
 
 	llvm::LLVMContext & context = irModule->getContext();
-
-	// Function type: returns quantizedType (e.g., i32), takes one argument of quantizedType
 	llvm::FunctionType * funcType = llvm::FunctionType::get(quantizedType, {quantizedType}, false);
-	llvm::Function *     func     = llvm::Function::Create(funcType, llvm::Function::PrivateLinkage, fixSqrtFuncName, irModule);
-
+	llvm::Function * func = llvm::Function::Create(funcType, llvm::Function::PrivateLinkage, fixSqrtFuncName, irModule);
 	llvm::BasicBlock * entryBB = llvm::BasicBlock::Create(context, "entry", func);
-	llvm::IRBuilder<>  builder(entryBB);
+	llvm::IRBuilder<> builder(entryBB);
 
 	llvm::Function::arg_iterator args = func->arg_begin();
-	llvm::Value *		     x	  = &*args++;
+	llvm::Value * x = &*args++;
 
 	// Convert the fixed-point integer to a floating-point number for sqrt computation
-	llvm::Value * fp_x = builder.CreateSIToFP(x, llvm::Type::getDoubleTy(context));
+	llvm::Value * fp_x = builder.CreateSIToFP(x, llvm::Type::getFloatTy(context));
 
 	// Call sqrt on the floating-point value
-	llvm::Function * sqrtFunc   = llvm::Intrinsic::getDeclaration(irModule, llvm::Intrinsic::sqrt, llvm::Type::getDoubleTy(context));
-	llvm::Value *	 sqrtResult = builder.CreateCall(sqrtFunc, {fp_x});
+	llvm::Function * sqrtFunc = llvm::Intrinsic::getDeclaration(irModule, llvm::Intrinsic::sqrt, llvm::Type::getFloatTy(context));
+	llvm::Value * sqrtResult = builder.CreateCall(sqrtFunc, {fp_x});
 
 	// Convert the result back to a fixed-point integer
 	llvm::Value * res = builder.CreateFPToSI(sqrtResult, quantizedType);
@@ -1140,17 +1202,14 @@ createFixSqrt(llvm::Module * irModule, Type * quantizedType, std::vector<llvm::F
 	llvm::Value * finalRes = shlRes;
 	if (FRAC_Q % 2 != 0)
 	{
-		llvm::Value * compensationFactor = llvm::ConstantFP::get(llvm::Type::getDoubleTy(context), 1.414213562);
-		llvm::Value * fpShlRes		 = builder.CreateSIToFP(shlRes, llvm::Type::getDoubleTy(context));
-		llvm::Value * compensated	 = builder.CreateFMul(fpShlRes, compensationFactor);
-		finalRes			 = builder.CreateFPToSI(compensated, quantizedType);
+		llvm::Value * compensationFactor = llvm::ConstantFP::get(llvm::Type::getFloatTy(context), 1.414213562);
+		llvm::Value * fpShlRes = builder.CreateSIToFP(shlRes, llvm::Type::getFloatTy(context));
+		llvm::Value * compensated = builder.CreateFMul(fpShlRes, compensationFactor);
+		finalRes = builder.CreateFPToSI(compensated, quantizedType);
 	}
 
 	builder.CreateRet(finalRes);
-
-	// Insert the newly created function into the list
 	functionsToInsert.push_back(func);
-
 	llvm::errs() << "Created fixsqrt function: " << func->getName() << "\n";
 
 	return func;
@@ -1238,6 +1297,74 @@ createFixSqrt(llvm::Module * irModule, Type * quantizedType, std::vector<llvm::F
 // }
 
 // Create a fixed-point multiplication function
+//TODO :Original version fixmul
+//llvm::Function *
+//createFixMul(Module * irModule, Type * quantizedType, std::vector<llvm::Function *> & functionsToInsert)
+//{
+//	llvm::errs() << "Entering createFixMul\n";
+//
+//	// Check if irModule is valid
+//	if (!irModule)
+//	{
+//		llvm::errs() << "Error: irModule is nullptr\n";
+//		return nullptr;
+//	}
+//
+//	std::string fixmulFuncName = "fixmul";
+//	for (auto & function : *irModule)
+//	{
+//		if (function.getName() == fixmulFuncName)
+//		{
+//			llvm::errs() << "fixmul already exists\n";
+//			return &function;
+//		}
+//	}
+//
+//	llvm::FunctionType * funcType = llvm::FunctionType::get(quantizedType, {quantizedType, quantizedType}, false);
+//	llvm::Function *     func     = llvm::Function::Create(funcType, llvm::Function::PrivateLinkage, fixmulFuncName, irModule);
+//
+//	// 设置调用约定为 fastcc
+//	func->setCallingConv(llvm::CallingConv::Fast);
+//
+//	llvm::BasicBlock * entryBB = llvm::BasicBlock::Create(irModule->getContext(), "entry", func);
+//	llvm::IRBuilder<>  builder(entryBB);
+//	builder.SetInsertPoint(entryBB);
+//
+//	// Create fixed-point multiplication instruction
+//	Type * higherQuantizedType;
+//	switch (BIT_WIDTH)
+//	{
+//		case 8:
+//			higherQuantizedType = Type::getInt16Ty(irModule->getContext());
+//			break;
+//		case 16:
+//			higherQuantizedType = Type::getInt32Ty(irModule->getContext());
+//			break;
+//		default:
+//			higherQuantizedType = Type::getInt64Ty(irModule->getContext());
+//			break;
+//	}
+//
+//	llvm::Function::arg_iterator arg1  = &*(func->arg_begin());
+//	llvm::Value *		     sext1 = builder.CreateSExt(arg1, higherQuantizedType);
+//	llvm::Function::arg_iterator arg2  = &*(++arg1);
+//	llvm::Value *		     sext2 = builder.CreateSExt(arg2, higherQuantizedType);
+//	// llvm::Value *		     mulInst   = builder.CreateMul(sext1, sext2);
+//	// nsw
+//	llvm::Value * mulInst  = builder.CreateNSWMul(sext1, sext2);
+//	//llvm::Value * ashrInst = builder.CreateAShr(mulInst, ConstantInt::get(higherQuantizedType, FRAC_Q));
+//	// lshr
+//	llvm::Value * ashrInst	= builder.CreateLShr(mulInst, ConstantInt::get(higherQuantizedType, FRAC_Q));
+//	llvm::Value * truncInst = builder.CreateTrunc(ashrInst, quantizedType);
+//	builder.CreateRet(truncInst);
+//
+//	functionsToInsert.emplace_back(func);
+//	llvm::errs() << "Created fixmul function: " << func->getName() << "\n";
+//	return func;
+//}
+
+
+//TODO: i32 version fixmul
 llvm::Function *
 createFixMul(Module * irModule, Type * quantizedType, std::vector<llvm::Function *> & functionsToInsert)
 {
@@ -1260,48 +1387,40 @@ createFixMul(Module * irModule, Type * quantizedType, std::vector<llvm::Function
 		}
 	}
 
+	// Create the function type with i32 arguments and i32 return type
 	llvm::FunctionType * funcType = llvm::FunctionType::get(quantizedType, {quantizedType, quantizedType}, false);
 	llvm::Function *     func     = llvm::Function::Create(funcType, llvm::Function::PrivateLinkage, fixmulFuncName, irModule);
 
-	// 设置调用约定为 fastcc
+	// Set calling convention to fastcc
 	func->setCallingConv(llvm::CallingConv::Fast);
 
+	// Create entry basic block
 	llvm::BasicBlock * entryBB = llvm::BasicBlock::Create(irModule->getContext(), "entry", func);
 	llvm::IRBuilder<>  builder(entryBB);
 	builder.SetInsertPoint(entryBB);
 
-	// Create fixed-point multiplication instruction
-	Type * higherQuantizedType;
-	switch (BIT_WIDTH)
-	{
-		case 8:
-			higherQuantizedType = Type::getInt16Ty(irModule->getContext());
-			break;
-		case 16:
-			higherQuantizedType = Type::getInt32Ty(irModule->getContext());
-			break;
-		default:
-			higherQuantizedType = Type::getInt64Ty(irModule->getContext());
-			break;
-	}
+	// Get the two arguments of the function
+	llvm::Function::arg_iterator args = func->arg_begin();
+	llvm::Value * arg1 = args++;  // Get the first argument
+	llvm::Value * arg2 = args;    // Get the second argument
 
-	llvm::Function::arg_iterator arg1  = &*(func->arg_begin());
-	llvm::Value *		     sext1 = builder.CreateSExt(arg1, higherQuantizedType);
-	llvm::Function::arg_iterator arg2  = &*(++arg1);
-	llvm::Value *		     sext2 = builder.CreateSExt(arg2, higherQuantizedType);
-	// llvm::Value *		     mulInst   = builder.CreateMul(sext1, sext2);
-	// nsw
-	llvm::Value * mulInst  = builder.CreateNSWMul(sext1, sext2);
-	//llvm::Value * ashrInst = builder.CreateAShr(mulInst, ConstantInt::get(higherQuantizedType, FRAC_Q));
-	// lshr
-	llvm::Value * ashrInst	= builder.CreateLShr(mulInst, ConstantInt::get(higherQuantizedType, FRAC_Q));
-	llvm::Value * truncInst = builder.CreateTrunc(ashrInst, quantizedType);
-	builder.CreateRet(truncInst);
+	// Perform i32 multiplication
+	llvm::Value * mulInst = builder.CreateMul(arg1, arg2);
 
+	// Logical shift right by 10
+	llvm::Value * lshrInst = builder.CreateAShr(mulInst, ConstantInt::get(quantizedType, 10));
+
+	// Return the result
+	builder.CreateRet(lshrInst);
+
+	// Add the function to the list of functions to insert
 	functionsToInsert.emplace_back(func);
+
 	llvm::errs() << "Created fixmul function: " << func->getName() << "\n";
 	return func;
 }
+
+
 
 // Create a fixed-point division function
 llvm::Function *
@@ -1934,6 +2053,9 @@ handleFMul(Instruction * llvmIrInstruction, Type * quantizedType, Function * fix
 	// 检查是否存在浮点数常数0.5
 	bool lhsIsHalf = lhsConst && lhsConst->getValueAPF().convertToDouble() == 0.5;
 	bool rhsIsHalf = rhsConst && rhsConst->getValueAPF().convertToDouble() == 0.5;
+	bool lhsIsTwo = lhsConst && lhsConst->getValueAPF().convertToDouble() == 2.0;
+	bool rhsIsTwo = rhsConst && rhsConst->getValueAPF().convertToDouble() == 2.0;
+
 
 	if (auto rhsConst = dyn_cast<ConstantFP>(rhs))
 	{
@@ -1999,6 +2121,26 @@ handleFMul(Instruction * llvmIrInstruction, Type * quantizedType, Function * fix
 		llvmIrInstruction->eraseFromParent();
 
 		return;	 // 防止后续代码执行
+	}
+
+	if (lhsIsTwo || rhsIsTwo)
+	{
+		llvm::errs() << "One operand is a floating-point constant 2.0, simplifying using logical shift left by 1\n";
+
+		Value *otherOperand = lhsIsTwo ? rhs : lhs;
+		Type *intType = Type::getInt32Ty(llvmIrInstruction->getContext());
+
+		// 创建常数1，用于左移
+		Value *one = ConstantInt::get(intType, 1);
+
+		// 创建逻辑左移指令
+		Instruction *shlInst = BinaryOperator::CreateShl(otherOperand, one, "mulbytwo", llvmIrInstruction);
+
+		// 替换原来的乘法指令
+		llvmIrInstruction->replaceAllUsesWith(shlInst);
+		llvmIrInstruction->eraseFromParent();
+
+		return; // 防止后续代码执行
 	}
 
 	// If either operand is a float constant, convert it to fixed-point using handleConstant
@@ -2308,7 +2450,7 @@ handleCall(CallInst * llvmIrCallInstruction, Type * quantizedType, std::vector<l
 
 			std::string funcName = calledFunction->getName().str();
 
-			if (funcName == "sqrt" || funcName == "sqrtf" || funcName == "llvm.sqrt.f64")
+			if (funcName == "sqrt" || funcName == "sqrtf" || funcName == "llvm.sqrt.f64"|| funcName == "llvm.sqrt.f32")
 			{
 				// For sqrt
 				handleSqrtCall(llvmIrCallInstruction, quantizedType, fixsqrt);
