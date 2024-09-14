@@ -1557,6 +1557,55 @@ createFixRsqrt(llvm::Module * irModule, Type * quantizedType, std::vector<llvm::
 	return func;
 }
 
+//llvm::Function *createFixRsqrt(llvm::Module *irModule, llvm::Type *quantizedType, std::vector<llvm::Function *> &functionsToInsert) {
+//	llvm::errs() << "Entering createFixRsqrt\n";
+//
+//	if (!irModule) {
+//		llvm::errs() << "Error: irModule is nullptr\n";
+//		return nullptr;
+//	}
+//
+//	std::string fixrsqrtFuncName = "fixrsqrt";
+//	for (auto &function : *irModule) {
+//		if (function.getName() == fixrsqrtFuncName) {
+//			llvm::errs() << "fixrsqrt already exists\n";
+//			return &function;
+//		}
+//	}
+//
+//	llvm::FunctionType *funcType = llvm::FunctionType::get(quantizedType, {quantizedType}, false);
+//	llvm::Function *func = llvm::Function::Create(funcType, llvm::Function::PrivateLinkage, fixrsqrtFuncName, irModule);
+//	llvm::BasicBlock *entryBB = llvm::BasicBlock::Create(irModule->getContext(), "entry", func);
+//	llvm::IRBuilder<> builder(entryBB);
+//
+//	llvm::Function::arg_iterator args = func->arg_begin();
+//	llvm::Value *x = &*args++;
+//
+//	llvm::Function *fixMulFunc = createFixMul(irModule, quantizedType, functionsToInsert);
+//
+//	llvm::Value *halfX = builder.CreateLShr(x, 1);
+//
+//	llvm::Value *fpX = builder.CreateSIToFP(x, llvm::Type::getFloatTy(irModule->getContext()));
+//	llvm::Value *mulConst = llvm::ConstantFP::get(llvm::Type::getFloatTy(irModule->getContext()), 0.0009765625);
+//	llvm::Value *approximation = builder.CreateFMul(fpX, mulConst);
+//
+//	llvm::Value *intApproximation = builder.CreateBitCast(approximation, llvm::Type::getInt32Ty(irModule->getContext()));
+//	llvm::Value *shiftedApproximation = builder.CreateLShr(intApproximation, 1);
+//	llvm::Value *magicNumberSub = builder.CreateSub(llvm::ConstantInt::get(llvm::Type::getInt32Ty(irModule->getContext()), 1597463007), shiftedApproximation);
+//
+//	llvm::Value *scaledApproximation = builder.CreateShl(magicNumberSub, 10);
+//	llvm::Value *firstMul = builder.CreateCall(fixMulFunc, {halfX, scaledApproximation});
+//	llvm::Value *secondMul = builder.CreateCall(fixMulFunc, {firstMul, scaledApproximation});
+//	llvm::Value *correction = builder.CreateSub(llvm::ConstantInt::get(quantizedType, 1536), secondMul);
+//
+//	llvm::Value *finalResult = builder.CreateCall(fixMulFunc, {scaledApproximation, correction});
+//
+//	builder.CreateRet(finalResult);
+//	functionsToInsert.push_back(func);
+//
+//	return func;
+//}
+
 // Quantize simple floating-point instructions
 CmpInst::Predicate
 quantizePredict(CmpInst::Predicate predict)
@@ -2055,6 +2104,10 @@ handleFMul(Instruction * llvmIrInstruction, Type * quantizedType, Function * fix
 	bool rhsIsHalf = rhsConst && rhsConst->getValueAPF().convertToDouble() == 0.5;
 	bool lhsIsTwo = lhsConst && lhsConst->getValueAPF().convertToDouble() == 2.0;
 	bool rhsIsTwo = rhsConst && rhsConst->getValueAPF().convertToDouble() == 2.0;
+	bool lhsIsFour =lhsConst && lhsConst->getValueAPF().convertToDouble() == 4.0;
+	bool rhsIsFour = rhsConst && rhsConst->getValueAPF().convertToDouble() == 4.0;
+	bool lhsIsEight =lhsConst && lhsConst->getValueAPF().convertToDouble() == 8.0;
+	bool rhsIsEight = rhsConst && rhsConst->getValueAPF().convertToDouble() == 8.0;
 
 
 	if (auto rhsConst = dyn_cast<ConstantFP>(rhs))
@@ -2143,6 +2196,47 @@ handleFMul(Instruction * llvmIrInstruction, Type * quantizedType, Function * fix
 		return; // 防止后续代码执行
 	}
 
+
+	if (lhsIsFour || rhsIsFour)
+	{
+		llvm::errs() << "One operand is a floating-point constant 4.0, simplifying using logical shift left by 1\n";
+
+		Value *otherOperand = lhsIsFour ? rhs : lhs;
+		Type *intType = Type::getInt32Ty(llvmIrInstruction->getContext());
+
+		// 创建常数1，用于左移
+		Value *one = ConstantInt::get(intType, 2);
+
+		// 创建逻辑左移指令
+		Instruction *shlInst = BinaryOperator::CreateShl(otherOperand, one, "mulbyfour", llvmIrInstruction);
+
+		// 替换原来的乘法指令
+		llvmIrInstruction->replaceAllUsesWith(shlInst);
+		llvmIrInstruction->eraseFromParent();
+
+		return; // 防止后续代码执行
+	}
+
+	if (lhsIsEight || rhsIsEight)
+	{
+		llvm::errs() << "One operand is a floating-point constant 8.0, simplifying using logical shift left by 1\n";
+
+		Value *otherOperand = lhsIsEight ? rhs : lhs;
+		Type *intType = Type::getInt32Ty(llvmIrInstruction->getContext());
+
+		// 创建常数1，用于左移
+		Value *one = ConstantInt::get(intType, 3);
+
+		// 创建逻辑左移指令
+		Instruction *shlInst = BinaryOperator::CreateShl(otherOperand, one, "mulbyfour", llvmIrInstruction);
+
+		// 替换原来的乘法指令
+		llvmIrInstruction->replaceAllUsesWith(shlInst);
+		llvmIrInstruction->eraseFromParent();
+
+		return; // 防止后续代码执行
+	}
+
 	// If either operand is a float constant, convert it to fixed-point using handleConstant
 	if (isa<ConstantFP>(lhs))
 	{
@@ -2190,15 +2284,29 @@ handleFMul(Instruction * llvmIrInstruction, Type * quantizedType, Function * fix
 	bool lhsIsInteger = lhs->getType()->isIntegerTy();
 	bool rhsIsInteger = rhs->getType()->isIntegerTy();
 
-	if (lhsIsInteger && rhsIsInteger)
-	{
-		llvm::errs() << "Both operands are integers, substituting with fixmul function...\n";
-		llvm::CallInst * callInst = Builder.CreateCall(fixmul, {lhs, rhs});
-		//callInst->setCallingConv(llvm::CallingConv::Fast);
-		//callInst->setTailCall(true);
-		llvmIrInstruction->replaceAllUsesWith(callInst);
-		llvmIrInstruction->eraseFromParent();
-	}
+//	if (lhsIsInteger && rhsIsInteger)
+//	{
+//		llvm::errs() << "Both operands are integers, substituting with fixmul function...\n";
+//		llvm::CallInst * callInst = Builder.CreateCall(fixmul, {lhs, rhs});
+//		//callInst->setCallingConv(llvm::CallingConv::Fast);
+//		//callInst->setTailCall(true);
+//		llvmIrInstruction->replaceAllUsesWith(callInst);
+//		llvmIrInstruction->eraseFromParent();
+//	}
+
+if (lhsIsInteger && rhsIsInteger) {
+    llvm::errs() << "Both operands are integers, performing inline multiplication and shifting...\n";
+
+    // Perform multiplication directly
+    llvm::Value *mulResult = Builder.CreateMul(lhs, rhs);
+
+    // Perform right arithmetic shift
+    llvm::Value *shiftResult = Builder.CreateAShr(mulResult, llvm::ConstantInt::get(lhs->getType(), 10));
+
+    // Replace all uses of the original instruction with the result of the shift
+    llvmIrInstruction->replaceAllUsesWith(shiftResult);
+    llvmIrInstruction->eraseFromParent();
+}
 }
 
 void
