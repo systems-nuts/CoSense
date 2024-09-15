@@ -18,7 +18,8 @@ sed -i 's/float\*\*/i32**/g' "$file"
 # Replace float* with i32*
 sed -i 's/float\*/i32*/g' "$file"
 
-
+# Now replace the call to invSqrt with the call to fixrsqrt
+sed -i 's/call i32 @invSqrt/call i32 @fixrsqrt/g' "$file"
 
 
 

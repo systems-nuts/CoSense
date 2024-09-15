@@ -25,12 +25,12 @@
 #define sampleFreq	28.0f		// sample frequency in Hz
 #define betaDef		0.1f		// 2 * proportional gain
 
-#ifndef lowerBound
-#define lowerBound -16
-#endif
-#ifndef upperBound
-#define upperBound 16
-#endif
+//#ifndef lowerBound
+//#define lowerBound -16
+//#endif
+//#ifndef upperBound
+//#define upperBound 16
+//#endif
 
 //---------------------------------------------------------------------------------------------------
 // Variable definitions
@@ -70,11 +70,11 @@ void MadgwickAHRSupdate(float gx, float gy, float gz, float ax, float ay, float 
 	float q1 = *q1_ptr;
 	float q2 = *q2_ptr;
 	float q3 = *q3_ptr;
-#ifdef ASSUME
-	__builtin_assume(ax > lowerBound && ax < upperBound);
-	__builtin_assume(ay > lowerBound && ay < upperBound);
-	__builtin_assume(az > lowerBound && az < upperBound);
-#endif
+//#ifdef ASSUME
+//	__builtin_assume(ax > lowerBound && ax < upperBound);
+//	__builtin_assume(ay > lowerBound && ay < upperBound);
+//	__builtin_assume(az > lowerBound && az < upperBound);
+//#endif
 	float recipNorm;
 	float s0, s1, s2, s3;
 	float qDot1, qDot2, qDot3, qDot4;
