@@ -33,8 +33,10 @@ POSSIBILITY OF SUCH DAMAGE.
 #include <unordered_map>
 using namespace llvm;
 
-#define FRAC_Q 10
-#define FRAC_BASE (1 << FRAC_Q)
+
+
+unsigned int FRAC_Q;
+#define frac_base (1 << FRAC_Q)
 #define BIT_WIDTH 32
 
 extern "C" {
@@ -46,51 +48,6 @@ isValidFloatingType(Type * type)
 	return type->isFloatTy() || type->isDoubleTy();
 }
 
-bool
-checkForSpecialFloat(BinaryOperator * MulInst)
-{
-	// 确保指令是乘法
-	if (MulInst->getOpcode() == Instruction::FMul)
-	{
-		Value * lhs = MulInst->getOperand(0);
-		Value * rhs = MulInst->getOperand(1);
-
-		// 检查右侧操作数是否为ConstantFP
-		if (ConstantFP * rhsConst = dyn_cast<ConstantFP>(rhs))
-		{
-			// 创建特定的浮点值
-			APFloat targetValue = APFloat(APFloat::IEEEdouble(), APInt(64, 0x3FA24924A0000000));
-
-			// 比较右侧操作数是否等于0x3FA24924A0000000
-			if (rhsConst->getValueAPF().bitwiseIsEqual(targetValue))
-			{
-				return true;  // 发现目标浮点数
-			}
-		}
-	}
-	return false;  // 未发现目标浮点数
-}
-
-bool
-isSpecialIEEE754(llvm::Value * value, llvm::IRBuilder<> & builder)
-{
-	// 创建NaN和Infinity的IEEE表示
-	auto * nanValue = llvm::ConstantFP::getNaN(value->getType());
-	auto * posInf	= llvm::ConstantFP::getInfinity(value->getType(), false);
-	auto * negInf	= llvm::ConstantFP::getInfinity(value->getType(), true);
-
-	// 比较检测
-	llvm::Value * isNan    = builder.CreateFCmpUNO(value, value);	// 检测NaN
-	llvm::Value * isPosInf = builder.CreateFCmpOEQ(value, posInf);	// 检测正无穷
-	llvm::Value * isNegInf = builder.CreateFCmpOEQ(value, negInf);	// 检测负无穷
-
-	// 根据需要处理
-	if (isNan || isPosInf || isNegInf)
-	{
-		return true;  // 是特殊值
-	}
-	return false;
-}
 
 bool
 isMatrixOperation(Instruction * instr)
@@ -292,8 +249,8 @@ shouldSkipFunction(const std::string & functionName)
 	    "llvm.dbg.declare",
 	    "llvm.dbg.value",
 	    "llvm.dbg.label",
-	    "fixmul",
-	    "fixdiv",
+//	    "fixmul",
+//	    "fixdiv",
 	    "fixsqrt",
 	    "fixrsqrt",
 	    "constantMulDiv",
@@ -721,7 +678,7 @@ eraseOldInstructions()
 //			if (llvm::Constant *init = globalVar.getInitializer()) {
 //				if (llvm::ConstantFP *constFp = llvm::dyn_cast<llvm::ConstantFP>(init)) {
 //					double value = constFp->getValueAPF().convertToDouble();
-//					int64_t quantizedValue = static_cast<int64_t>(round(value * FRAC_BASE));
+//					int64_t quantizedValue = static_cast<int64_t>(round(value * frac_base));
 //					newInitializer = llvm::ConstantInt::get(quantizedType, quantizedValue);
 //				}
 //			}
@@ -769,7 +726,7 @@ updateGlobalVariables(Module * module, Type * quantizedType)
 				if (llvm::ConstantFP * constFp = llvm::dyn_cast<llvm::ConstantFP>(init))
 				{
 					double	value	       = constFp->getValueAPF().convertToDouble();
-					int64_t quantizedValue = static_cast<int64_t>(round(value * FRAC_BASE));
+					int64_t quantizedValue = static_cast<int64_t>(round(value * frac_base));
 					globalVar.setInitializer(llvm::ConstantInt::get(quantizedType, quantizedValue));
 				}
 			}
@@ -835,19 +792,19 @@ quantizeConstant(Instruction * inInstruction, Type * quantizedType)
 		{
 			// Convert float constant to fixed-point
 			float constValue = constFp->getValueAPF().convertToFloat();
-			constValue *= FRAC_BASE;
+			constValue *= frac_base;
 			int32_t fixedPointValue = round(constValue);
 			// newValue = ConstantInt::get(quantizedType, round(constValue), true);
-			newValue = ConstantFP::get(inValue->getType(), (float)fixedPointValue / FRAC_BASE);
+			newValue = ConstantFP::get(inValue->getType(), (float)fixedPointValue / frac_base);
 		}
 		else if (inValue->getType()->isDoubleTy())
 		{
 			// Convert double constant to fixed-point and back to double
 			double constValue = constFp->getValueAPF().convertToDouble();
-			constValue *= FRAC_BASE;
+			constValue *= frac_base;
 			int64_t fixedPointValue = round(constValue);
 			// newValue = ConstantInt::get(quantizedType, round(constValue), true);
-			newValue = ConstantFP::get(inValue->getType(), (double)fixedPointValue / FRAC_BASE);
+			newValue = ConstantFP::get(inValue->getType(), (double)fixedPointValue / frac_base);
 		}
 		else
 		{
@@ -883,13 +840,13 @@ quantizeConstant(Instruction * inInstruction, Type * quantizedType)
 //		if (inValue->getType()->isFloatTy())
 //		{
 //			float constValue = constFp->getValueAPF().convertToFloat();
-//			constValue *= FRAC_BASE;
+//			constValue *= frac_base;
 //			newValue = ConstantInt::get(quantizedType, round(constValue), true);
 //		}
 //		else if (inValue->getType()->isDoubleTy())
 //		{
 //			double constValue = constFp->getValueAPF().convertToDouble();
-//			constValue *= FRAC_BASE;
+//			constValue *= frac_base;
 //			newValue = ConstantInt::get(quantizedType, round(constValue), true);
 //		}
 //		else
@@ -1243,9 +1200,9 @@ createFixSqrt(llvm::Module * irModule, Type * quantizedType, std::vector<llvm::F
 //	llvm::Value* base = &*args++;
 //	llvm::Value* exponent = &*args;
 //
-//	// Initialize result as FRAC_BASE
+//	// Initialize result as frac_base
 //	llvm::Value* result = builder.CreateAlloca(quantizedType, nullptr, "result");
-//	builder.CreateStore(ConstantInt::get(quantizedType, FRAC_BASE), result);
+//	builder.CreateStore(ConstantInt::get(quantizedType, frac_base), result);
 //
 //	llvm::BasicBlock* loopBB = llvm::BasicBlock::Create(irModule->getContext(), "loop", func);
 //	llvm::BasicBlock* afterBB = llvm::BasicBlock::Create(irModule->getContext(), "after", func);
@@ -1408,7 +1365,7 @@ createFixMul(Module * irModule, Type * quantizedType, std::vector<llvm::Function
 	llvm::Value * mulInst = builder.CreateMul(arg1, arg2);
 
 	// Logical shift right by 10
-	llvm::Value * lshrInst = builder.CreateAShr(mulInst, ConstantInt::get(quantizedType, 10));
+	llvm::Value * lshrInst = builder.CreateAShr(mulInst, ConstantInt::get(quantizedType, FRAC_Q));
 
 	// Return the result
 	builder.CreateRet(lshrInst);
@@ -1471,8 +1428,8 @@ createFixDiv(Module * irModule, Type * quantizedType, std::vector<llvm::Function
 	llvm::Function::arg_iterator arg2  = &*(++arg1);
 	llvm::Value *		     sext2 = builder.CreateSExt(arg2, higherQuantizedType);
 
-	// Multiply numerator by FRAC_BASE before division to maintain precision
-	llvm::Value * mulInst	= builder.CreateMul(sext1, ConstantInt::get(higherQuantizedType, FRAC_BASE));
+	// Multiply numerator by frac_base before division to maintain precision
+	llvm::Value * mulInst	= builder.CreateMul(sext1, ConstantInt::get(higherQuantizedType, frac_base));
 	llvm::Value * divInst	= builder.CreateSDiv(mulInst, sext2);
 	llvm::Value * truncInst = builder.CreateTrunc(divInst, quantizedType);
 	builder.CreateRet(truncInst);
@@ -1520,8 +1477,8 @@ createFixDiv(Module * irModule, Type * quantizedType, std::vector<llvm::Function
 	// Create the fixed-point multiplication function
 	//llvm::Function * fixMulFunc = createFixMul(irModule, quantizedType, functionsToInsert);
 
-	// Step 1: int_halfx = mulfix(0.5 * FRAC_BASE, x);
-	// llvm::Value * halfBase = builder.CreateCall(fixMulFunc, {ConstantInt::get(quantizedType, FRAC_BASE / 2), x});
+	// Step 1: int_halfx = mulfix(0.5 * frac_base, x);
+	// llvm::Value * halfBase = builder.CreateCall(fixMulFunc, {ConstantInt::get(quantizedType, frac_base / 2), x});
 	llvm::Value * halfBase = builder.CreateLShr(x, ConstantInt::get(quantizedType, 1));
 
 	// Step 2: Convert x to floating-point and perform the initial approximation
@@ -1530,25 +1487,27 @@ createFixDiv(Module * irModule, Type * quantizedType, std::vector<llvm::Function
 	// Added step: fp_y = fp_y / 1024.0;
 	// fp_y = builder.CreateFDiv(fp_y, ConstantFP::get(llvm::Type::getFloatTy(irModule->getContext()), 1024.0));
 
+	fp_y = builder.CreateFDiv(fp_y, ConstantFP::get(llvm::Type::getFloatTy(irModule->getContext()), frac_base));
+
 	// Equivalent of: %4 = fmul float %3, 0x3F50000000000000
-	fp_y = builder.CreateFMul(fp_y, llvm::ConstantFP::get(llvm::Type::getFloatTy(irModule->getContext()), 0.0009765625));
+	//fp_y = builder.CreateFMul(fp_y, llvm::ConstantFP::get(llvm::Type::getFloatTy(irModule->getContext()), 0.0009765625));
 
 	llvm::Value * i = builder.CreateBitCast(fp_y, llvm::Type::getInt32Ty(irModule->getContext()));
 	i		= builder.CreateSub(ConstantInt::get(llvm::Type::getInt32Ty(irModule->getContext()), 0x5f3759df), builder.CreateLShr(i, 1));
 	fp_y		= builder.CreateBitCast(i, llvm::Type::getFloatTy(irModule->getContext()));
 
-	// Step 3: int_y = fp_y * FRAC_BASE;
-	llvm::Value * int_y = builder.CreateFPToSI(builder.CreateFMul(fp_y, ConstantFP::get(llvm::Type::getFloatTy(irModule->getContext()), FRAC_BASE)), quantizedType);
+	// Step 3: int_y = fp_y * frac_base;
+	llvm::Value * int_y = builder.CreateFPToSI(builder.CreateFMul(fp_y, ConstantFP::get(llvm::Type::getFloatTy(irModule->getContext()), frac_base)), quantizedType);
 
-	// Step 4: int_y = mulfix(int_y, ((int32_t)(1.5f * FRAC_BASE) - (mulfix(mulfix(int_halfx, int_y), int_y))));
+	// Step 4: int_y = mulfix(int_y, ((int32_t)(1.5f * frac_base) - (mulfix(mulfix(int_halfx, int_y), int_y))));
 	//	llvm::Value * mulfix1	 = builder.CreateCall(fixMulFunc, {halfBase, int_y});
 	//	llvm::Value * mulfix2	 = builder.CreateCall(fixMulFunc, {mulfix1, int_y});
-	//	llvm::Value * correction = builder.CreateSub(ConstantInt::get(quantizedType, static_cast<int>(1.5f * FRAC_BASE)), mulfix2);
+	//	llvm::Value * correction = builder.CreateSub(ConstantInt::get(quantizedType, static_cast<int>(1.5f * frac_base)), mulfix2);
 	//	llvm::Value * final_y	 = builder.CreateCall(fixMulFunc, {int_y, correction});
-	llvm::Value * mulfix1	 = builder.CreateAShr(builder.CreateMul(halfBase, int_y), llvm::ConstantInt::get(quantizedType, 10));
-	llvm::Value * mulfix2	 = builder.CreateAShr(builder.CreateMul(mulfix1, int_y), llvm::ConstantInt::get(quantizedType, 10));
-	llvm::Value * correction = builder.CreateSub(llvm::ConstantInt::get(quantizedType, static_cast<int>(1.5f * FRAC_BASE)), mulfix2);
-	llvm::Value * final_y	 = builder.CreateAShr(builder.CreateMul(int_y, correction), llvm::ConstantInt::get(quantizedType, 10));
+	llvm::Value * mulfix1	 = builder.CreateAShr(builder.CreateMul(halfBase, int_y), llvm::ConstantInt::get(quantizedType, FRAC_Q));
+	llvm::Value * mulfix2	 = builder.CreateAShr(builder.CreateMul(mulfix1, int_y), llvm::ConstantInt::get(quantizedType, FRAC_Q));
+	llvm::Value * correction = builder.CreateSub(llvm::ConstantInt::get(quantizedType, static_cast<int>(1.5f * frac_base)), mulfix2);
+	llvm::Value * final_y	 = builder.CreateAShr(builder.CreateMul(int_y, correction), llvm::ConstantInt::get(quantizedType, FRAC_Q));
 
 	// Return the final fixed-point result
 	builder.CreateRet(final_y);
@@ -1819,7 +1778,7 @@ handleConstant(Instruction * inInstruction, Type * quantizedType)
 			// if (fabs(decimalValue - constValue) < 0.001)
 			{
 				// If the decimal part is already an integer, quantize directly
-				//				auto quantizedValue = static_cast<int64_t>(round(constValue * FRAC_BASE));
+				//				auto quantizedValue = static_cast<int64_t>(round(constValue * frac_base));
 				//				auto quantizedConst = ConstantInt::get(quantizedType, quantizedValue);
 				//				llvm::errs() << "Quantized float value: " << quantizedValue << "\n";
 				//				inInstruction->setOperand(idx, quantizedConst);
@@ -1843,7 +1802,7 @@ handleConstant(Instruction * inInstruction, Type * quantizedType)
 			if (fabs(decimalValue - constValue) < 0.001)
 			{
 				// If the decimal part is already an integer, quantize directly
-				//				int64_t quantizedValue = static_cast<int64_t>(round(constValue * FRAC_BASE));
+				//				int64_t quantizedValue = static_cast<int64_t>(round(constValue * frac_base));
 				//				auto	quantizedConst = ConstantInt::get(quantizedType, quantizedValue);
 				//				llvm::errs() << "Quantized double value: " << quantizedValue << "\n";
 				//				inInstruction->setOperand(idx, quantizedConst);
@@ -1882,7 +1841,7 @@ handleFAdd(Instruction * inInstruction, Type * quantizedType)
 		if (ConstantFP * constFp = dyn_cast<ConstantFP>(op0))
 		{
 			float	constValue     = constFp->getValueAPF().convertToFloat();
-			int64_t quantizedValue = static_cast<int64_t>(round(constValue * FRAC_BASE));
+			int64_t quantizedValue = static_cast<int64_t>(round(constValue * frac_base));
 			op0		       = ConstantInt::get(quantizedType, quantizedValue);
 		}
 		else
@@ -1896,7 +1855,7 @@ handleFAdd(Instruction * inInstruction, Type * quantizedType)
 		if (ConstantFP * constFp = dyn_cast<ConstantFP>(op1))
 		{
 			float	constValue     = constFp->getValueAPF().convertToFloat();
-			int64_t quantizedValue = static_cast<int64_t>(round(constValue * FRAC_BASE));
+			int64_t quantizedValue = static_cast<int64_t>(round(constValue * frac_base));
 			op1		       = ConstantInt::get(quantizedType, quantizedValue);
 		}
 		else
@@ -1910,7 +1869,7 @@ handleFAdd(Instruction * inInstruction, Type * quantizedType)
 		if (ConstantFP * constFp = dyn_cast<ConstantFP>(op1))
 		{
 			float	constValue     = constFp->getValueAPF().convertToFloat();
-			int64_t quantizedValue = static_cast<int64_t>(round(constValue * FRAC_BASE));
+			int64_t quantizedValue = static_cast<int64_t>(round(constValue * frac_base));
 			op1		       = ConstantInt::get(quantizedType, quantizedValue);
 		}
 		else
@@ -1919,20 +1878,20 @@ handleFAdd(Instruction * inInstruction, Type * quantizedType)
 		}
 	}
 
-	// Check if one of the operands is a floating-point constant that needs to be multiplied by FRAC_BASE
+	// Check if one of the operands is a floating-point constant that needs to be multiplied by frac_base
 	if (ConstantFP * constFp = dyn_cast<ConstantFP>(op0))
 	{
-		// Multiply the constant by FRAC_BASE and convert to integer
+		// Multiply the constant by frac_base and convert to integer
 		float	constValue     = constFp->getValueAPF().convertToFloat();
-		int64_t quantizedValue = static_cast<int64_t>(round(constValue * FRAC_BASE));
+		int64_t quantizedValue = static_cast<int64_t>(round(constValue * frac_base));
 		op0		       = ConstantInt::get(quantizedType, quantizedValue);
 	}
 
 	if (ConstantFP * constFp = dyn_cast<ConstantFP>(op1))
 	{
-		// Multiply the constant by FRAC_BASE and convert to integer
+		// Multiply the constant by frac_base and convert to integer
 		float	constValue     = constFp->getValueAPF().convertToFloat();
-		int64_t quantizedValue = static_cast<int64_t>(round(constValue * FRAC_BASE));
+		int64_t quantizedValue = static_cast<int64_t>(round(constValue * frac_base));
 		op1		       = ConstantInt::get(quantizedType, quantizedValue);
 	}
 
@@ -1962,7 +1921,7 @@ handleFSub(Instruction * inInstruction, Type * quantizedType)
 		if (ConstantFP * constFp = dyn_cast<ConstantFP>(op0))
 		{
 			float	constValue     = constFp->getValueAPF().convertToFloat();
-			int64_t quantizedValue = static_cast<int64_t>(round(constValue * FRAC_BASE));
+			int64_t quantizedValue = static_cast<int64_t>(round(constValue * frac_base));
 			op0		       = ConstantInt::get(quantizedType, quantizedValue);
 		}
 		else
@@ -1976,7 +1935,7 @@ handleFSub(Instruction * inInstruction, Type * quantizedType)
 		if (ConstantFP * constFp = dyn_cast<ConstantFP>(op1))
 		{
 			float	constValue     = constFp->getValueAPF().convertToFloat();
-			int64_t quantizedValue = static_cast<int64_t>(round(constValue * FRAC_BASE));
+			int64_t quantizedValue = static_cast<int64_t>(round(constValue * frac_base));
 			op1		       = ConstantInt::get(quantizedType, quantizedValue);
 		}
 		else
@@ -1985,20 +1944,20 @@ handleFSub(Instruction * inInstruction, Type * quantizedType)
 		}
 	}
 
-	// Check if one of the operands is a floating-point constant that needs to be multiplied by FRAC_BASE
+	// Check if one of the operands is a floating-point constant that needs to be multiplied by frac_base
 	if (ConstantFP * constFp = dyn_cast<ConstantFP>(op0))
 	{
-		// Multiply the constant by FRAC_BASE and convert to integer
+		// Multiply the constant by frac_base and convert to integer
 		float	constValue     = constFp->getValueAPF().convertToFloat();
-		int64_t quantizedValue = static_cast<int64_t>(round(constValue * FRAC_BASE));
+		int64_t quantizedValue = static_cast<int64_t>(round(constValue * frac_base));
 		op0		       = ConstantInt::get(quantizedType, quantizedValue);
 	}
 
 	if (ConstantFP * constFp = dyn_cast<ConstantFP>(op1))
 	{
-		// Multiply the constant by FRAC_BASE and convert to integer
+		// Multiply the constant by frac_base and convert to integer
 		float	constValue     = constFp->getValueAPF().convertToFloat();
-		int64_t quantizedValue = static_cast<int64_t>(round(constValue * FRAC_BASE));
+		int64_t quantizedValue = static_cast<int64_t>(round(constValue * frac_base));
 		op1		       = ConstantInt::get(quantizedType, quantizedValue);
 	}
 
@@ -2063,8 +2022,8 @@ convertToQuantizedType(Value * value, Type * quantizedType, IRBuilder<> & Builde
 {
 	if (value->getType()->isFloatTy() || value->getType()->isDoubleTy())
 	{
-		// 如果是浮点类型，首先乘以 FRAC_BASE，然后转换为量化后的整数类型
-		Value * scaledValue = Builder.CreateFMul(value, ConstantFP::get(value->getType(), FRAC_BASE));
+		// 如果是浮点类型，首先乘以 frac_base，然后转换为量化后的整数类型
+		Value * scaledValue = Builder.CreateFMul(value, ConstantFP::get(value->getType(), frac_base));
 		return Builder.CreateFPToSI(scaledValue, quantizedType);
 	}
 	else if (value->getType()->isIntegerTy())
@@ -2247,7 +2206,7 @@ handleFMul(Instruction * llvmIrInstruction, Type * quantizedType)
 		llvm::Value * mulResult = Builder.CreateMul(lhs, rhs,"", true);
 
 		// Perform right arithmetic shift
-		llvm::Value * shiftResult = Builder.CreateAShr(mulResult, llvm::ConstantInt::get(lhs->getType(), 10));
+		llvm::Value * shiftResult = Builder.CreateAShr(mulResult, llvm::ConstantInt::get(lhs->getType(), FRAC_Q));
 
 		// Replace all uses of the original instruction with the result of the shift
 		llvmIrInstruction->replaceAllUsesWith(shiftResult);
@@ -2624,7 +2583,7 @@ handleStore(Instruction * llvmIrInstruction, Type * quantizedType)
 //			llvm::errs() << "New quantized store value type: " << *quantizedType << "\n";
 //
 //			// Quantize the value operand
-//			auto quantizedValue = Builder.CreateFMul(llvmIrStoreInstruction->getValueOperand(), ConstantFP::get(valueType, FRAC_BASE));
+//			auto quantizedValue = Builder.CreateFMul(llvmIrStoreInstruction->getValueOperand(), ConstantFP::get(valueType, frac_base));
 //			quantizedValue	    = Builder.CreateFPToSI(quantizedValue, quantizedType);
 //			llvmIrStoreInstruction->setOperand(0, quantizedValue);
 //		}
@@ -3026,8 +2985,9 @@ quantizeFunctionArguments(Function & llvmIrFunction, Type * quantizedType)
 
 // Main function to perform LLVM IR auto quantization
 void
-irPassLLVMIRAutoQuantization(State * N, llvm::Function & llvmIrFunction, std::vector<llvm::Function *> & functionsToInsert)
+irPassLLVMIRAutoQuantization(State * N, llvm::Function & llvmIrFunction, std::vector<llvm::Function *> & functionsToInsert, int maxPrecisionBits)
 {
+	FRAC_Q = maxPrecisionBits;
 	flexprint(N->Fe, N->Fm, N->Fpinfo, "\tauto quantization.\n");
 	llvm::errs() << "Entering irPassLLVMIRAutoQuantization\n";
 
@@ -3202,13 +3162,13 @@ irPassLLVMIRAutoQuantization(State * N, llvm::Function & llvmIrFunction, std::ve
 								if (inValue->getType()->isFloatTy())
 								{
 									float constValue = constFp->getValueAPF().convertToFloat();
-									constValue *= FRAC_BASE;
+									constValue *= frac_base;
 									newValue = ConstantInt::get(quantizedType, round(constValue), true);
 								}
 								else if (inValue->getType()->isDoubleTy())
 								{
 									double constValue = constFp->getValueAPF().convertToDouble();
-									constValue *= FRAC_BASE;
+									constValue *= frac_base;
 									newValue = ConstantInt::get(quantizedType, round(constValue), true);
 								}
 								else

@@ -45,9 +45,8 @@
 #include "newton-irPass-LLVMIR-memoryAlignment.h"
 #include "newton-irPass-LLVMIR-emitAssume.h"
 
-
-//added code
-//#include "myRangeAnalysis.h"
+// added code
+// #include "myRangeAnalysis.h"
 #endif /* __cplusplus */
 
 #include <algorithm>
@@ -76,57 +75,17 @@
 #include "llvm/Support/FileSystem.h"
 #include "llvm/IR/Function.h"
 
+
 using namespace llvm;
 
-
-
-void handleSpecialNumber(llvm::Module &M, llvm::LLVMContext &Context) {
-	llvm::errs() << "Starting special number handling in the module.\n";
-
-	// 创建一个特定的 NaN 值（双精度浮点数的 IEEE NaN 表示）
-	uint64_t NaNBits = 0x7FF8000000000000;
-	llvm::APFloat SpecialNaN(llvm::APFloat::IEEEdouble(), llvm::APInt(64, NaNBits));
-
-	// 创建一个特殊的整数值作为替换，这里使用 INT_MAX
-	llvm::Constant *specialValue = llvm::ConstantInt::get(llvm::Type::getInt32Ty(Context), 0x7FFFFFFF);
-
-	// 遍历模块中的所有函数和指令
-	for (llvm::Function &F : M) {
-		for (llvm::BasicBlock &BB : F) {
-			for (llvm::Instruction &I : BB) {
-				if (auto *fpInst = llvm::dyn_cast<llvm::FPMathOperator>(&I)) {
-					for (unsigned opIdx = 0; opIdx < fpInst->getNumOperands(); ++opIdx) {
-						if (auto *cst = llvm::dyn_cast<llvm::ConstantFP>(fpInst->getOperand(opIdx))) {
-							// 使用 bitcast 检查操作数是否是特定的 NaN 值
-							if (cst->getValueAPF().bitcastToAPInt() == SpecialNaN.bitcastToAPInt()) {
-								// 日志输出
-								llvm::errs() << "Replacing special NaN in function " << F.getName() << " at instruction " << *fpInst << "\n";
-
-								// 替换操作数
-								fpInst->setOperand(opIdx, specialValue);
-							}
-						}
-					}
-				}
-			}
-		}
-	}
-
-	llvm::errs() << "Completed special number handling in the module.\n";
-}
-
-
-
-
-
-
-
-
 // Function to save the IR of a module to a file
-void saveModuleIR(llvm::Module &M, const std::string &fileName) {
-	std::error_code EC;
+void
+saveModuleIR(llvm::Module & M, const std::string & fileName)
+{
+	std::error_code	     EC;
 	llvm::raw_fd_ostream file(fileName, EC, llvm::sys::fs::OF_Text);
-	if (EC) {
+	if (EC)
+	{
 		llvm::errs() << "Error opening file " << fileName << " for writing: " << EC.message() << "\n";
 		return;
 	}
@@ -135,27 +94,39 @@ void saveModuleIR(llvm::Module &M, const std::string &fileName) {
 	file.close();
 }
 
-void removeQuantizedSuffixInModule(llvm::Module &M) {
-	for (auto &F : M) {
-		if (F.hasName()) {
+void
+removeQuantizedSuffixInModule(llvm::Module & M)
+{
+	for (auto & F : M)
+	{
+		if (F.hasName())
+		{
 			std::string FuncName = F.getName().str();
-			size_t pos = FuncName.find("_quantized");
-			if (pos != std::string::npos) {
-				FuncName.erase(pos, 10); // Remove "_quantized"
+			size_t	    pos	     = FuncName.find("_quantized");
+			if (pos != std::string::npos)
+			{
+				FuncName.erase(pos, 10);  // Remove "_quantized"
 				F.setName(FuncName);
 			}
 		}
 	}
 }
 
-void finalCorrectionPass(Module &M, Type *quantizedType) {
+void
+finalCorrectionPass(Module & M, Type * quantizedType)
+{
 	llvm::errs() << "Entering finalCorrectionPass\n";
-	for (Function &F : M) {
-		for (BasicBlock &BB : F) {
-			for (Instruction &I : BB) {
+	for (Function & F : M)
+	{
+		for (BasicBlock & BB : F)
+		{
+			for (Instruction & I : BB)
+			{
 				// Correct Load Instructions
-				if (auto *loadInst = dyn_cast<LoadInst>(&I)) {
-					if (loadInst->getType() != quantizedType) {
+				if (auto * loadInst = dyn_cast<LoadInst>(&I))
+				{
+					if (loadInst->getType() != quantizedType)
+					{
 						llvm::errs() << "Correcting load instruction: " << *loadInst << "\n";
 
 						loadInst->mutateType(quantizedType);
@@ -163,12 +134,15 @@ void finalCorrectionPass(Module &M, Type *quantizedType) {
 				}
 
 				// Correct Store Instructions
-				if (auto *storeInst = dyn_cast<StoreInst>(&I)) {
-					if (storeInst->getValueOperand()->getType() != quantizedType) {
+				if (auto * storeInst = dyn_cast<StoreInst>(&I))
+				{
+					if (storeInst->getValueOperand()->getType() != quantizedType)
+					{
 						llvm::errs() << "Correcting store instruction: " << *storeInst << "\n";
 						storeInst->getValueOperand()->mutateType(quantizedType);
 					}
-					if (storeInst->getPointerOperand()->getType()->getPointerElementType() != quantizedType) {
+					if (storeInst->getPointerOperand()->getType()->getPointerElementType() != quantizedType)
+					{
 						llvm::errs() << "Correcting store pointer operand: " << *storeInst << "\n";
 						storeInst->getPointerOperand()->mutateType(quantizedType->getPointerTo());
 					}
@@ -178,7 +152,6 @@ void finalCorrectionPass(Module &M, Type *quantizedType) {
 	}
 	llvm::errs() << "Exiting finalCorrectionPass\n";
 }
-
 
 void
 dumpIR(State * N, std::string fileSuffix, const std::unique_ptr<Module> & Mod)
@@ -354,6 +327,39 @@ irPassLLVMIROptimizeByRange(State * N, bool enableQuantization, bool enableOverl
 	}
 
 	/*
+	 *TODO  get sensor info, we only concern the id and precisionBits here
+	 * */
+	std::map<std::string, int> typePrecisionBits;
+	if (N->sensorList != NULL)
+	{
+		for (Modality * currentModality = N->sensorList->modalityList; currentModality != NULL; currentModality = currentModality->next)
+		{
+			flexprint(N->Fe, N->Fm, N->Fpinfo, "\tModality: %s\n", currentModality->identifier);
+			flexprint(N->Fe, N->Fm, N->Fpinfo, "\t\tprecisionBits: %d\n", currentModality->precisionBits);
+			typePrecisionBits.emplace(currentModality->identifier, currentModality->precisionBits);
+		}
+	}
+
+	int maxPrecisionBits = 0;
+	for (auto & typePrecisionBit : typePrecisionBits)
+	{
+		if (typePrecisionBit.second > maxPrecisionBits)
+		{
+			maxPrecisionBits = typePrecisionBit.second;
+		}
+	}
+
+
+	flexprint(N->Fe, N->Fm, N->Fpinfo, "maxPrecisionBits: %d\n", maxPrecisionBits);
+
+	maxPrecisionBits = 10;
+
+
+
+
+
+
+	/*
 	 * get const global variables
 	 * */
 	std::map<llvm::Value *, std::vector<std::pair<double, double>>> virtualRegisterVectorRange;
@@ -435,7 +441,7 @@ irPassLLVMIROptimizeByRange(State * N, bool enableQuantization, bool enableOverl
 		for (auto & mi : *Mod)
 		{
 			llvm::errs() << "Quantizing function: " << mi.getName() << "\n";
-			irPassLLVMIRAutoQuantization(N, mi, functionsToInsert);
+			irPassLLVMIRAutoQuantization(N, mi, functionsToInsert,maxPrecisionBits);
 		}
 		for (auto mi : functionsToInsert)
 		{
@@ -444,184 +450,170 @@ irPassLLVMIROptimizeByRange(State * N, bool enableQuantization, bool enableOverl
 		}
 	}
 
+	// Range Analysis
 
+	//	for (auto & mi : *Mod)
+	//	{
+	//		rangeAnalysis(mi);
+	//
+	//	}
 
-	//Range Analysis
-
-//	for (auto & mi : *Mod)
-//	{
-//		rangeAnalysis(mi);
-//
-//	}
-
-
-
-
-
-
-//	/*
-//	 * analyze the range of all local variables in each function
-//	 * */
-//	flexprint(N->Fe, N->Fm, N->Fpinfo, "infer bound\n");
-//	std::map<std::string, CallInst *> callerMap;
-//	callerMap.clear();
-//	funcBoundInfo.clear();
-//	bool useOverLoad = false;
-//	for (auto & mi : *Mod)
-//	{
-//		auto boundInfo = new BoundInfo();
-//		mergeBoundInfo(boundInfo, globalBoundInfo);
-//		rangeAnalysis(N, mi, boundInfo, callerMap, typeRange, virtualRegisterVectorRange, useOverLoad);
-//		funcBoundInfo.emplace(mi.getName().str(), boundInfo);
-//		std::vector<std::string> calleeNames;
-//		collectCalleeInfo(calleeNames, funcBoundInfo, boundInfo);
-//	}
-//
-//	flexprint(N->Fe, N->Fm, N->Fpinfo, "shrink data type by range\n");
-//	for (auto & mi : *Mod)
-//	{
-//		auto boundInfoIt = funcBoundInfo.find(mi.getName().str());
-//		if (boundInfoIt != funcBoundInfo.end())
-//		{
-//			shrinkType(N, boundInfoIt->second, mi);
-//		}
-//		//            else
-//		//            {
-//		//	            assert(false);
-//		//	        }
-//	}
-//
-//	flexprint(N->Fe, N->Fm, N->Fpinfo, "memory alignment\n");
-//	for (auto & mi : *Mod)
-//	{
-//		auto boundInfoIt = funcBoundInfo.find(mi.getName().str());
-//		if (boundInfoIt != funcBoundInfo.end())
-//		{
-//			memoryAlignment(N, boundInfoIt->second, mi);
-//		}
-//		//        else
-//		//        {
-//		//            assert(false);
-//		//        }
-//	}
-//
-//	/*
-//	 * remove the functions that are optimized by passes.
-//	 * */
-//	if (useOverLoad)
-//		cleanFunctionMap(Mod, callerMap);
-//
-//	if (useOverLoad)
-//		overloadFunc(Mod, callerMap);
-//
-//	callerMap.clear();
-//	funcBoundInfo.clear();
-//	useOverLoad = true;
-//	for (auto & mi : *Mod)
-//	{
-//		auto boundInfo = new BoundInfo();
-//		mergeBoundInfo(boundInfo, globalBoundInfo);
-//		rangeAnalysis(N, mi, boundInfo, callerMap, typeRange, virtualRegisterVectorRange, useOverLoad);
-//		funcBoundInfo.emplace(mi.getName().str(), boundInfo);
-//		std::vector<std::string> calleeNames;
-//		collectCalleeInfo(calleeNames, funcBoundInfo, boundInfo);
-//	}
-//
-//	/*
-//	 * simplify the condition of each branch
-//	 * */
-//	flexprint(N->Fe, N->Fm, N->Fpinfo, "simplify control flow by range\n");
-//	for (auto & mi : *Mod)
-//	{
-//		auto boundInfoIt = funcBoundInfo.find(mi.getName().str());
-//		if (boundInfoIt != funcBoundInfo.end())
-//		{
-//			simplifyControlFlow(N, boundInfoIt->second, mi);
-//		}
-//		//		else
-//		//		{
-//		//			assert(false);
-//		//		}
-//	}
-//
-//	legacy::PassManager passManager;
-//	passManager.add(createCFGSimplificationPass());
-//	passManager.add(createInstSimplifyLegacyPass());
-//	passManager.add(createGlobalDCEPass());
-//	passManager.run(*Mod);
-//
-//	/*
-//	 * remove the functions that are optimized by passes.
-//	 * */
-//	if (useOverLoad)
-//		cleanFunctionMap(Mod, callerMap);
-//
-//	if (useOverLoad)
-//		overloadFunc(Mod, callerMap);
-//
-//	flexprint(N->Fe, N->Fm, N->Fpinfo, "infer bound\n");
-//	callerMap.clear();
-//	funcBoundInfo.clear();
-//	useOverLoad = false;
-//	for (auto & mi : *Mod)
-//	{
-//		auto boundInfo = new BoundInfo();
-//		mergeBoundInfo(boundInfo, globalBoundInfo);
-//		rangeAnalysis(N, mi, boundInfo, callerMap, typeRange, virtualRegisterVectorRange, useOverLoad);
-//		funcBoundInfo.emplace(mi.getName().str(), boundInfo);
-//		std::vector<std::string> calleeNames;
-//		collectCalleeInfo(calleeNames, funcBoundInfo, boundInfo);
-//	}
-//
-//	flexprint(N->Fe, N->Fm, N->Fpinfo, "constant substitution\n");
-//	for (auto & mi : *Mod)
-//	{
-//		auto boundInfoIt = funcBoundInfo.find(mi.getName().str());
-//		if (boundInfoIt != funcBoundInfo.end())
-//		{
-//			constantSubstitution(N, boundInfoIt->second, mi);
-//		}
-//		//		else
-//		//		{
-//		//			assert(false);
-//		//		}
-//	}
-//
-//	/*
-//	 * remove the functions that are optimized by passes.
-//	 * */
-//	if (useOverLoad)
-//		cleanFunctionMap(Mod, callerMap);
-//
-//	if (useOverLoad)
-//		overloadFunc(Mod, callerMap);
-
+	//	/*
+	//	 * analyze the range of all local variables in each function
+	//	 * */
+	//	flexprint(N->Fe, N->Fm, N->Fpinfo, "infer bound\n");
+	//	std::map<std::string, CallInst *> callerMap;
+	//	callerMap.clear();
+	//	funcBoundInfo.clear();
+	//	bool useOverLoad = false;
+	//	for (auto & mi : *Mod)
+	//	{
+	//		auto boundInfo = new BoundInfo();
+	//		mergeBoundInfo(boundInfo, globalBoundInfo);
+	//		rangeAnalysis(N, mi, boundInfo, callerMap, typeRange, virtualRegisterVectorRange, useOverLoad);
+	//		funcBoundInfo.emplace(mi.getName().str(), boundInfo);
+	//		std::vector<std::string> calleeNames;
+	//		collectCalleeInfo(calleeNames, funcBoundInfo, boundInfo);
+	//	}
+	//
+	//	flexprint(N->Fe, N->Fm, N->Fpinfo, "shrink data type by range\n");
+	//	for (auto & mi : *Mod)
+	//	{
+	//		auto boundInfoIt = funcBoundInfo.find(mi.getName().str());
+	//		if (boundInfoIt != funcBoundInfo.end())
+	//		{
+	//			shrinkType(N, boundInfoIt->second, mi);
+	//		}
+	//		//            else
+	//		//            {
+	//		//	            assert(false);
+	//		//	        }
+	//	}
+	//
+	//	flexprint(N->Fe, N->Fm, N->Fpinfo, "memory alignment\n");
+	//	for (auto & mi : *Mod)
+	//	{
+	//		auto boundInfoIt = funcBoundInfo.find(mi.getName().str());
+	//		if (boundInfoIt != funcBoundInfo.end())
+	//		{
+	//			memoryAlignment(N, boundInfoIt->second, mi);
+	//		}
+	//		//        else
+	//		//        {
+	//		//            assert(false);
+	//		//        }
+	//	}
+	//
+	//	/*
+	//	 * remove the functions that are optimized by passes.
+	//	 * */
+	//	if (useOverLoad)
+	//		cleanFunctionMap(Mod, callerMap);
+	//
+	//	if (useOverLoad)
+	//		overloadFunc(Mod, callerMap);
+	//
+	//	callerMap.clear();
+	//	funcBoundInfo.clear();
+	//	useOverLoad = true;
+	//	for (auto & mi : *Mod)
+	//	{
+	//		auto boundInfo = new BoundInfo();
+	//		mergeBoundInfo(boundInfo, globalBoundInfo);
+	//		rangeAnalysis(N, mi, boundInfo, callerMap, typeRange, virtualRegisterVectorRange, useOverLoad);
+	//		funcBoundInfo.emplace(mi.getName().str(), boundInfo);
+	//		std::vector<std::string> calleeNames;
+	//		collectCalleeInfo(calleeNames, funcBoundInfo, boundInfo);
+	//	}
+	//
+	//	/*
+	//	 * simplify the condition of each branch
+	//	 * */
+	//	flexprint(N->Fe, N->Fm, N->Fpinfo, "simplify control flow by range\n");
+	//	for (auto & mi : *Mod)
+	//	{
+	//		auto boundInfoIt = funcBoundInfo.find(mi.getName().str());
+	//		if (boundInfoIt != funcBoundInfo.end())
+	//		{
+	//			simplifyControlFlow(N, boundInfoIt->second, mi);
+	//		}
+	//		//		else
+	//		//		{
+	//		//			assert(false);
+	//		//		}
+	//	}
+	//
+	//	legacy::PassManager passManager;
+	//	passManager.add(createCFGSimplificationPass());
+	//	passManager.add(createInstSimplifyLegacyPass());
+	//	passManager.add(createGlobalDCEPass());
+	//	passManager.run(*Mod);
+	//
+	//	/*
+	//	 * remove the functions that are optimized by passes.
+	//	 * */
+	//	if (useOverLoad)
+	//		cleanFunctionMap(Mod, callerMap);
+	//
+	//	if (useOverLoad)
+	//		overloadFunc(Mod, callerMap);
+	//
+	//	flexprint(N->Fe, N->Fm, N->Fpinfo, "infer bound\n");
+	//	callerMap.clear();
+	//	funcBoundInfo.clear();
+	//	useOverLoad = false;
+	//	for (auto & mi : *Mod)
+	//	{
+	//		auto boundInfo = new BoundInfo();
+	//		mergeBoundInfo(boundInfo, globalBoundInfo);
+	//		rangeAnalysis(N, mi, boundInfo, callerMap, typeRange, virtualRegisterVectorRange, useOverLoad);
+	//		funcBoundInfo.emplace(mi.getName().str(), boundInfo);
+	//		std::vector<std::string> calleeNames;
+	//		collectCalleeInfo(calleeNames, funcBoundInfo, boundInfo);
+	//	}
+	//
+	//	flexprint(N->Fe, N->Fm, N->Fpinfo, "constant substitution\n");
+	//	for (auto & mi : *Mod)
+	//	{
+	//		auto boundInfoIt = funcBoundInfo.find(mi.getName().str());
+	//		if (boundInfoIt != funcBoundInfo.end())
+	//		{
+	//			constantSubstitution(N, boundInfoIt->second, mi);
+	//		}
+	//		//		else
+	//		//		{
+	//		//			assert(false);
+	//		//		}
+	//	}
+	//
+	//	/*
+	//	 * remove the functions that are optimized by passes.
+	//	 * */
+	//	if (useOverLoad)
+	//		cleanFunctionMap(Mod, callerMap);
+	//
+	//	if (useOverLoad)
+	//		overloadFunc(Mod, callerMap);
 
 	// Finally, erase old functions
 	eraseOldFunctions();
 
 	eraseOldGlobals();
 
-
-
 	// Perform text replacement to remove "_quantized" suffixes
 	removeQuantizedSuffixInModule(*Mod);
 
-	//correct fmul
-	//correctAllFMulsInModule(Mod.get());
+	// correct fmul
+	// correctAllFMulsInModule(Mod.get());
 
 	eraseOldInstructions();
 
-
-
-
-
-
 	// 处理特殊的数值
-	//handleSpecialNumber(*Mod, Mod->getContext());
+	// handleSpecialNumber(*Mod, Mod->getContext());
 
-	const char* homeDir = getenv("HOME");
-	if (!homeDir) {
+	const char * homeDir = getenv("HOME");
+	if (!homeDir)
+	{
 		llvm::errs() << "Error: HOME environment variable not set.\n";
 		return;
 	}
@@ -629,18 +621,13 @@ irPassLLVMIROptimizeByRange(State * N, bool enableQuantization, bool enableOverl
 	std::string fileName = std::string(homeDir) + "/CoSense/applications/newton/llvm-ir/MadgwickAHRS_opt.ll";
 	saveModuleIR(*Mod, fileName);
 	// Save the optimized IR to a file
-	//saveModuleIR(*Mod, "/home/xyf/CoSense/applications/newton/llvm-ir/MadgwickAHRS_opt.ll");
+	// saveModuleIR(*Mod, "/home/xyf/CoSense/applications/newton/llvm-ir/MadgwickAHRS_opt.ll");
 
-	//finalCorrectionPass(*Mod, quantizedType);
-	//finalCorrectionPass(*Mod, Type::getInt32Ty(Context)); // Assuming 32-bit quantization
-	//saveModuleIR(*Mod, "/home/xyf/CoSense/applications/newton/llvm-ir/floating_point_operations_output.ll");
+	// finalCorrectionPass(*Mod, quantizedType);
+	// finalCorrectionPass(*Mod, Type::getInt32Ty(Context)); // Assuming 32-bit quantization
+	// saveModuleIR(*Mod, "/home/xyf/CoSense/applications/newton/llvm-ir/floating_point_operations_output.ll");
 
-	//替换为$HOMR
-	
-
-
-
-
+	// 替换为$HOMR
 
 	/*
 	 * Dump BC file to a file.
@@ -648,4 +635,3 @@ irPassLLVMIROptimizeByRange(State * N, bool enableQuantization, bool enableOverl
 	dumpIR(N, "output", Mod);
 	llvm::errs() << "Exiting irPassLLVMIROptimizeByRange\n";
 }
-
