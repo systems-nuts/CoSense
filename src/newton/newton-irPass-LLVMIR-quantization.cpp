@@ -342,34 +342,6 @@ transformToQuantizedType(Type * originalType, Type * quantizedType)
 	return originalType;
 }
 
-// llvm::Function *createFixPow(Module *irModule, Type *quantizedType, std::vector<llvm::Function *> &functionsToInsert);
-
-// void handlePowCall(CallInst * llvmIrCallInstruction, Type * quantizedType, std::vector<llvm::Function *> & functionsToInsert)
-//{
-//	IRBuilder<> Builder(llvmIrCallInstruction);
-//	auto base = llvmIrCallInstruction->getArgOperand(0);
-//	auto exponent = llvmIrCallInstruction->getArgOperand(1);
-//
-//	// Convert the operands to the appropriate type for fixpow (which expects quantizedType)
-//	Value * quantizedBase = Builder.CreateFPToSI(base, quantizedType);
-//	Value * quantizedExponent = Builder.CreateFPToSI(exponent, quantizedType);
-//
-//	// Get or create the fixpow function
-//	Function * fixpowFunc = llvmIrCallInstruction->getModule()->getFunction("fixpow");
-//	if (!fixpowFunc)
-//	{
-//		// If fixpow function doesn't exist, create it
-//		fixpowFunc = createFixPow(llvmIrCallInstruction->getModule(), quantizedType, functionsToInsert);
-//	}
-//
-//	// Create call to fixpow with the quantized operands
-//	Value * fixpowResult = Builder.CreateCall(fixpowFunc, {quantizedBase, quantizedExponent});
-//
-//	// Replace the original pow call with the fixpow result
-//	llvmIrCallInstruction->replaceAllUsesWith(fixpowResult);
-//	llvmIrCallInstruction->eraseFromParent();
-// }
-
 
 void
 handleSqrtCall(CallInst * llvmIrCallInstruction, Type * quantizedType, Function * fixsqrt)
@@ -429,60 +401,6 @@ void handleRsqrtCall(CallInst * llvmIrCallInstruction, Type * quantizedType, Fun
 	llvmIrCallInstruction->eraseFromParent();
 	llvm::errs() << "Replaced invsqrt with fixrsqrt\n";
 }
-
-
-// void
-// handleSqrtCall(CallInst * llvmIrCallInstruction, Type * quantizedType)
-//{
-//	IRBuilder<> Builder(llvmIrCallInstruction);
-//	auto	    operand = llvmIrCallInstruction->getOperand(0);
-//
-//	// Cast the instruction to CallInst to access getCalledFunction method
-//	CallInst * callInst = dyn_cast<CallInst>(llvmIrCallInstruction);
-//	if (!callInst)
-//	{
-//		llvm::errs() << "Error: Instruction is not a CallInst.\n";
-//		return;
-//	}
-//
-//	// Convert integer operand to float for sqrt computation
-//	Value * newOperand = Builder.CreateSIToFP(operand, Type::getDoubleTy(llvmIrCallInstruction->getContext()));
-//
-//	// Get the correct sqrt function with double return and argument types
-//	Function * sqrtFunc = llvmIrCallInstruction->getModule()->getFunction("sqrt");
-//	if (!sqrtFunc)
-//	{
-//		FunctionType * sqrtType = FunctionType::get(Type::getDoubleTy(llvmIrCallInstruction->getContext()), {Type::getDoubleTy(llvmIrCallInstruction->getContext())}, false);
-//		sqrtFunc		= Function::Create(sqrtType, Function::ExternalLinkage, "sqrt", llvmIrCallInstruction->getModule());
-//	}
-//
-//	// Create call to sqrt function with the double operand
-//	Value * sqrtResult = Builder.CreateCall(sqrtFunc, {newOperand});
-//
-//	// Convert the result back to integer
-//	Value * fptosiInst = Builder.CreateFPToSI(sqrtResult, quantizedType);
-//	// Perform left shift for scaling
-//	Value * shlInst = Builder.CreateShl(fptosiInst, FRAC_Q / 2);
-//	Value * resInst = nullptr;
-//
-//	// If FRAC_Q is odd, apply compensation
-//	if (FRAC_Q % 2)
-//	{
-//		Value * lhsCompensateInst = Builder.CreateSIToFP(shlInst, llvmIrCallInstruction->getType());
-//		auto	compensateNum	  = ConstantFP::get(llvmIrCallInstruction->getType(), 1.414213562);
-//		Value * mulInst		  = Builder.CreateFMul(lhsCompensateInst, compensateNum);
-//		resInst			  = Builder.CreateFPToSI(mulInst, quantizedType);
-//		llvm::errs() << "Compensation applied\n";
-//	}
-//	else
-//	{
-//		resInst = shlInst;
-//	}
-//
-//	llvmIrCallInstruction->replaceAllUsesWith(resInst);
-//	llvmIrCallInstruction->eraseFromParent();
-// }
-// }
 
 void
 handleSinCall(CallInst * llvmIrCallInstruction, Type * quantizedType)
@@ -1233,8 +1151,8 @@ createFixRsqrt(llvm::Module * irModule, Type * quantizedType, std::vector<llvm::
 	// Step 2: Convert x to floating-point and perform the initial approximation
 	llvm::Value * fp_y = builder.CreateSIToFP(x, llvm::Type::getFloatTy(irModule->getContext()));
 
-	// Added step: fp_y = fp_y / 1024.0;
-	// fp_y = builder.CreateFDiv(fp_y, ConstantFP::get(llvm::Type::getFloatTy(irModule->getContext()), 1024.0));
+	// Added step: fp_y = fp_y / FRAC_BASE.0;
+	// fp_y = builder.CreateFDiv(fp_y, ConstantFP::get(llvm::Type::getFloatTy(irModule->getContext()), FRAC_BASE.0));
 
 	fp_y = builder.CreateFDiv(fp_y, ConstantFP::get(llvm::Type::getFloatTy(irModule->getContext()), FRAC_BASE));
 
@@ -2287,8 +2205,8 @@ handleFDiv(Instruction * llvmIrInstruction, Type * quantizedType)
 				// Extend both operands to i64
 				Value *lhsExt = Builder.CreateSExt(lhs, Type::getInt64Ty(llvmIrInstruction->getContext()), "lhs.ext");
 				Value *rhsExt = Builder.CreateSExt(rhs, Type::getInt64Ty(llvmIrInstruction->getContext()), "rhs.ext");
-				// Multiply the lhs extended value by 1024 for scaling
-				Value *scaledNumerator = Builder.CreateMul(lhsExt, ConstantInt::get(Type::getInt64Ty(llvmIrInstruction->getContext()), 1024), "scaled.numerator");
+				// Multiply the lhs extended value by FRAC_BASE for scaling
+				Value *scaledNumerator = Builder.CreateMul(lhsExt, ConstantInt::get(Type::getInt64Ty(llvmIrInstruction->getContext()), FRAC_BASE), "scaled.numerator");
 				// Perform the division
 				Value *divResult = Builder.CreateSDiv(scaledNumerator, rhsExt, "div.result");
 				// Truncate the result back to i32
@@ -2467,6 +2385,7 @@ void
 // handleCall(CallInst * llvmIrCallInstruction, Type * quantizedType, std::vector<llvm::Function *> & functionsToInsert, llvm::Function * fixsqrt, llvm::Function * fixrsqrt)
 handleCall(CallInst * llvmIrCallInstruction, Type * quantizedType, std::vector<llvm::Function *> & functionsToInsert, llvm::Function * fixsqrt, llvm::Function * fixrsqrt)
 {
+	llvm::errs() << "Handling Call\n";
 	Function * calledFunction = llvmIrCallInstruction->getCalledFunction();
 	if (calledFunction == nullptr || !calledFunction->hasName() || calledFunction->getName().empty())
 		return;
@@ -2504,17 +2423,6 @@ handleCall(CallInst * llvmIrCallInstruction, Type * quantizedType, std::vector<l
 				handleSqrtCall(llvmIrCallInstruction, quantizedType, fixsqrt);
 			}
 
-			//			else if (funcName == "pow" || funcName == "powf" || funcName == "powl")
-			//			{
-			//				// For pow
-			//				handlePowCall(llvmIrCallInstruction, quantizedType, functionsToInsert);
-			//			}
-
-			//			else if (funcName == "invSqrt")
-			//			{
-			//				//Function * fixrsqrt = createFixRsqrt(irModule, quantizedType);
-			//				handleRsqrtCall(llvmIrCallInstruction, quantizedType, fixrsqrt);
-			//			}
 
 			else if (funcName == "sin")
 			{
@@ -2610,6 +2518,16 @@ handleStore(Instruction * llvmIrInstruction, Type * quantizedType)
 		}
 	}
 }
+
+//void
+//handleStore(Instruction * llvmIrInstruction, Type * quantizedType)
+//{
+//	/*
+//	 * If either of the operands is constant, change it to a int value
+//	 * */
+//	setQuantizedType(llvmIrInstruction->getOperand(0), quantizedType);
+//	quantizeConstant(llvmIrInstruction, quantizedType);
+//}
 
 // Function to handle loads involving pointer types
 void
@@ -2821,7 +2739,7 @@ handleFPTrunc(Instruction * llvmIrInstruction, Type * quantizedType)
 	if (srcType->isFloatingPointTy() && destType->isFloatingPointTy())
 	{
 		// Erase the unnecessary FPTrunc instruction
-		llvmIrInstruction->replaceAllUsesWith(fptruncInst->getOperand(1));
+		llvmIrInstruction->replaceAllUsesWith(fptruncInst->getOperand(0));
 		llvmIrInstruction->eraseFromParent();
 		llvm::errs() << "Removed unnecessary FPTrunc\n";
 	}
@@ -3041,9 +2959,7 @@ irPassLLVMIRAutoQuantization(State * N, llvm::Function & llvmIrFunction, std::ve
 
 	handleFunctionSignature(llvmIrFunction, quantizedType);
 
-	// Update global variable type to integer type
-
-	// Update global variables
+	// Update global variables to integer type
 	updateGlobalVariables(module, quantizedType);
 
 	/*
@@ -3056,7 +2972,6 @@ irPassLLVMIRAutoQuantization(State * N, llvm::Function & llvmIrFunction, std::ve
 	/*
 	 * quantize the arguments type
 	 * */
-
 	//quantizeFunctionArguments(llvmIrFunction, quantizedType);
 
 	// Process each instruction
