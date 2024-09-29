@@ -341,47 +341,78 @@ transformToQuantizedType(Type * originalType, Type * quantizedType)
 	// Return original type if no conversion is necessary
 	return originalType;
 }
-
-
-void
-handleSqrtCall(CallInst * llvmIrCallInstruction, Type * quantizedType, Function * fixsqrt)
+void handleSqrtCall(CallInst *llvmIrCallInstruction, Type *quantizedType,Function *fixsqrt)
 {
 	IRBuilder<> Builder(llvmIrCallInstruction);
-	auto	    operand = llvmIrCallInstruction->getOperand(0);
+	auto operand = llvmIrCallInstruction->getOperand(0);
 
-	// Cast the instruction to CallInst to access getCalledFunction method
-	CallInst * callInst = dyn_cast<CallInst>(llvmIrCallInstruction);
-	if (!callInst)
-	{
-		llvm::errs() << "Error: Instruction is not a CallInst.\n";
-		return;
-	}
-
-	// Convert the operand to fixed-point format if necessary
+	// Ensure operand is in the correct type
 	if (operand->getType()->isFloatingPointTy())
 	{
 		operand = Builder.CreateFPToSI(operand, quantizedType);
 	}
 
-	// Create call to the fixed-point sqrt function
-	llvm::Value * sqrtResult = Builder.CreateCall(fixsqrt, {operand});
-	if (auto * call = dyn_cast<CallInst>(sqrtResult))
-	{
-		call->setTailCall(true);
-	}
+	// Convert the operand from fixed-point (int32) to float
+	llvm::Value *operandAsFloat = Builder.CreateSIToFP(operand, llvm::Type::getFloatTy(llvmIrCallInstruction->getContext()));
 
-	// No need to apply shl and compensation if it's already done in createFixSqrt
-	llvmIrCallInstruction->replaceAllUsesWith(sqrtResult);
+	// Call llvm.sqrt.f32 to compute the square root of the float value
+	llvm::Value *sqrtFloat = Builder.CreateCall(
+	    Intrinsic::getDeclaration(llvmIrCallInstruction->getModule(), Intrinsic::sqrt, llvm::Type::getFloatTy(llvmIrCallInstruction->getContext())),
+	    {operandAsFloat});
+
+	// Convert the result back to int32
+	llvm::Value *sqrtFixedPoint = Builder.CreateFPToSI(sqrtFloat, quantizedType );
+
+	// Apply the shift-left operation (shl i32 %result, 5)
+	llvm::Value *shiftedSqrt = Builder.CreateShl(sqrtFixedPoint, ConstantInt::get(quantizedType, 5));
+
+	// Replace the original instruction with the new fixed-point sqrt result
+	llvmIrCallInstruction->replaceAllUsesWith(shiftedSqrt);
 	llvmIrCallInstruction->eraseFromParent();
 }
 
-void handleRsqrtCall(CallInst * llvmIrCallInstruction, Type * quantizedType, Function * fixrsqrt) {
+//void
+//handleSqrtCall(CallInst * llvmIrCallInstruction, Type * quantizedType, Function * fixsqrt)
+//{
+//	IRBuilder<> Builder(llvmIrCallInstruction);
+//	auto	    operand = llvmIrCallInstruction->getOperand(0);
+//
+//	// Cast the instruction to CallInst to access getCalledFunction method
+//	CallInst * callInst = dyn_cast<CallInst>(llvmIrCallInstruction);
+//	if (!callInst)
+//	{
+//		llvm::errs() << "Error: Instruction is not a CallInst.\n";
+//		return;
+//	}
+//
+//	// Convert the operand to fixed-point format if necessary
+//	if (operand->getType()->isFloatingPointTy())
+//	{
+//		operand = Builder.CreateFPToSI(operand, quantizedType);
+//	}
+//
+//	// Create call to the fixed-point sqrt function
+//	llvm::Value * sqrtResult = Builder.CreateCall(fixsqrt, {operand});
+//	if (auto * call = dyn_cast<CallInst>(sqrtResult))
+//	{
+//		call->setTailCall(true);
+//	}
+//
+//	// No need to apply shl and compensation if it's already done in createFixSqrt
+//	llvmIrCallInstruction->replaceAllUsesWith(sqrtResult);
+//	llvmIrCallInstruction->eraseFromParent();
+//}
+
+void
+handleRsqrtCall(CallInst * llvmIrCallInstruction, Type * quantizedType, Function * fixrsqrt)
+{
 	llvm::errs() << "Entering handleRsqrtCall\n";
 	IRBuilder<> builder(llvmIrCallInstruction);
 	auto	    operand = llvmIrCallInstruction->getOperand(0);
 
 	// 检查fixrsqrt是否为空
-	if (!fixrsqrt) {
+	if (!fixrsqrt)
+	{
 		llvm::errs() << "Error: fixrsqrt function is null.\n";
 		return;
 	}
@@ -389,7 +420,6 @@ void handleRsqrtCall(CallInst * llvmIrCallInstruction, Type * quantizedType, Fun
 	// 获取调用指令的操作数
 
 	llvm::errs() << "Operand type before conversion: " << *operand->getType() << "\n";
-
 
 	// 创建fixrsqrt调用替代原始调用
 	CallInst * rsqrtResult = builder.CreateCall(fixrsqrt, {operand});
@@ -496,8 +526,6 @@ handleMemCpyCall(Instruction * llvmIrInstruction, Type * quantizedType)
 	}
 }
 
-
-
 // A list of global variables to erase after processing
 std::vector<GlobalVariable *> globalsToErase;
 
@@ -537,12 +565,12 @@ eraseOldFunctions()
 	llvm::errs() << "Exiting eraseOldFunctions\n";
 }
 
-std::vector<llvm::Instruction*> instructionsToErase;
+std::vector<llvm::Instruction *> instructionsToErase;
 void
 eraseOldInstructions()
 {
 	llvm::errs() << "Entering eraseOldInstructions\n";
-	for (auto *instr : instructionsToErase)
+	for (auto * instr : instructionsToErase)
 	{
 		//		if (!instr->use_empty())
 		//		{
@@ -796,15 +824,18 @@ quantizeConstant(Instruction * inInstruction, Type * quantizedType)
 //	llvm::errs() << "Finished handling FloatIntMul\n";
 // }
 
-void simplifyConstant(Instruction * inInstruction, Type * quantizedType) {
+void
+simplifyConstant(Instruction * inInstruction, Type * quantizedType)
+{
 	llvm::errs() << "Handling constant operand\n";
 	auto checkDecimal = [](float decimalNum) {
 		int digits = 0;
 		/*
-         * Since the max value of `int16` is 32767,
-         * we maximum multiply with 1,000 to make sure it won't exceed max_int16
-         * */
-		while (fabs(round(decimalNum) - decimalNum) > 0.001 && digits < 4) {
+		 * Since the max value of `int16` is 32767,
+		 * we maximum multiply with 1,000 to make sure it won't exceed max_int16
+		 * */
+		while (fabs(round(decimalNum) - decimalNum) > 0.001 && digits < 4)
+		{
 			decimalNum *= 10;
 			digits++;
 		}
@@ -813,70 +844,81 @@ void simplifyConstant(Instruction * inInstruction, Type * quantizedType) {
 
 	auto compensateFP = [inInstruction, quantizedType](float quantizedNum, float decimalNum) {
 		/*
-         * 3333.3 / 3.3333 = 1000
-         * ===>
-         * Example 1:
-         * a * 3.3333 ~= a * (3333 / 1000) ~= (int)a * 3333 / 1000
-         *
-         * Example 2:
-         * a / 3.3333 ~= a / (3333 / 1000) ~= (int)a * 1000 / 3333
-         *
-         * Example 3:
-         * 3.3333 / a ~= (3333 / 1000) / a ~= 3333 / (int)a / 1000
-         * */
+		 * 3333.3 / 3.3333 = 1000
+		 * ===>
+		 * Example 1:
+		 * a * 3.3333 ~= a * (3333 / 1000) ~= (int)a * 3333 / 1000
+		 *
+		 * Example 2:
+		 * a / 3.3333 ~= a / (3333 / 1000) ~= (int)a * 1000 / 3333
+		 *
+		 * Example 3:
+		 * 3.3333 / a ~= (3333 / 1000) / a ~= 3333 / (int)a / 1000
+		 * */
 		float compensateNum = quantizedNum / decimalNum;
 
-		Value *constOperand, *nonConstOperand;
+		Value *	 constOperand, *nonConstOperand;
 		unsigned constIdx, nonConstIdx;
-		if (isa<llvm::Constant>(inInstruction->getOperand(0))) {
-			constIdx = 0;
-			nonConstIdx = 1;
-			constOperand = inInstruction->getOperand(0);
+		if (isa<llvm::Constant>(inInstruction->getOperand(0)))
+		{
+			constIdx	= 0;
+			nonConstIdx	= 1;
+			constOperand	= inInstruction->getOperand(0);
 			nonConstOperand = inInstruction->getOperand(1);
-		} else {
-			constIdx = 1;
-			nonConstIdx = 0;
-			constOperand = inInstruction->getOperand(1);
+		}
+		else
+		{
+			constIdx	= 1;
+			nonConstIdx	= 0;
+			constOperand	= inInstruction->getOperand(1);
 			nonConstOperand = inInstruction->getOperand(0);
 		}
 
 		auto quantizeNumValue = ConstantInt::get(quantizedType, round(quantizedNum), true);
 
-		IRBuilder<> Builder(inInstruction);
+		IRBuilder<>   Builder(inInstruction);
 		Instruction * insertPoint = inInstruction->getNextNode();
 		Builder.SetInsertPoint(insertPoint);
-		Value * newFisrtInst = nullptr;
+		Value * newFisrtInst  = nullptr;
 		Value * newSecondInst = nullptr;
-		auto instOpCode = inInstruction->getOpcode();
+		auto	instOpCode    = inInstruction->getOpcode();
 
-		if (compensateNum == 1) {
+		if (compensateNum == 1)
+		{
 			llvm::errs() << "Compensation factor is 1, directly setting the quantized value\n";
-			//newFisrtInst = Builder.CreateMul(nonConstOperand, quantizeNumValue);
+			// newFisrtInst = Builder.CreateMul(nonConstOperand, quantizeNumValue);
 			inInstruction->setOperand(constIdx, quantizeNumValue);
 			//			inInstruction->replaceAllUsesWith(newSecondInst);
 			//			//inInstruction->removeFromParent();
 			//			instructionsToErase.push_back(inInstruction);
-		} else {
+		}
+		else
+		{
 			llvm::errs() << "Applying compensation to the fixed-point arithmetic\n";
 			auto compensateNumValue = ConstantInt::get(quantizedType, round(compensateNum), true);
 
-			IRBuilder<> Builder(inInstruction);
+			IRBuilder<>   Builder(inInstruction);
 			Instruction * insertPoint = inInstruction->getNextNode();
 			Builder.SetInsertPoint(insertPoint);
-			Value * newFisrtInst = nullptr;
+			Value * newFisrtInst  = nullptr;
 			Value * newSecondInst = nullptr;
-			auto instOpCode = inInstruction->getOpcode();
-			if (instOpCode == Instruction::FMul) {
+			auto	instOpCode    = inInstruction->getOpcode();
+			if (instOpCode == Instruction::FMul)
+			{
 				llvm::errs() << "Handling FMul instruction\n";
-				newFisrtInst = Builder.CreateMul(nonConstOperand, quantizeNumValue);
+				newFisrtInst  = Builder.CreateMul(nonConstOperand, quantizeNumValue);
 				newSecondInst = Builder.CreateSDiv(newFisrtInst, compensateNumValue);
-			} else if (instOpCode == Instruction::FDiv && isa<llvm::Constant>(inInstruction->getOperand(1))) {
+			}
+			else if (instOpCode == Instruction::FDiv && isa<llvm::Constant>(inInstruction->getOperand(1)))
+			{
 				llvm::errs() << "Handling FDiv instruction with constant denominator\n";
-				newFisrtInst = Builder.CreateMul(nonConstOperand, compensateNumValue);
+				newFisrtInst  = Builder.CreateMul(nonConstOperand, compensateNumValue);
 				newSecondInst = Builder.CreateSDiv(newFisrtInst, quantizeNumValue);
-			} else if (instOpCode == Instruction::FDiv && isa<llvm::Constant>(inInstruction->getOperand(0))) {
+			}
+			else if (instOpCode == Instruction::FDiv && isa<llvm::Constant>(inInstruction->getOperand(0)))
+			{
 				llvm::errs() << "Handling FDiv instruction with constant numerator\n";
-				newFisrtInst = Builder.CreateSDiv(quantizeNumValue, nonConstOperand);
+				newFisrtInst  = Builder.CreateSDiv(quantizeNumValue, nonConstOperand);
 				newSecondInst = Builder.CreateSDiv(newFisrtInst, compensateNumValue);
 			}
 
@@ -885,15 +927,17 @@ void simplifyConstant(Instruction * inInstruction, Type * quantizedType) {
 		}
 	};
 
-	for (size_t idx = 0; idx < inInstruction->getNumOperands(); idx++) {
+	for (size_t idx = 0; idx < inInstruction->getNumOperands(); idx++)
+	{
 		Value * inValue = inInstruction->getOperand(idx);
 
-		if (!isa<llvm::ConstantFP>(inValue)) {
+		if (!isa<llvm::ConstantFP>(inValue))
+		{
 			continue;
 		}
 
-		ConstantFP * constFp = llvm::dyn_cast<llvm::ConstantFP>(inValue);
-		Value * newValue = nullptr;
+		ConstantFP * constFp  = llvm::dyn_cast<llvm::ConstantFP>(inValue);
+		Value *	     newValue = nullptr;
 		if (inValue->getType()->isFloatTy())
 		{
 			float constValue = constFp->getValueAPF().convertToFloat();
@@ -928,58 +972,7 @@ substituteHardcodeFunc(Instruction * inInstruction, Type * quantizedType, llvm::
 	inInstruction->removeFromParent();
 }
 
-// llvm::Function *
-// createFixSqrt(llvm::Module * irModule, Type * quantizedType, std::vector<llvm::Function *> & functionsToInsert)
-//{
-//	// check if irModule is valid
-//	if (!irModule)
-//	{
-//		llvm::errs() << "Error: irModule is nullptr\n";
-//		return nullptr;
-//	}
-//
-//	std::string fixSqrtFuncName = "fixsqrt";
-//	for (auto & function : *irModule)
-//	{
-//		if (function.getName() == fixSqrtFuncName)
-//		{
-//			llvm::errs() << "fixsqrt already exists\n";
-//			return &function;
-//		}
-//	}
-//
-//	llvm::FunctionType * funcType = llvm::FunctionType::get(quantizedType, {quantizedType}, false);
-//	llvm::Function *     func     = llvm::Function::Create(funcType, llvm::Function::PrivateLinkage, "fixsqrt", irModule);
-//
-//	llvm::BasicBlock * entryBB = llvm::BasicBlock::Create(irModule->getContext(), "entry", func);
-//	llvm::IRBuilder<>  builder(entryBB);
-//
-//	llvm::Function::arg_iterator args = func->arg_begin();
-//	llvm::Value *		     x	  = &*args++;
-//
-//	// Initial approximation: x / 2
-//	llvm::Value * approx   = builder.CreateLShr(x, 1);
-//	llvm::Value * halfBase = builder.CreateLShr(ConstantInt::get(quantizedType, FRAC_BASE), 1);
-//
-//	for (int i = 0; i < 5; ++i)
-//	{  // Run the approximation a few times
-//		llvm::Value * div = builder.CreateSDiv(x, approx);
-//		llvm::Value * avg = builder.CreateAdd(approx, div);
-//		approx		  = builder.CreateLShr(avg, 1);	 // approx = (approx + x / approx) / 2
-//	}
-//
-//	llvm::Value * result = approx;	// Final square root approximation
-//
-//	// Apply scaling: multiply by FRAC_BASE to maintain fixed-point representation
-//	result = builder.CreateMul(result, halfBase);
-//
-//	builder.CreateRet(result);
-//
-//	// Add the created function to the vector of functions to be inserted
-//	functionsToInsert.push_back(func);
-//
-//	return func;
-// }
+
 
 // TODO : float version rsqrt
 llvm::Function *
@@ -1041,9 +1034,11 @@ createFixSqrt(llvm::Module * irModule, Type * quantizedType, std::vector<llvm::F
 }
 
 
-//llvm::Function *
-//createFixSqrt(llvm::Module * irModule, Type * quantizedType, std::vector<llvm::Function *> & functionsToInsert)
+//TODO : fix version rsqrt
+//llvm::Function *createFixRsqrt(llvm::Module *irModule, llvm::Type *quantizedType, std::vector<llvm::Function *> &functionsToInsert)
 //{
+//	llvm::errs() << "Entering createFixRsqrt\n";
+//
 //	// Check if irModule is valid
 //	if (!irModule)
 //	{
@@ -1051,62 +1046,72 @@ createFixSqrt(llvm::Module * irModule, Type * quantizedType, std::vector<llvm::F
 //		return nullptr;
 //	}
 //
-//	std::string fixSqrtFuncName = "fixsqrt";
-//	for (auto & function : *irModule)
+//	std::string fixrsqrtFuncName = "fixrsqrt";
+//	for (auto &function : *irModule)
 //	{
-//		if (function.getName() == fixSqrtFuncName)
+//		if (function.getName() == fixrsqrtFuncName)
 //		{
-//			llvm::errs() << "fixsqrt already exists\n";
+//			llvm::errs() << "fixrsqrt already exists\n";
 //			return &function;
 //		}
 //	}
 //
-//	llvm::LLVMContext & context = irModule->getContext();
+//	// Define the function type for fixrsqrt: int32_t fixrsqrt(int32_t x)
+//	llvm::FunctionType *funcType = llvm::FunctionType::get(quantizedType, {quantizedType}, false);
+//	llvm::Function *func = llvm::Function::Create(funcType, llvm::Function::PrivateLinkage, fixrsqrtFuncName, irModule);
 //
-//	// Function type: returns quantizedType (e.g., i32), takes one argument of quantizedType
-//	llvm::FunctionType * funcType = llvm::FunctionType::get(quantizedType, {quantizedType}, false);
-//	llvm::Function *     func     = llvm::Function::Create(funcType, llvm::Function::PrivateLinkage, fixSqrtFuncName, irModule);
+//	// Create entry basic block and the IR builder
+//	llvm::BasicBlock *entryBB = llvm::BasicBlock::Create(irModule->getContext(), "entry", func);
+//	llvm::IRBuilder<> builder(entryBB);
 //
-//	llvm::BasicBlock * entryBB = llvm::BasicBlock::Create(context, "entry", func);
-//	llvm::IRBuilder<>  builder(entryBB);
-//
+//	// Get the function argument (x)
 //	llvm::Function::arg_iterator args = func->arg_begin();
-//	llvm::Value *		     x	  = &*args++;
+//	llvm::Value *x = &*args++;
 //
-//	// Convert the fixed-point integer to a floating-point number for sqrt computation
-//	llvm::Value * fp_x = builder.CreateSIToFP(x, llvm::Type::getDoubleTy(context));
+//	// Find the leading bit position (equivalent of log2(x) computation)
+//	llvm::Value *m = builder.CreateSub(
+//	    llvm::ConstantInt::get(quantizedType, sizeof(int32_t) * 8 - 1 - FRAC_Q),
+//	    builder.CreateCall(llvm::Intrinsic::getDeclaration(irModule, llvm::Intrinsic::ctlz, {quantizedType}), {x, llvm::ConstantInt::getFalse(irModule->getContext())}),
+//	    "m"
+//	);
 //
-//	// Call sqrt on the floating-point value
-//	llvm::Function * sqrtFunc   = llvm::Intrinsic::getDeclaration(irModule, llvm::Intrinsic::sqrt, llvm::Type::getDoubleTy(context));
-//	llvm::Value *	 sqrtResult = builder.CreateCall(sqrtFunc, {fp_x});
+//	// Lookup table for initial estimate based on m
+//	llvm::ArrayType *Y_est_type = llvm::ArrayType::get(quantizedType, 31);
+//	llvm::Constant *Y_est = llvm::ConstantDataArray::get(
+//		  irModule->getContext(),
+//		  llvm::ArrayRef<int32_t>({0xB50, 0x800, 0x5A8, 0x400, 0x2D4, 0x200, 0x16A, 0x100, 0xB5, 0x80, 0x5A, 0x40, 0x2D, 0x20, 0x16, 0x10, 0xB, 0x8, 0x5, 0x4, 0x2, 0x2, 0x1, 0x1, 0x1, 0x1, 0x1, 0x1, 0x1, 0x1})
+//	      );
+//	llvm::Value *Yi = builder.CreateLoad(Y_est_type, Y_est, builder.CreateAdd(m, llvm::ConstantInt::get(quantizedType, 7)));
 //
-//	// Convert the result back to a fixed-point integer
-//	llvm::Value * res = builder.CreateFPToSI(sqrtResult, quantizedType);
+//	// Fixed-point multiplication: xi = x * Yi / FRAC_BASE
+//	llvm::Value *xi = builder.CreateAShr(builder.CreateMul(x, Yi), llvm::ConstantInt::get(quantizedType, FRAC_Q));
+//	llvm::Value *yi = Yi;
 //
-//	// Perform a left shift to scale the result
-//	llvm::Value * shlRes = builder.CreateShl(res, FRAC_Q / 2);
-//
-//	// Apply compensation if FRAC_Q is odd
-//	llvm::Value * finalRes = shlRes;
-//	if (FRAC_Q % 2 != 0)
+//	// Perform the iterative Goldschmidt's method (3 iterations)
+//	for (int i = 0; i < 3; ++i)
 //	{
-//		llvm::Value * compensationFactor = llvm::ConstantFP::get(llvm::Type::getDoubleTy(context), 1.414213562);
-//		llvm::Value * fpShlRes		 = builder.CreateSIToFP(shlRes, llvm::Type::getDoubleTy(context));
-//		llvm::Value * compensated	 = builder.CreateFMul(fpShlRes, compensationFactor);
-//		finalRes			 = builder.CreateFPToSI(compensated, quantizedType);
+//		llvm::Value *bi = builder.CreateAShr(builder.CreateMul(builder.CreateMul(x, yi), yi), llvm::ConstantInt::get(quantizedType, FRAC_Q * 2));
+//		Yi = builder.CreateAShr(builder.CreateSub(
+//						  llvm::ConstantInt::get(quantizedType, 3 * FRAC_BASE),
+//						  bi),
+//						      llvm::ConstantInt::get(quantizedType, 1)
+//			      );
+//
+//		// Update xi and yi
+//		xi = builder.CreateAShr(builder.CreateMul(xi, Yi), llvm::ConstantInt::get(quantizedType, FRAC_Q));
+//		yi = builder.CreateAShr(builder.CreateMul(yi, Yi), llvm::ConstantInt::get(quantizedType, FRAC_Q));
 //	}
 //
-//	builder.CreateRet(finalRes);
-//
-//	// Insert the newly created function into the list
-//	functionsToInsert.push_back(func);
-//
-//	llvm::errs() << "Created fixsqrt function: " << func->getName() << "\n";
+//	// Return the final reciprocal square root result
+//	builder.CreateRet(builder.CreateSelect(builder.CreateICmpSGT(yi, llvm::ConstantInt::get(quantizedType, 0)), yi, llvm::ConstantInt::get(quantizedType, 1)));
+//	functionsToInsert.emplace_back(func);
 //
 //	return func;
 //}
 
-// Create a fixed-point reversed square root function
+
+
+//TODO  Original version of fixrsqrt
 llvm::Function *
 createFixRsqrt(llvm::Module * irModule, Type * quantizedType, std::vector<llvm::Function *> & functionsToInsert)
 {
@@ -1142,7 +1147,7 @@ createFixRsqrt(llvm::Module * irModule, Type * quantizedType, std::vector<llvm::
 	llvm::Value *		     x	  = &*args++;
 
 	// Create the fixed-point multiplication function
-	//llvm::Function * fixMulFunc = createFixMul(irModule, quantizedType, functionsToInsert);
+	// llvm::Function * fixMulFunc = createFixMul(irModule, quantizedType, functionsToInsert);
 
 	// Step 1: int_halfx = mulfix(0.5 * FRAC_BASE, x);
 	// llvm::Value * halfBase = builder.CreateCall(fixMulFunc, {ConstantInt::get(quantizedType, FRAC_BASE / 2), x});
@@ -1154,13 +1159,15 @@ createFixRsqrt(llvm::Module * irModule, Type * quantizedType, std::vector<llvm::
 	// Added step: fp_y = fp_y / FRAC_BASE.0;
 	// fp_y = builder.CreateFDiv(fp_y, ConstantFP::get(llvm::Type::getFloatTy(irModule->getContext()), FRAC_BASE.0));
 
-	fp_y = builder.CreateFDiv(fp_y, ConstantFP::get(llvm::Type::getFloatTy(irModule->getContext()), FRAC_BASE));
+	//fp_y = builder.CreateFDiv(fp_y, ConstantFP::get(llvm::Type::getFloatTy(irModule->getContext()), FRAC_BASE));
+
+	fp_y = builder.CreateFMul(fp_y, ConstantFP::get(llvm::Type::getFloatTy(irModule->getContext()), 1.0f / FRAC_BASE));
 
 	// Equivalent of: %4 = fmul float %3, 0x3F50000000000000
-	//fp_y = builder.CreateFMul(fp_y, llvm::ConstantFP::get(llvm::Type::getFloatTy(irModule->getContext()), 0.0009765625));
+	// fp_y = builder.CreateFMul(fp_y, llvm::ConstantFP::get(llvm::Type::getFloatTy(irModule->getContext()), 0.0009765625));
 
 	llvm::Value * i = builder.CreateBitCast(fp_y, llvm::Type::getInt32Ty(irModule->getContext()));
-	i		= builder.CreateSub(ConstantInt::get(llvm::Type::getInt32Ty(irModule->getContext()), 0x5f3759df), builder.CreateLShr(i, 1));
+	i		= builder.CreateNSWSub(ConstantInt::get(llvm::Type::getInt32Ty(irModule->getContext()), 0x5f3759df), builder.CreateLShr(i, 1));
 	fp_y		= builder.CreateBitCast(i, llvm::Type::getFloatTy(irModule->getContext()));
 
 	// Step 3: int_y = fp_y * FRAC_BASE;
@@ -1648,8 +1655,7 @@ compensateFP(Instruction * inInstruction, float quantizedNum, float decimalNum, 
 			llvm::errs() << "Replacing old instruction with compensated instruction\n";
 			inInstruction->replaceAllUsesWith(newSecondInst);
 			inInstruction->eraseFromParent();
-			//instructionsToErase.push_back(inInstruction);
-
+			// instructionsToErase.push_back(inInstruction);
 		}
 		else
 		{
@@ -1680,7 +1686,7 @@ handleConstant(Instruction * inInstruction, Type * quantizedType)
 			float decimalValue = checkDecimal(constValue);
 			llvm::errs() << "Decimal value after checkDecimal: " << decimalValue << "\n";
 			if (decimalValue == constValue)
-			//if (fabs(decimalValue - constValue) < 0.001)
+			// if (fabs(decimalValue - constValue) < 0.001)
 			{
 				// If the decimal part is already an integer, quantize directly
 				//				auto quantizedValue = static_cast<int64_t>(round(constValue * FRAC_BASE));
@@ -1729,9 +1735,6 @@ handleConstant(Instruction * inInstruction, Type * quantizedType)
 		}
 	}
 
-
-
-
 	llvm::errs() << "Exiting handleConstant\n";
 }
 void
@@ -1744,32 +1747,44 @@ handleFAdd(Instruction * inInstruction, Type * quantizedType)
 	Value * op1 = inInstruction->getOperand(1);
 
 	// Ensure both operands are integers
-	if (op0->getType()->isFloatTy() || op0->getType()->isDoubleTy()) {
-		if (ConstantFP *constFp = dyn_cast<ConstantFP>(op0)) {
-			float constValue = constFp->getValueAPF().convertToFloat();
+	if (op0->getType()->isFloatTy() || op0->getType()->isDoubleTy())
+	{
+		if (ConstantFP * constFp = dyn_cast<ConstantFP>(op0))
+		{
+			float	constValue     = constFp->getValueAPF().convertToFloat();
 			int64_t quantizedValue = static_cast<int64_t>(round(constValue * FRAC_BASE));
-			op0 = ConstantInt::get(quantizedType, quantizedValue);
-		} else {
+			op0		       = ConstantInt::get(quantizedType, quantizedValue);
+		}
+		else
+		{
 			op0 = Builder.CreateFPToSI(op0, quantizedType);
 		}
 	}
 
-	if (op1->getType()->isFloatTy() || op1->getType()->isDoubleTy()) {
-		if (ConstantFP *constFp = dyn_cast<ConstantFP>(op1)) {
-			float constValue = constFp->getValueAPF().convertToFloat();
+	if (op1->getType()->isFloatTy() || op1->getType()->isDoubleTy())
+	{
+		if (ConstantFP * constFp = dyn_cast<ConstantFP>(op1))
+		{
+			float	constValue     = constFp->getValueAPF().convertToFloat();
 			int64_t quantizedValue = static_cast<int64_t>(round(constValue * FRAC_BASE));
-			op1 = ConstantInt::get(quantizedType, quantizedValue);
-		} else {
+			op1		       = ConstantInt::get(quantizedType, quantizedValue);
+		}
+		else
+		{
 			op1 = Builder.CreateFPToSI(op1, quantizedType);
 		}
 	}
 
-	if (op1->getType()->isFloatTy() || op1->getType()->isDoubleTy()) {
-		if (ConstantFP *constFp = dyn_cast<ConstantFP>(op1)) {
-			float constValue = constFp->getValueAPF().convertToFloat();
+	if (op1->getType()->isFloatTy() || op1->getType()->isDoubleTy())
+	{
+		if (ConstantFP * constFp = dyn_cast<ConstantFP>(op1))
+		{
+			float	constValue     = constFp->getValueAPF().convertToFloat();
 			int64_t quantizedValue = static_cast<int64_t>(round(constValue * FRAC_BASE));
-			op1 = ConstantInt::get(quantizedType, quantizedValue);
-		} else {
+			op1		       = ConstantInt::get(quantizedType, quantizedValue);
+		}
+		else
+		{
 			op1 = Builder.CreateFPToSI(op1, quantizedType);
 		}
 	}
@@ -1792,7 +1807,7 @@ handleFAdd(Instruction * inInstruction, Type * quantizedType)
 	}
 
 	// Create fixed-point addition
-	Value * newInst = Builder.CreateAdd(op0, op1);
+	Value * newInst = Builder.CreateNSWAdd(op0, op1);
 
 	// Replace the original FAdd instruction with the new fixed-point addition
 	inInstruction->replaceAllUsesWith(newInst);
@@ -1811,22 +1826,30 @@ handleFSub(Instruction * inInstruction, Type * quantizedType)
 	Value * op1 = inInstruction->getOperand(1);
 
 	// Ensure both operands are integers
-	if (op0->getType()->isFloatTy() || op0->getType()->isDoubleTy()) {
-		if (ConstantFP *constFp = dyn_cast<ConstantFP>(op0)) {
-			float constValue = constFp->getValueAPF().convertToFloat();
+	if (op0->getType()->isFloatTy() || op0->getType()->isDoubleTy())
+	{
+		if (ConstantFP * constFp = dyn_cast<ConstantFP>(op0))
+		{
+			float	constValue     = constFp->getValueAPF().convertToFloat();
 			int64_t quantizedValue = static_cast<int64_t>(round(constValue * FRAC_BASE));
-			op0 = ConstantInt::get(quantizedType, quantizedValue);
-		} else {
+			op0		       = ConstantInt::get(quantizedType, quantizedValue);
+		}
+		else
+		{
 			op0 = Builder.CreateFPToSI(op0, quantizedType);
 		}
 	}
 
-	if (op1->getType()->isFloatTy() || op1->getType()->isDoubleTy()) {
-		if (ConstantFP *constFp = dyn_cast<ConstantFP>(op1)) {
-			float constValue = constFp->getValueAPF().convertToFloat();
+	if (op1->getType()->isFloatTy() || op1->getType()->isDoubleTy())
+	{
+		if (ConstantFP * constFp = dyn_cast<ConstantFP>(op1))
+		{
+			float	constValue     = constFp->getValueAPF().convertToFloat();
 			int64_t quantizedValue = static_cast<int64_t>(round(constValue * FRAC_BASE));
-			op1 = ConstantInt::get(quantizedType, quantizedValue);
-		} else {
+			op1		       = ConstantInt::get(quantizedType, quantizedValue);
+		}
+		else
+		{
 			op1 = Builder.CreateFPToSI(op1, quantizedType);
 		}
 	}
@@ -1849,7 +1872,7 @@ handleFSub(Instruction * inInstruction, Type * quantizedType)
 	}
 
 	// Create fixed-point subtraction
-	Value * newInst = Builder.CreateSub(op0, op1);
+	Value * newInst = Builder.CreateNSWSub(op0, op1);
 
 	// Replace the original FSub instruction with the new fixed-point subtraction
 	inInstruction->replaceAllUsesWith(newInst);
@@ -1924,23 +1947,27 @@ simplifyUsingShift(Value * operand, Instruction * instruction, int shiftAmount, 
 	instruction->eraseFromParent();
 }
 
-bool checkAndSimplifyFMul(ConstantFP *constFP, Value *otherOperand, Instruction *instruction) {
-	APFloat targetValue(0.28f);  // 初始化时使用单精度浮点数
-	bool losesInfo;
+bool
+checkAndSimplifyFMul(ConstantFP * constFP, Value * otherOperand, Instruction * instruction)
+{
+	APFloat		  targetValue(0.28f);  // 初始化时使用单精度浮点数
+	bool		  losesInfo;
 	APFloat::opStatus status = targetValue.convert(APFloat::IEEEdouble(), APFloat::rmNearestTiesToEven, &losesInfo);  // 转换为双精度浮点格式
 
 	// 检查转换是否成功
-	if (status != APFloat::opOK) {
+	if (status != APFloat::opOK)
+	{
 		llvm::errs() << "Error: Precision loss or other conversion error occurred.\n";
 	}
 
 	// 比较常数值
-	if (constFP->getValueAPF().compare(targetValue) == APFloat::cmpEqual) {
+	if (constFP->getValueAPF().compare(targetValue) == APFloat::cmpEqual)
+	{
 		llvm::IRBuilder<> Builder(instruction);
 		// 创建除数常数 (28.0)
-		Value *divisor = ConstantFP::get(instruction->getType(), 28.0);
+		Value * divisor = ConstantFP::get(instruction->getType(), 28.0);
 		// 创建除法指令
-		Instruction *divInst = cast<Instruction>(Builder.CreateFDiv(otherOperand, divisor, "divby28"));
+		Instruction * divInst = cast<Instruction>(Builder.CreateFDiv(otherOperand, divisor, "divby28"));
 
 		// 替换原始指令
 		instruction->replaceAllUsesWith(divInst);
@@ -1992,6 +2019,25 @@ checkAndSimplifyForConstant(ConstantFP * constFP, Value * otherOperand, Instruct
 	// New check for the special multiplication case
 	return checkAndSimplifyFMul(constFP, otherOperand, instruction);
 }
+
+
+//64bit fixed point multiplication
+llvm::Value* performFixedPointMul(llvm::IRBuilder<> &Builder, llvm::Value* lhs, llvm::Value* rhs, unsigned FRAC_Q) {
+	// Sign extend the 32-bit operands to 64-bit integers
+	llvm::Value* lhs64 = Builder.CreateSExt(lhs, llvm::Type::getInt64Ty(Builder.getContext()));
+	llvm::Value* rhs64 = Builder.CreateSExt(rhs, llvm::Type::getInt64Ty(Builder.getContext()));
+
+	// Perform 64-bit multiplication
+	llvm::Value* mulResult64 = Builder.CreateMul(lhs64, rhs64);
+
+	// Right shift the result to simulate fixed-point division by FRAC_Q
+	llvm::Value* divResult64 = Builder.CreateLShr(mulResult64, llvm::ConstantInt::get(llvm::Type::getInt64Ty(Builder.getContext()), FRAC_Q));
+
+	// Truncate the 64-bit result back to 32-bit integer
+	llvm::Value* result32 = Builder.CreateTrunc(divResult64, llvm::Type::getInt32Ty(Builder.getContext()));
+
+	return result32;
+}
 void
 handleFMul(Instruction * llvmIrInstruction, Type * quantizedType)
 {
@@ -2011,7 +2057,6 @@ handleFMul(Instruction * llvmIrInstruction, Type * quantizedType)
 
 	ConstantFP * lhsConst = dyn_cast<ConstantFP>(lhs);
 	ConstantFP * rhsConst = dyn_cast<ConstantFP>(rhs);
-
 
 	// Check if either operand is a constant that can be simplified
 	if (auto rhsConst = dyn_cast<ConstantFP>(rhs))
@@ -2083,19 +2128,80 @@ handleFMul(Instruction * llvmIrInstruction, Type * quantizedType)
 	//	}
 
 	if (lhsIsInteger && rhsIsInteger)
+
+		//缩两边
+//	{
+//		llvm::errs() << "Both operands are integers, applying scaling to prevent overflow...\n";
+//
+//		// Scale operands down by FRAC_Q before multiplication
+//		llvm::Value* lhsScaled = Builder.CreateAShr(lhs, llvm::ConstantInt::get(lhs->getType(), FRAC_Q / 2), "lhsScaled");
+//		llvm::Value* rhsScaled = Builder.CreateAShr(rhs, llvm::ConstantInt::get(rhs->getType(), FRAC_Q / 2), "rhsScaled");
+//
+//		// Perform 32-bit multiplication
+//		llvm::Value* mulResult = Builder.CreateMul(lhsScaled, rhsScaled, "mulScaled");
+//
+////		// Right shift to maintain precision, compensating for the scaling
+////		llvm::Value* finalResult = Builder.CreateAShr(mulResult, llvm::ConstantInt::get(lhs->getType(), FRAC_Q / 2), "shiftResult");
+//
+//		// Replace all uses of the original instruction with the final result
+//		llvmIrInstruction->replaceAllUsesWith(mulResult);
+//		llvmIrInstruction->eraseFromParent();
+
+//	}
+
+
+	// 64位
 	{
-		llvm::errs() << "Both operands are integers, performing inline multiplication and shifting...\n";
+		llvm::errs() << "Both operands are integers, performing 64-bit multiplication and shifting...\n";
 
-		// Perform multiplication directly
-		llvm::Value * mulResult = Builder.CreateMul(lhs, rhs,"", true);
+//		// Sign extend the 32-bit operands to 64-bit integers to prevent overflow
+//		llvm::Value * lhs64 = Builder.CreateSExt(lhs, llvm::Type::getInt64Ty(Builder.getContext()));
+//		llvm::Value * rhs64 = Builder.CreateSExt(rhs, llvm::Type::getInt64Ty(Builder.getContext()));
+//
+//		// Perform 64-bit multiplication
+//		llvm::Value * mulResult64 = Builder.CreateMul(lhs64, rhs64);
+//
+//		// Divide the result by FRAC_Q (equivalent to right shift)
+//		llvm::Value * divResult64 = Builder.CreateLShr(mulResult64, llvm::ConstantInt::get(llvm::Type::getInt64Ty(Builder.getContext()), FRAC_Q), "div64");
+//
+//		// Truncate the 64-bit result back to 32-bit integer
+//		llvm::Value * result32 = Builder.CreateTrunc(divResult64, llvm::Type::getInt32Ty(Builder.getContext()));
 
-		// Perform right arithmetic shift
-		llvm::Value * shiftResult = Builder.CreateAShr(mulResult, llvm::ConstantInt::get(lhs->getType(), FRAC_Q));
+		llvm::Value* result32 = performFixedPointMul(Builder, lhs, rhs, FRAC_Q);
 
-		// Replace all uses of the original instruction with the result of the shift
-		llvmIrInstruction->replaceAllUsesWith(shiftResult);
+		// Replace all uses of the original instruction with the final result
+		llvmIrInstruction->replaceAllUsesWith(result32);
 		llvmIrInstruction->eraseFromParent();
 	}
+
+	// 正常的32位
+	//			{
+	//				llvm::errs() << "Both operands are integers, performing  multiplication and shifting...\n";
+	//
+	//				// Perform multiplication directly
+	//				llvm::Value * mulResult = Builder.CreateMul(lhs, rhs,"");
+	//
+	//				// Perform right arithmetic shift
+	//				llvm::Value * shiftResult = Builder.CreateAShr(mulResult, llvm::ConstantInt::get(lhs->getType(), FRAC_Q));
+	//
+	//				// Replace all uses of the original instruction with the result of the shift
+	//				llvmIrInstruction->replaceAllUsesWith(shiftResult);
+	//				llvmIrInstruction->eraseFromParent();
+	//			}
+	//	{
+	//		// 先移再乘
+	//		llvm::errs() << "Both operands are integers, performing inline shifting and multiplication...\n";
+	//
+	//		// Perform right arithmetic shift on lhs first
+	//		llvm::Value * shiftedLhs = Builder.CreateAShr(lhs, llvm::ConstantInt::get(lhs->getType(), FRAC_Q));
+	//
+	//		// Perform multiplication with shifted lhs
+	//		llvm::Value * mulResult = Builder.CreateMul(shiftedLhs, rhs);
+	//
+	//		// Replace all uses of the original instruction with the result of the multiplication
+	//		llvmIrInstruction->replaceAllUsesWith(mulResult);
+	//		llvmIrInstruction->eraseFromParent();
+	//	}
 }
 
 // void
@@ -2203,14 +2309,14 @@ handleFDiv(Instruction * llvmIrInstruction, Type * quantizedType)
 			{
 				IRBuilder<> Builder(llvmIrInstruction);
 				// Extend both operands to i64
-				Value *lhsExt = Builder.CreateSExt(lhs, Type::getInt64Ty(llvmIrInstruction->getContext()), "lhs.ext");
-				Value *rhsExt = Builder.CreateSExt(rhs, Type::getInt64Ty(llvmIrInstruction->getContext()), "rhs.ext");
+				Value * lhsExt = Builder.CreateSExt(lhs, Type::getInt64Ty(llvmIrInstruction->getContext()), "lhs.ext");
+				Value * rhsExt = Builder.CreateSExt(rhs, Type::getInt64Ty(llvmIrInstruction->getContext()), "rhs.ext");
 				// Multiply the lhs extended value by FRAC_BASE for scaling
-				Value *scaledNumerator = Builder.CreateMul(lhsExt, ConstantInt::get(Type::getInt64Ty(llvmIrInstruction->getContext()), FRAC_BASE), "scaled.numerator");
+				Value * scaledNumerator = Builder.CreateMul(lhsExt, ConstantInt::get(Type::getInt64Ty(llvmIrInstruction->getContext()), FRAC_BASE), "scaled.numerator");
 				// Perform the division
-				Value *divResult = Builder.CreateSDiv(scaledNumerator, rhsExt, "div.result");
+				Value * divResult = Builder.CreateSDiv(scaledNumerator, rhsExt, "div.result");
 				// Truncate the result back to i32
-				Value *truncatedResult = Builder.CreateTrunc(divResult, Type::getInt32Ty(llvmIrInstruction->getContext()), "result.trunc");
+				Value * truncatedResult = Builder.CreateTrunc(divResult, Type::getInt32Ty(llvmIrInstruction->getContext()), "result.trunc");
 				// Replace all uses of the original instruction with this new sequence
 				llvmIrInstruction->replaceAllUsesWith(truncatedResult);
 				llvmIrInstruction->eraseFromParent();
@@ -2242,10 +2348,8 @@ handleFRem(Instruction * inInstruction, Type * quantizedType)
 	llvm::errs() << "Finished handling FRem\n";
 }
 
-
-
-//void
-//handleFNeg(Instruction * inInstruction, Type * quantizedType)
+// void
+// handleFNeg(Instruction * inInstruction, Type * quantizedType)
 //{
 //	llvm::errs() << "Handling FNeg\n";
 //	IRBuilder<> Builder(inInstruction);
@@ -2277,14 +2381,15 @@ handleFRem(Instruction * inInstruction, Type * quantizedType)
 //	llvm::errs() << "Finished handling FNeg\n";
 //}
 
-void handleFNeg(Instruction * inInstruction, Type * quantizedType) {
+void
+handleFNeg(Instruction * inInstruction, Type * quantizedType)
+{
 	llvm::errs() << "Handling FNeg\n";
 	IRBuilder<> Builder(inInstruction);
 
 	// Get the operand for the FNeg operation
 	Value * operand = inInstruction->getOperand(0);
 	llvm::errs() << "Operand: " << *operand << "\n";
-
 
 	// Create a constant zero of the same integer type as the operand
 	Value * zero = ConstantInt::get(operand->getType(), 0);
@@ -2298,7 +2403,6 @@ void handleFNeg(Instruction * inInstruction, Type * quantizedType) {
 
 	llvm::errs() << "Finished handling FNeg with integer subtraction\n";
 }
-
 
 void
 handleFCmp(Instruction * inInstruction, Type * quantizedType)
@@ -2392,7 +2496,8 @@ handleCall(CallInst * llvmIrCallInstruction, Type * quantizedType, std::vector<l
 
 	std::string funcName = calledFunction->getName().str();
 
-	if (funcName == "invSqrt"|| funcName == "invSqrt_quantized") {
+	if (funcName == "invSqrt" || funcName == "invSqrt_quantized")
+	{
 		IRBuilder<>   Builder(llvmIrCallInstruction);
 		Instruction * insertPoint = llvmIrCallInstruction->getNextNode();
 		Builder.SetInsertPoint(insertPoint);
@@ -2415,14 +2520,13 @@ handleCall(CallInst * llvmIrCallInstruction, Type * quantizedType, std::vector<l
 			Builder.SetInsertPoint(insertPoint);
 			Value * newInst = nullptr;
 
-			//std::string funcName = calledFunction->getName().str();
+			// std::string funcName = calledFunction->getName().str();
 
 			if (funcName == "sqrt" || funcName == "sqrtf" || funcName == "llvm.sqrt.f64" || funcName == "llvm.sqrt.f32")
 			{
 				// For sqrt
 				handleSqrtCall(llvmIrCallInstruction, quantizedType, fixsqrt);
 			}
-
 
 			else if (funcName == "sin")
 			{
@@ -2435,7 +2539,6 @@ handleCall(CallInst * llvmIrCallInstruction, Type * quantizedType, std::vector<l
 				// For llvm.memcpy
 				handleMemCpyCall(llvmIrCallInstruction, quantizedType);
 			}
-
 
 			else
 			{
@@ -2488,46 +2591,46 @@ handleCall(CallInst * llvmIrCallInstruction, Type * quantizedType, std::vector<l
 	}
 }
 
+// void
+// handleStore(Instruction * llvmIrInstruction, Type * quantizedType)
+//{
+//	if (auto llvmIrStoreInstruction = dyn_cast<StoreInst>(llvmIrInstruction))
+//	{
+//		IRBuilder<> Builder(llvmIrStoreInstruction);
+//
+//		auto valueType = llvmIrStoreInstruction->getValueOperand()->getType();
+//		if (valueType->isFloatTy() || valueType->isDoubleTy())
+//		{
+//			llvm::errs() << "Original store value type: " << *valueType << "\n";
+//			llvm::errs() << "New quantized store value type: " << *quantizedType << "\n";
+//
+//			// Quantize the value operand
+//			auto quantizedValue = Builder.CreateFMul(llvmIrStoreInstruction->getValueOperand(), ConstantFP::get(valueType, FRAC_BASE));
+//			quantizedValue	    = Builder.CreateFPToSI(quantizedValue, quantizedType);
+//			llvmIrStoreInstruction->setOperand(0, quantizedValue);
+//		}
+//
+//		auto pointerType = llvmIrStoreInstruction->getPointerOperand()->getType()->getPointerElementType();
+//		if (pointerType->isFloatTy() || pointerType->isDoubleTy())
+//		{
+//			llvm::errs() << "Original store pointer type: " << *pointerType << "\n";
+//			llvm::errs() << "New quantized store pointer type: " << *quantizedType << "\n";
+//
+//			// Set the new quantized type for the pointer operand
+//			llvmIrStoreInstruction->getPointerOperand()->mutateType(quantizedType->getPointerTo());
+//		}
+//	}
+// }
+
 void
 handleStore(Instruction * llvmIrInstruction, Type * quantizedType)
 {
-	if (auto llvmIrStoreInstruction = dyn_cast<StoreInst>(llvmIrInstruction))
-	{
-		IRBuilder<> Builder(llvmIrStoreInstruction);
-
-		auto valueType = llvmIrStoreInstruction->getValueOperand()->getType();
-		if (valueType->isFloatTy() || valueType->isDoubleTy())
-		{
-			llvm::errs() << "Original store value type: " << *valueType << "\n";
-			llvm::errs() << "New quantized store value type: " << *quantizedType << "\n";
-
-			// Quantize the value operand
-			auto quantizedValue = Builder.CreateFMul(llvmIrStoreInstruction->getValueOperand(), ConstantFP::get(valueType, FRAC_BASE));
-			quantizedValue	    = Builder.CreateFPToSI(quantizedValue, quantizedType);
-			llvmIrStoreInstruction->setOperand(0, quantizedValue);
-		}
-
-		auto pointerType = llvmIrStoreInstruction->getPointerOperand()->getType()->getPointerElementType();
-		if (pointerType->isFloatTy() || pointerType->isDoubleTy())
-		{
-			llvm::errs() << "Original store pointer type: " << *pointerType << "\n";
-			llvm::errs() << "New quantized store pointer type: " << *quantizedType << "\n";
-
-			// Set the new quantized type for the pointer operand
-			llvmIrStoreInstruction->getPointerOperand()->mutateType(quantizedType->getPointerTo());
-		}
-	}
+	/*
+	 * If either of the operands is constant, change it to a int value
+	 * */
+	setQuantizedType(llvmIrInstruction->getOperand(0), quantizedType);
+	quantizeConstant(llvmIrInstruction, quantizedType);
 }
-
-//void
-//handleStore(Instruction * llvmIrInstruction, Type * quantizedType)
-//{
-//	/*
-//	 * If either of the operands is constant, change it to a int value
-//	 * */
-//	setQuantizedType(llvmIrInstruction->getOperand(0), quantizedType);
-//	quantizeConstant(llvmIrInstruction, quantizedType);
-//}
 
 // Function to handle loads involving pointer types
 void
@@ -2756,8 +2859,8 @@ handleFPTrunc(Instruction * llvmIrInstruction, Type * quantizedType)
 	}
 }
 
-//void
-//handleFPTrunc(Instruction * llvmIrInstruction, Type * quantizedType)
+// void
+// handleFPTrunc(Instruction * llvmIrInstruction, Type * quantizedType)
 //{
 //	llvm::errs() << "Handling FPTrunc: " << *llvmIrInstruction << "\n";
 //	IRBuilder<> Builder(llvmIrInstruction);
@@ -2789,7 +2892,7 @@ handleFPTrunc(Instruction * llvmIrInstruction, Type * quantizedType)
 //	llvmIrInstruction->removeFromParent();
 //
 //	llvm::errs() << "Finished handling FPTrunc\n";
-//}
+// }
 
 void
 handleBitCast(Instruction * llvmIrInstruction, Type * quantizedType)
@@ -2908,7 +3011,7 @@ quantizeFunctionArguments(Function & llvmIrFunction, Type * quantizedType)
 
 // Main function to perform LLVM IR auto quantization
 void
-irPassLLVMIRAutoQuantization(State * N, llvm::Function & llvmIrFunction, std::vector<llvm::Function *> & functionsToInsert,int maxPrecisionBits)
+irPassLLVMIRAutoQuantization(State * N, llvm::Function & llvmIrFunction, std::vector<llvm::Function *> & functionsToInsert, int maxPrecisionBits)
 {
 	FRAC_Q = maxPrecisionBits;
 	flexprint(N->Fe, N->Fm, N->Fpinfo, "\tauto quantization.\n");
@@ -2966,13 +3069,13 @@ irPassLLVMIRAutoQuantization(State * N, llvm::Function & llvmIrFunction, std::ve
 	 * generate hardcode function - fixmul and fixdiv
 	 * */
 
-	llvm::Function * fixsqrt = createFixSqrt(module, quantizedType, functionsToInsert);
+	llvm::Function * fixsqrt  = createFixSqrt(module, quantizedType, functionsToInsert);
 	llvm::Function * fixrsqrt = createFixRsqrt(module, quantizedType, functionsToInsert);
 
 	/*
 	 * quantize the arguments type
 	 * */
-	//quantizeFunctionArguments(llvmIrFunction, quantizedType);
+	// quantizeFunctionArguments(llvmIrFunction, quantizedType);
 
 	// Process each instruction
 	for (BasicBlock & llvmIrBasicBlock : llvmIrFunction)
