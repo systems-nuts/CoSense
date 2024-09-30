@@ -26,8 +26,8 @@ cd $HOME/CoSense/applications/newton/llvm-ir/&&
 
 # Step 4: Optimize the generated LLVM IR file
 echo "Step 4: Optimize the generated LLVM IR file"
-#opt  $HOME/CoSense/applications/newton/llvm-ir/MadgwickAHRS_opt.ll  -S -o $HOME/CoSense/applications/newton/llvm-ir/out.ll
-opt  $HOME/CoSense/applications/newton/llvm-ir/MadgwickAHRS_opt.ll  -S -o $HOME/CoSense/applications/newton/llvm-ir/out.ll
+#opt -inline $HOME/CoSense/applications/newton/llvm-ir/MadgwickAHRS_opt.ll  -S -o $HOME/CoSense/applications/newton/llvm-ir/out.ll
+opt -inline  $HOME/CoSense/applications/newton/llvm-ir/MadgwickAHRS_opt.ll  -S -o $HOME/CoSense/applications/newton/llvm-ir/out.ll
 #opt  $HOME/CoSense/applications/newton/llvm-ir/MadgwickAHRS_opt.ll --mem2reg  -S -o $HOME/CoSense/applications/newton/llvm-ir/out.ll
 #opt $HOME/CoSense/applications/newton/llvm-ir/MadgwickAHRS_opt.ll -O3 -Os  -S -o $HOME/CoSense/applications/newton/llvm-ir/out.ll
 

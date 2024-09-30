@@ -22,7 +22,8 @@
 
 // #define sampleFreq	512.0f		// sample frequency in Hz
 // #define sampleFreq	100.0f		// sample frequency in Hz
-#define sampleFreq	28.0f		// sample frequency in Hz
+//#define sampleFreq	28.0f		// sample frequency in Hz
+#define sampleFreq	128.0f		// sample frequency in Hz
 #define betaDef		0.1f		// 2 * proportional gain
 
 #ifndef lowerBound

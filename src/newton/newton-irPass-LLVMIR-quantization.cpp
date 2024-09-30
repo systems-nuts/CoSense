@@ -341,10 +341,11 @@ transformToQuantizedType(Type * originalType, Type * quantizedType)
 	// Return original type if no conversion is necessary
 	return originalType;
 }
-void handleSqrtCall(CallInst *llvmIrCallInstruction, Type *quantizedType,Function *fixsqrt)
+void
+handleSqrtCall(CallInst * llvmIrCallInstruction, Type * quantizedType, Function * fixsqrt)
 {
 	IRBuilder<> Builder(llvmIrCallInstruction);
-	auto operand = llvmIrCallInstruction->getOperand(0);
+	auto	    operand = llvmIrCallInstruction->getOperand(0);
 
 	// Ensure operand is in the correct type
 	if (operand->getType()->isFloatingPointTy())
@@ -353,26 +354,26 @@ void handleSqrtCall(CallInst *llvmIrCallInstruction, Type *quantizedType,Functio
 	}
 
 	// Convert the operand from fixed-point (int32) to float
-	llvm::Value *operandAsFloat = Builder.CreateSIToFP(operand, llvm::Type::getFloatTy(llvmIrCallInstruction->getContext()));
+	llvm::Value * operandAsFloat = Builder.CreateSIToFP(operand, llvm::Type::getFloatTy(llvmIrCallInstruction->getContext()));
 
 	// Call llvm.sqrt.f32 to compute the square root of the float value
-	llvm::Value *sqrtFloat = Builder.CreateCall(
+	llvm::Value * sqrtFloat = Builder.CreateCall(
 	    Intrinsic::getDeclaration(llvmIrCallInstruction->getModule(), Intrinsic::sqrt, llvm::Type::getFloatTy(llvmIrCallInstruction->getContext())),
 	    {operandAsFloat});
 
 	// Convert the result back to int32
-	llvm::Value *sqrtFixedPoint = Builder.CreateFPToSI(sqrtFloat, quantizedType );
+	llvm::Value * sqrtFixedPoint = Builder.CreateFPToSI(sqrtFloat, quantizedType);
 
 	// Apply the shift-left operation (shl i32 %result, 5)
-	llvm::Value *shiftedSqrt = Builder.CreateShl(sqrtFixedPoint, ConstantInt::get(quantizedType, 5));
+	llvm::Value * shiftedSqrt = Builder.CreateShl(sqrtFixedPoint, ConstantInt::get(quantizedType, 5));
 
 	// Replace the original instruction with the new fixed-point sqrt result
 	llvmIrCallInstruction->replaceAllUsesWith(shiftedSqrt);
 	llvmIrCallInstruction->eraseFromParent();
 }
 
-//void
-//handleSqrtCall(CallInst * llvmIrCallInstruction, Type * quantizedType, Function * fixsqrt)
+// void
+// handleSqrtCall(CallInst * llvmIrCallInstruction, Type * quantizedType, Function * fixsqrt)
 //{
 //	IRBuilder<> Builder(llvmIrCallInstruction);
 //	auto	    operand = llvmIrCallInstruction->getOperand(0);
@@ -401,7 +402,7 @@ void handleSqrtCall(CallInst *llvmIrCallInstruction, Type *quantizedType,Functio
 //	// No need to apply shl and compensation if it's already done in createFixSqrt
 //	llvmIrCallInstruction->replaceAllUsesWith(sqrtResult);
 //	llvmIrCallInstruction->eraseFromParent();
-//}
+// }
 
 void
 handleRsqrtCall(CallInst * llvmIrCallInstruction, Type * quantizedType, Function * fixrsqrt)
@@ -972,8 +973,6 @@ substituteHardcodeFunc(Instruction * inInstruction, Type * quantizedType, llvm::
 	inInstruction->removeFromParent();
 }
 
-
-
 // TODO : float version rsqrt
 llvm::Function *
 createFixSqrt(llvm::Module * irModule, Type * quantizedType, std::vector<llvm::Function *> & functionsToInsert)
@@ -1033,9 +1032,8 @@ createFixSqrt(llvm::Module * irModule, Type * quantizedType, std::vector<llvm::F
 	return func;
 }
 
-
-//TODO : fix version rsqrt
-//llvm::Function *createFixRsqrt(llvm::Module *irModule, llvm::Type *quantizedType, std::vector<llvm::Function *> &functionsToInsert)
+// TODO : fix version rsqrt
+// llvm::Function *createFixRsqrt(llvm::Module *irModule, llvm::Type *quantizedType, std::vector<llvm::Function *> &functionsToInsert)
 //{
 //	llvm::errs() << "Entering createFixRsqrt\n";
 //
@@ -1107,11 +1105,9 @@ createFixSqrt(llvm::Module * irModule, Type * quantizedType, std::vector<llvm::F
 //	functionsToInsert.emplace_back(func);
 //
 //	return func;
-//}
+// }
 
-
-
-//TODO  Original version of fixrsqrt
+// TODO  Original version of fixrsqrt
 llvm::Function *
 createFixRsqrt(llvm::Module * irModule, Type * quantizedType, std::vector<llvm::Function *> & functionsToInsert)
 {
@@ -1159,7 +1155,7 @@ createFixRsqrt(llvm::Module * irModule, Type * quantizedType, std::vector<llvm::
 	// Added step: fp_y = fp_y / FRAC_BASE.0;
 	// fp_y = builder.CreateFDiv(fp_y, ConstantFP::get(llvm::Type::getFloatTy(irModule->getContext()), FRAC_BASE.0));
 
-	//fp_y = builder.CreateFDiv(fp_y, ConstantFP::get(llvm::Type::getFloatTy(irModule->getContext()), FRAC_BASE));
+	// fp_y = builder.CreateFDiv(fp_y, ConstantFP::get(llvm::Type::getFloatTy(irModule->getContext()), FRAC_BASE));
 
 	fp_y = builder.CreateFMul(fp_y, ConstantFP::get(llvm::Type::getFloatTy(irModule->getContext()), 1.0f / FRAC_BASE));
 
@@ -2004,7 +2000,8 @@ checkAndSimplifyForConstant(ConstantFP * constFP, Value * otherOperand, Instruct
 	    {0.5, {1, true}},
 	    {2.0, {1, false}},
 	    {4.0, {2, false}},
-	    {8.0, {3, false}}};
+	    {8.0, {3, false}},
+	    {1/128.0, {7, true}}};
 	double value = constFP->getValueAPF().convertToDouble();
 	auto   it    = constantsMap.find(value);
 	if (it != constantsMap.end())
@@ -2020,21 +2017,22 @@ checkAndSimplifyForConstant(ConstantFP * constFP, Value * otherOperand, Instruct
 	return checkAndSimplifyFMul(constFP, otherOperand, instruction);
 }
 
-
-//64bit fixed point multiplication
-llvm::Value* performFixedPointMul(llvm::IRBuilder<> &Builder, llvm::Value* lhs, llvm::Value* rhs, unsigned FRAC_Q) {
+// 64bit fixed point multiplication
+llvm::Value *
+performFixedPointMul(llvm::IRBuilder<> & Builder, llvm::Value * lhs, llvm::Value * rhs, unsigned FRAC_Q)
+{
 	// Sign extend the 32-bit operands to 64-bit integers
-	llvm::Value* lhs64 = Builder.CreateSExt(lhs, llvm::Type::getInt64Ty(Builder.getContext()));
-	llvm::Value* rhs64 = Builder.CreateSExt(rhs, llvm::Type::getInt64Ty(Builder.getContext()));
+	llvm::Value * lhs64 = Builder.CreateSExt(lhs, llvm::Type::getInt64Ty(Builder.getContext()));
+	llvm::Value * rhs64 = Builder.CreateSExt(rhs, llvm::Type::getInt64Ty(Builder.getContext()));
 
 	// Perform 64-bit multiplication
-	llvm::Value* mulResult64 = Builder.CreateMul(lhs64, rhs64);
+	llvm::Value * mulResult64 = Builder.CreateMul(lhs64, rhs64);
 
 	// Right shift the result to simulate fixed-point division by FRAC_Q
-	llvm::Value* divResult64 = Builder.CreateLShr(mulResult64, llvm::ConstantInt::get(llvm::Type::getInt64Ty(Builder.getContext()), FRAC_Q));
+	llvm::Value * divResult64 = Builder.CreateLShr(mulResult64, llvm::ConstantInt::get(llvm::Type::getInt64Ty(Builder.getContext()), FRAC_Q));
 
 	// Truncate the 64-bit result back to 32-bit integer
-	llvm::Value* result32 = Builder.CreateTrunc(divResult64, llvm::Type::getInt32Ty(Builder.getContext()));
+	llvm::Value * result32 = Builder.CreateTrunc(divResult64, llvm::Type::getInt32Ty(Builder.getContext()));
 
 	return result32;
 }
@@ -2129,45 +2127,44 @@ handleFMul(Instruction * llvmIrInstruction, Type * quantizedType)
 
 	if (lhsIsInteger && rhsIsInteger)
 
-		//缩两边
-//	{
-//		llvm::errs() << "Both operands are integers, applying scaling to prevent overflow...\n";
-//
-//		// Scale operands down by FRAC_Q before multiplication
-//		llvm::Value* lhsScaled = Builder.CreateAShr(lhs, llvm::ConstantInt::get(lhs->getType(), FRAC_Q / 2), "lhsScaled");
-//		llvm::Value* rhsScaled = Builder.CreateAShr(rhs, llvm::ConstantInt::get(rhs->getType(), FRAC_Q / 2), "rhsScaled");
-//
-//		// Perform 32-bit multiplication
-//		llvm::Value* mulResult = Builder.CreateMul(lhsScaled, rhsScaled, "mulScaled");
-//
-////		// Right shift to maintain precision, compensating for the scaling
-////		llvm::Value* finalResult = Builder.CreateAShr(mulResult, llvm::ConstantInt::get(lhs->getType(), FRAC_Q / 2), "shiftResult");
-//
-//		// Replace all uses of the original instruction with the final result
-//		llvmIrInstruction->replaceAllUsesWith(mulResult);
-//		llvmIrInstruction->eraseFromParent();
+	// 缩两边
+	//	{
+	//		llvm::errs() << "Both operands are integers, applying scaling to prevent overflow...\n";
+	//
+	//		// Scale operands down by FRAC_Q before multiplication
+	//		llvm::Value* lhsScaled = Builder.CreateAShr(lhs, llvm::ConstantInt::get(lhs->getType(), FRAC_Q / 2), "lhsScaled");
+	//		llvm::Value* rhsScaled = Builder.CreateAShr(rhs, llvm::ConstantInt::get(rhs->getType(), FRAC_Q / 2), "rhsScaled");
+	//
+	//		// Perform 32-bit multiplication
+	//		llvm::Value* mulResult = Builder.CreateMul(lhsScaled, rhsScaled, "mulScaled");
+	//
+	////		// Right shift to maintain precision, compensating for the scaling
+	////		llvm::Value* finalResult = Builder.CreateAShr(mulResult, llvm::ConstantInt::get(lhs->getType(), FRAC_Q / 2), "shiftResult");
+	//
+	//		// Replace all uses of the original instruction with the final result
+	//		llvmIrInstruction->replaceAllUsesWith(mulResult);
+	//		llvmIrInstruction->eraseFromParent();
 
-//	}
-
+	//	}
 
 	// 64位
 	{
 		llvm::errs() << "Both operands are integers, performing 64-bit multiplication and shifting...\n";
 
-//		// Sign extend the 32-bit operands to 64-bit integers to prevent overflow
-//		llvm::Value * lhs64 = Builder.CreateSExt(lhs, llvm::Type::getInt64Ty(Builder.getContext()));
-//		llvm::Value * rhs64 = Builder.CreateSExt(rhs, llvm::Type::getInt64Ty(Builder.getContext()));
-//
-//		// Perform 64-bit multiplication
-//		llvm::Value * mulResult64 = Builder.CreateMul(lhs64, rhs64);
-//
-//		// Divide the result by FRAC_Q (equivalent to right shift)
-//		llvm::Value * divResult64 = Builder.CreateLShr(mulResult64, llvm::ConstantInt::get(llvm::Type::getInt64Ty(Builder.getContext()), FRAC_Q), "div64");
-//
-//		// Truncate the 64-bit result back to 32-bit integer
-//		llvm::Value * result32 = Builder.CreateTrunc(divResult64, llvm::Type::getInt32Ty(Builder.getContext()));
+		//		// Sign extend the 32-bit operands to 64-bit integers to prevent overflow
+		//		llvm::Value * lhs64 = Builder.CreateSExt(lhs, llvm::Type::getInt64Ty(Builder.getContext()));
+		//		llvm::Value * rhs64 = Builder.CreateSExt(rhs, llvm::Type::getInt64Ty(Builder.getContext()));
+		//
+		//		// Perform 64-bit multiplication
+		//		llvm::Value * mulResult64 = Builder.CreateMul(lhs64, rhs64);
+		//
+		//		// Divide the result by FRAC_Q (equivalent to right shift)
+		//		llvm::Value * divResult64 = Builder.CreateLShr(mulResult64, llvm::ConstantInt::get(llvm::Type::getInt64Ty(Builder.getContext()), FRAC_Q), "div64");
+		//
+		//		// Truncate the 64-bit result back to 32-bit integer
+		//		llvm::Value * result32 = Builder.CreateTrunc(divResult64, llvm::Type::getInt32Ty(Builder.getContext()));
 
-		llvm::Value* result32 = performFixedPointMul(Builder, lhs, rhs, FRAC_Q);
+		llvm::Value * result32 = performFixedPointMul(Builder, lhs, rhs, FRAC_Q);
 
 		// Replace all uses of the original instruction with the final result
 		llvmIrInstruction->replaceAllUsesWith(result32);
