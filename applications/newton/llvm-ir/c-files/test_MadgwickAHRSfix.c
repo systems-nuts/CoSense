@@ -6,14 +6,16 @@
 #include <string.h>
 #include <sys/time.h>
 #include <time.h>
-#define FRAC_Q 10
-#define FRAC_BASE (1<<FRAC_Q)
+#define FRAC_Q 16
+#define FRAC_BASE (1 << FRAC_Q)
 #define BIT_WIDTH 32
 #define ITERATION 10
 #define DATA_SIZE 1000
-//#include "MadgwickAHRSfix.h"
+// #include "MadgwickAHRSfix.h"
 extern volatile int32_t q0, q1, q2, q3;
 extern void		MadgwickAHRSupdate(int32_t gx, int32_t gy, int32_t gz, int32_t ax, int32_t ay, int32_t az, int32_t mx, int32_t my, int32_t mz, int32_t * q0_ptr, int32_t * q1_ptr, int32_t * q2_ptr, int32_t * q3_ptr);
+
+//extern void MadgwickAHRSupdate(float gx, float gy, float gz, float ax, float ay, float az, float mx, float my, float mz, int32_t * q0_ptr,int32_t * q1_ptr, int32_t * q2_ptr, int32_t * q3_ptr);
 extern void		MadgwickAHRSupdateIMU(int32_t gx, int32_t gy, int32_t gz, int32_t ax, int32_t ay, int32_t az, int32_t * q0_ptr, int32_t * q1_ptr, int32_t * q2_ptr, int32_t * q3_ptr);
 extern int32_t		sqrt_rsqrt(int32_t x, int recip);
 // #include "MadgwickAHRS.h"
@@ -36,8 +38,6 @@ typedef struct {
 	float dequantized4;
 } DequantizedValues;
 
-
-
 typedef struct {
 	uint64_t start;
 	uint64_t current;
@@ -47,28 +47,27 @@ typedef struct {
 
 ELAPSED_TIME elapsed_time_tbl[10];
 
-static inline uint64_t rdtsc() {
-	uint32_t lo, hi;
-	__asm__ __volatile__ ("rdtsc" : "=a" (lo), "=d" (hi));
-	return ((uint64_t)hi << 32) | lo;
-}
-
-void elapsed_time_start(uint32_t i) {
-	elapsed_time_tbl[i].start = rdtsc();
-}
-
-void elapsed_time_stop(uint32_t i) {
-	uint64_t stop = rdtsc();
-	ELAPSED_TIME *p_tbl = &elapsed_time_tbl[i];
-	p_tbl->current = stop - p_tbl->start;
-	if (p_tbl->max < p_tbl->current) {
-		p_tbl->max = p_tbl->current;
-	}
-	if (p_tbl->min == 0 || p_tbl->min > p_tbl->current) {
-		p_tbl->min = p_tbl->current;
-	}
-}
-
+// static inline uint64_t rdtsc() {
+//	uint32_t lo, hi;
+//	__asm__ __volatile__ ("rdtsc" : "=a" (lo), "=d" (hi));
+//	return ((uint64_t)hi << 32) | lo;
+// }
+//
+// void elapsed_time_start(uint32_t i) {
+//	elapsed_time_tbl[i].start = rdtsc();
+// }
+//
+// void elapsed_time_stop(uint32_t i) {
+//	uint64_t stop = rdtsc();
+//	ELAPSED_TIME *p_tbl = &elapsed_time_tbl[i];
+//	p_tbl->current = stop - p_tbl->start;
+//	if (p_tbl->max < p_tbl->current) {
+//		p_tbl->max = p_tbl->current;
+//	}
+//	if (p_tbl->min == 0 || p_tbl->min > p_tbl->current) {
+//		p_tbl->min = p_tbl->current;
+//	}
+// }
 
 typedef struct timespec timespec;
 timespec
@@ -122,10 +121,10 @@ QuantizedValues
 quantize4(float value1, float value2, float value3, float value4, int frac_base)
 {
 	QuantizedValues result;
-	result.quantized1 = round(value1 * frac_base);
-	result.quantized2 = round(value2 * frac_base);
-	result.quantized3 = round(value3 * frac_base);
-	result.quantized4 = round(value4 * frac_base);
+	result.quantized1 = roundf(value1 * frac_base);
+	result.quantized2 = roundf(value2 * frac_base);
+	result.quantized3 = roundf(value3 * frac_base);
+	result.quantized4 = roundf(value4 * frac_base);
 	return result;
 }
 
@@ -133,10 +132,10 @@ DequantizedValues
 dequantize4(int quantized1, int quantized2, int quantized3, int quantized4)
 {
 	DequantizedValues result;
-	result.dequantized1 = (float)(quantized1 >> FRAC_Q);
-	result.dequantized2 = (float)(quantized2 >> FRAC_Q);
-	result.dequantized3 = (float)(quantized3 >> FRAC_Q);
-	result.dequantized4 = (float)(quantized4 >> FRAC_Q);
+	result.dequantized1 = (float)(quantized1/FRAC_BASE);
+	result.dequantized2 = (float)(quantized2/FRAC_BASE);
+	result.dequantized3 = (float)(quantized3/FRAC_BASE);
+	result.dequantized4 = (float)(quantized4/FRAC_BASE);
 	return result;
 }
 
@@ -167,8 +166,8 @@ toc(timespec * start_time, const char * prefix)
 	*start_time = current_time;
 	return time_consump;
 }
- int
- main()
+int
+main()
 {
 	FILE * fp = fopen("input.csv", "r");
 
@@ -214,32 +213,42 @@ toc(timespec * start_time, const char * prefix)
 					break;
 				case 1:
 					mag_x[row - 2] = round(atof(value) * FRAC_BASE);
-					//mag_x[row - 2] = quantize(atof(value), FRAC_BASE);
+
+					//mag_x[row - 2] = atof(value);
 					break;
 				case 2:
 					mag_y[row - 2] = round(atof(value) * FRAC_BASE);
-					//mag_y[row - 2] = quantize(atof(value), FRAC_BASE);
+
+					//mag_y[row - 2] = atof(value) ;
 					break;
 				case 3:
 					mag_z[row - 2] = round(atof(value) * FRAC_BASE);
+					//mag_z[row - 2] = atof(value);
 					break;
 				case 4:
 					gyr_x[row - 2] = round(atof(value) * FRAC_BASE) * 61;
+					//gyr_x[row - 2] = atof(value) * 61;
+
 					break;
 				case 5:
 					gyr_y[row - 2] = round(atof(value) * FRAC_BASE) * 61;
+					//gyr_y[row - 2] = atof(value) * 61;
 					break;
 				case 6:
 					gyr_z[row - 2] = round(atof(value) * FRAC_BASE) * 61;
+					//gyr_z[row - 2] = atof(value) * 61;
 					break;
 				case 7:
-					acc_x[row - 2] = round(atof(value) * FRAC_BASE) * 2;
+					//acc_x[row - 2] = round(atof(value) * FRAC_BASE) * 2;
+					acc_x[row - 2] = atof(value)  * 2;
 					break;
 				case 8:
 					acc_y[row - 2] = round(atof(value) * FRAC_BASE) * 2;
+					//acc_y[row - 2] = atof(value)  * 2;
 					break;
 				case 9:
 					acc_z[row - 2] = round(atof(value) * FRAC_BASE) * 2;
+					//acc_z[row - 2] = atof(value)  * 2;
 					break;
 				default:
 					break;
@@ -254,60 +263,80 @@ toc(timespec * start_time, const char * prefix)
 
 	u_int64_t time_slots[ITERATION];
 
-	for (size_t idx = 0; idx < ITERATION; idx++) {
-		elapsed_time_start(idx);  // 开始计时
+	for (size_t idx = 0; idx < ITERATION; idx++)
+	{
+		// elapsed_time_start(idx);  // 开始计时
 		timespec timer = tic();
-		for (size_t ts = 0; ts < DATA_SIZE; ts++) {
+		for (size_t ts = 0; ts < DATA_SIZE; ts++)
+		{
+//			quantize4(0.64306622f, 0.02828862f, -0.00567953f, -0.76526684f, FRAC_BASE);
+//			quantize4(0.64306622f, 0.02828862f, -0.00567953f, -0.76526684f, FRAC_BASE);
+//			quantize4(0.64306622f, 0.02828862f, -0.00567953f, -0.76526684f, FRAC_BASE);
+//			quantize4(0.64306622f, 0.02828862f, -0.00567953f, -0.76526684f, FRAC_BASE);
+
 			MadgwickAHRSupdate(gyr_x[ts], gyr_y[ts], gyr_z[ts],
 					   acc_x[ts], acc_y[ts], acc_z[ts],
 					   mag_x[ts], mag_y[ts], mag_z[ts],
 					   &q0[ts], &q1[ts], &q2[ts], &q3[ts]);
 
 
-
+			dequantize4(q0[ts], q1[ts], q2[ts], q3[ts]);
 		}
-		elapsed_time_stop(idx);  // 结束计时
+
 		time_slots[idx] = toc(&timer, "computation delay").tv_nsec;
+		// elapsed_time_stop(idx);  // 结束计时
 	}
 
 	u_int64_t average_time = 0;
-	for (size_t idx = 0; idx < ITERATION; idx++) {
+	for (size_t idx = 0; idx < ITERATION; idx++)
+	{
 		average_time += time_slots[idx];
 	}
 	average_time /= ITERATION;
-	printf("average time = %lu nm\n", average_time);
+	printf("average time = %lu ns\n", average_time);
 
 	// 打印出每次迭代的最大、最小和当前时间
-	for (size_t idx = 0; idx < ITERATION; idx++) {
-//		printf("Iteration %zu: Current Time = %lu, Max Time = %lu, Min Time = %lu\n",
-//		       idx, elapsed_time_tbl[idx].current, elapsed_time_tbl[idx].max, elapsed_time_tbl[idx].min);
+	//	for (size_t idx = 0; idx < ITERATION; idx++) {
+	//
+	//		printf("Cycle count for iteration %zu: %lu cycles\n", idx, elapsed_time_tbl[idx].current);
+	//	}
 
-
-		printf("Cycle count for iteration %zu: %lu cycles\n", idx, elapsed_time_tbl[idx].current);
-	}
-
-	FILE *fptr = fopen("int_result.txt", "w");
-	for (size_t ts = 0; ts < DATA_SIZE; ts++) {
+	FILE * fptr = fopen("int_result.txt", "w");
+	for (size_t ts = 0; ts < DATA_SIZE; ts++)
+	{
 		//        printf("FIX: q0[%d]=%f, q1[%d]=%f, q2[%d]=%f, q3[%d]=%f\n",
 		//               ts, (double)q0[ts]/FRAC_BASE,
 		//               ts, (double)q1[ts]/FRAC_BASE,
 		//               ts, (double)q2[ts]/FRAC_BASE,
 		//               ts, (double)q3[ts]/FRAC_BASE);
-		fprintf(fptr, "FIX: q0[%d]=%f, q1[%d]=%f, q2[%d]=%f, q3[%d]=%f\n",
-			ts, (double)q0[ts]/FRAC_BASE,
-			ts, (double)q1[ts]/FRAC_BASE,
-			ts, (double)q2[ts]/FRAC_BASE,
-			ts, (double)q3[ts]/FRAC_BASE);
+//				fprintf(fptr, "FIX: q0[%d]=%f, q1[%d]=%f, q2[%d]=%f, q3[%d]=%f\n",
+//					ts, (double)q0[ts]/FRAC_BASE,
+//					ts, (double)q1[ts]/FRAC_BASE,
+//					ts, (double)q2[ts]/FRAC_BASE,
+//					ts, (double)q3[ts]/FRAC_BASE);
+
+
+				fprintf(fptr, "FIX: q0[%d]=%f, q1[%d]=%f, q2[%d]=%f, q3[%d]=%f\n",
+					ts, (float)q0[ts]/FRAC_BASE,
+					ts, (float)q1[ts]/FRAC_BASE,
+					ts, (float)q2[ts]/FRAC_BASE,
+					ts, (float)q3[ts]/FRAC_BASE);
+
+//		fprintf(fptr, "FIX: q0[%d]=%f, q1[%d]=%f, q2[%d]=%f, q3[%d]=%f\n",
+//			ts, (double)(q0[ts] >> FRAC_Q),
+//			ts, (double)(q1[ts] >> FRAC_Q),
+//			ts, (double)(q2[ts] >> FRAC_Q),
+//			ts, (double)(q3[ts] >> FRAC_Q));
 	}
 	fclose(fptr);
 	return 0;
- }
+}
 
-//int main ()
+// int main ()
 //{
 //	/*
 //	 * Time (s),Magnetic field x (µT),Magnetic field y (µT),Magnetic field z (µT),Gyroscope x (rad/s),Gyroscope y (rad/s),Gyroscope z (rad/s),Acceleration x (m/s^2),Acceleration y (m/s^2),Acceleration z (m/s^2)
-// 0.07969094,-7.249095917,26.43893433,-37.16656494,-0.1184487343,0.001258035656,0.008988874033,-0.3570917249,0.3941296637,9.963726044
+//  0.07969094,-7.249095917,26.43893433,-37.16656494,-0.1184487343,0.001258035656,0.008988874033,-0.3570917249,0.3941296637,9.963726044
 //	 */
 //
 //	float num1 = -7.249095917;

@@ -14,7 +14,7 @@ clang -g0 -O0 -Xclang -disable-O0-optnone    -S -emit-llvm -Wall -Wextra -o $HOM
 
 # Step 4: Optimize the generated LLVM IR file
 #opt $HOME/CoSense/applications/newton/llvm-ir/MadgwickAHRSfix.ll  -O3 -Os -S -o $HOME/CoSense/applications/newton/llvm-ir/out.ll
-opt $HOME/CoSense/applications/newton/llvm-ir/MadgwickAHRSfix.ll  -S -o $HOME/CoSense/applications/newton/llvm-ir/out.ll
+opt $HOME/CoSense/applications/newton/llvm-ir/MadgwickAHRSfix.ll --mem2reg -S -o $HOME/CoSense/applications/newton/llvm-ir/out.ll
 
 # Step 5: Compile the optimized LLVM IR file to bitcode
 llvm-as $HOME/CoSense/applications/newton/llvm-ir/out.ll -o $HOME/CoSense/applications/newton/llvm-ir/out.bc
@@ -30,6 +30,9 @@ ar -rc $HOME/CoSense/applications/newton/llvm-ir/libout.a $HOME/CoSense/applicat
 
 # Step 9: Compile the test file and link with the static library
 clang $HOME/CoSense/applications/newton/llvm-ir/c-files/test_MadgwickAHRSfix.c -no-pie -L $HOME/CoSense/applications/newton/llvm-ir -lout -O3 -Os  -o $HOME/CoSense/applications/newton/llvm-ir/main_out -lm
+
+
+#clang $HOME/CoSense/applications/newton/llvm-ir/test_madgwick.c -D INT_DATA_TYPE -no-pie -L$HOME/CoSense/applications/newton/llvm-ir -lout -O3 -Os   -o $HOME/CoSense/applications/newton/llvm-ir/main_out -lm
 
 # Step 10: Run the test executable
 $HOME/CoSense/applications/newton/llvm-ir/main_out

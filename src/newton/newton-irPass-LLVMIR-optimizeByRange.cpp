@@ -78,6 +78,58 @@
 
 using namespace llvm;
 
+
+std::set<std::string> whitelist = {
+    "MadgwickAHRSupdate"
+};
+
+
+//void processWhitelistedFunctions(Module &module, const std::set<std::string> &whitelist) {
+//	for (auto &F : module) {
+//		// 检查函数是否在白名单中
+//		if (whitelist.find(F.getName().str()) != whitelist.end()) {
+//			// 打印找到的函数名
+//			llvm::errs() << "Found whitelisted function: " << F.getName() << "\n";
+//			// 对函数的参数进行量化处理
+//			handleArguments(F);
+//			// 对返回值进行反量化处理
+//			dequantizeResults(F);
+//		}
+//	}
+//}
+//
+//void handleArguments(Function &F) {
+//	IRBuilder<> Builder(&F.getEntryBlock());
+//	for (auto &arg : F.args()) {
+//		if (arg.getType()->isFloatingPointTy()) {
+//			// 量化参数：将浮点数转换为整型（定点）
+//			Value *quantizedArg = Builder.CreateFPToSI(
+//			    Builder.CreateFMul(&arg, llvm::ConstantFP::get(arg.getType(), scale)),
+//			    IntegerType::get(arg.getContext(), 32)
+//			);
+//			// 替换原来的浮点参数
+//			arg.replaceAllUsesWith(quantizedArg);
+//		}
+//	}
+//}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 // Function to save the IR of a module to a file
 void
 saveModuleIR(llvm::Module & M, const std::string & fileName)
@@ -604,8 +656,9 @@ irPassLLVMIROptimizeByRange(State * N, bool enableQuantization, bool enableOverl
 
 	eraseOldInstructions();
 
-	// 处理特殊的数值
-	// handleSpecialNumber(*Mod, Mod->getContext());
+	//processWhitelistedFunctions(*Mod, whitelist);
+
+
 
 	const char * homeDir = getenv("HOME");
 	if (!homeDir)

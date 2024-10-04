@@ -4,7 +4,7 @@
 
 #include "fsl_misc_utilities.h"
 
-// #include "warp.h"
+
 #include "MadgwickAHRSfix.h"
 
 #define sampleFreq 28  // sample frequency in Hz
@@ -55,6 +55,46 @@ volatile bmx055xAcceleration q0 = 0.64306622f * FRAC_BASE, q1 = 0.02828862f * FR
 // m=20 1/Yest=1024.0000 Yest=0.0000 Yest_hex=0
 // m=21 1/Yest=1448.0000 Yest=0.0000 Yest_hex=0
 // m=22 1/Yest=2048.0000 Yest=0.0000 Yest_hex=0
+
+
+//void MadgwickAHRSupdate_float(float gx, float gy, float gz, float ax, float ay, float az, float mx, float my, float mz,
+//		   float* q0_ptr, float* q1_ptr, float* q2_ptr, float* q3_ptr) {
+//	int mag_x = roundf(gx * FRAC_BASE);
+//	int mag_y = roundf(gy * FRAC_BASE);
+//	int mag_z = roundf(gz * FRAC_BASE);
+//	int gyr_x = roundf(ax * FRAC_BASE);
+//	int gyr_y = roundf(ay * FRAC_BASE);
+//	int gyr_z = roundf(az * FRAC_BASE);
+//	int acc_x = roundf(mx * FRAC_BASE);
+//	int acc_y = roundf(my * FRAC_BASE);
+//	int acc_z = roundf(mz * FRAC_BASE);
+//	// Call to update Madgwick's algorithm
+//	MadgwickAHRSupdate(gyr_x, gyr_y, gyr_z, acc_x, acc_y, acc_z, mag_x, mag_y, mag_z, (int*)q0_ptr, (int*)q1_ptr, (int*)q2_ptr, (int*)q3_ptr);
+//
+//	//dequantize
+//
+//	float q0_float = (float)(*(int*)q0_ptr) / FRAC_BASE;
+//	float q1_float = (float)(*(int*)q1_ptr) / FRAC_BASE;
+//	float q2_float = (float)(*(int*)q2_ptr) / FRAC_BASE;
+//	float q3_float = (float)(*(int*)q3_ptr) / FRAC_BASE;
+//}
+
+int
+frac2dec(int32_t x) {
+	if (x < 0) {
+		return -((FRAC_BASE - 1) & (~x + 1)) * (10000 / FRAC_BASE);
+	}
+	return ((FRAC_BASE - 1) & x) * (10000 / FRAC_BASE);
+}
+
+float fixed_point_to_float(int q0_value, int FRAC_Q) {
+	int q0_int_part = q0_value >> FRAC_Q;                    // 提取整数部分
+	int q0_frac_part = q0_value & ((1 << FRAC_Q) - 1);       // 提取小数部分
+	float result = (float)q0_int_part + (float)q0_frac_part / (1 << FRAC_Q);  // 组合整数和小数部分
+	return result;
+}
+
+
 
 int32_t
 mulfix(int32_t x, int32_t y)

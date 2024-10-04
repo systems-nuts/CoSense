@@ -6,7 +6,7 @@ clang -g0 -O0 -Xclang   -disable-O0-optnone -S -emit-llvm -Wall -Wextra  -o $HOM
 
 
 # Step 4: Optimize the generated LLVM IR file
-opt $HOME/CoSense/applications/newton/llvm-ir/MadgwickAHRS.ll   -S -o $HOME/CoSense/applications/newton/llvm-ir/out.ll
+opt -inline  $HOME/CoSense/applications/newton/llvm-ir/MadgwickAHRS.ll --mem2reg  -S -o $HOME/CoSense/applications/newton/llvm-ir/out.ll
 #opt $HOME/CoSense/applications/newton/llvm-ir/MadgwickAHRS.ll  -O3 -Os -S -o $HOME/CoSense/applications/newton/llvm-ir/out.ll
 
 # Step 5: Compile the optimized LLVM IR file to bitcode

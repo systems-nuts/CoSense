@@ -243,6 +243,7 @@ shouldSkipFunction(const std::string & functionName)
 {
 	// List of function names to skip
 	static const std::unordered_set<std::string> skipFunctions = {
+	    "llvm.round.f32",
 	    "llvm.dbg.declare",
 	    "llvm.dbg.value",
 	    "llvm.dbg.label",
@@ -1107,6 +1108,8 @@ createFixSqrt(llvm::Module * irModule, Type * quantizedType, std::vector<llvm::F
 //	return func;
 // }
 // Create a fixed-point multiplication function
+
+//TODO 64 bit version of fixmul
 llvm::Function *
 createFixMul(Module * irModule, Type * quantizedType, std::vector<llvm::Function *> & functionsToInsert)
 {
@@ -1155,8 +1158,8 @@ createFixMul(Module * irModule, Type * quantizedType, std::vector<llvm::Function
 	llvm::Value *		     sext1     = builder.CreateSExt(arg1, higherQuantizedType);
 	llvm::Function::arg_iterator arg2      = &*(++arg1);
 	llvm::Value *		     sext2     = builder.CreateSExt(arg2, higherQuantizedType);
-	llvm::Value *		     mulInst   = builder.CreateMul(sext1, sext2);
-	llvm::Value *		     ashrInst  = builder.CreateAShr(mulInst, ConstantInt::get(higherQuantizedType, FRAC_Q));
+	llvm::Value *		     mulInst   = builder.CreateNSWMul(sext1, sext2);
+	llvm::Value *		     ashrInst  = builder.CreateLShr(mulInst, ConstantInt::get(higherQuantizedType, FRAC_Q));
 	llvm::Value *		     truncInst = builder.CreateTrunc(ashrInst, quantizedType);
 	builder.CreateRet(truncInst);
 
@@ -1164,6 +1167,64 @@ createFixMul(Module * irModule, Type * quantizedType, std::vector<llvm::Function
 	llvm::errs() << "Created fixmul function: " << func->getName() << "\n";
 	return func;
 }
+
+//TODO 32 bit version of fixmul
+//llvm::Function *
+//createFixMul(Module * irModule, Type * quantizedType, std::vector<llvm::Function *> & functionsToInsert)
+//{
+//	llvm::errs() << "Entering createFixMul\n";
+//
+//	// Check if irModule is valid
+//	if (!irModule)
+//	{
+//		llvm::errs() << "Error: irModule is nullptr\n";
+//		return nullptr;
+//	}
+//
+//	std::string fixmulFuncName = "fixmul";
+//	for (auto & function : *irModule)
+//	{
+//		if (function.getName() == fixmulFuncName)
+//		{
+//			llvm::errs() << "fixmul already exists\n";
+//			return &function;
+//		}
+//	}
+//
+//	llvm::FunctionType * funcType = llvm::FunctionType::get(quantizedType, {quantizedType, quantizedType}, false);
+//	llvm::Function *     func     = llvm::Function::Create(funcType, llvm::Function::PrivateLinkage, fixmulFuncName, irModule);
+//
+//	llvm::BasicBlock * entryBB = llvm::BasicBlock::Create(irModule->getContext(), "entry", func);
+//	llvm::IRBuilder<>  builder(entryBB);
+//	builder.SetInsertPoint(entryBB);
+//
+//	// Create fixed-point multiplication instruction
+//	Type * higherQuantizedType;
+//	switch (BIT_WIDTH)
+//	{
+//		case 8:
+//			higherQuantizedType = Type::getInt16Ty(irModule->getContext());
+//			break;
+//		case 16:
+//			higherQuantizedType = Type::getInt32Ty(irModule->getContext());
+//			break;
+//		default:
+//			higherQuantizedType = Type::getInt64Ty(irModule->getContext());
+//			break;
+//	}
+//
+//	llvm::Function::arg_iterator arg1      = &*(func->arg_begin());
+//	llvm::Value *		     lhs     = &*arg1;
+//	llvm::Function::arg_iterator arg2      = &*(++arg1);
+//	llvm::Value *		     rhs     = &*arg2;
+//	llvm::Value *		     mulResult   = builder.CreateMul(lhs, rhs);
+//	llvm::Value *		     ashrInst  = builder.CreateAShr(mulResult, llvm::ConstantInt::get(arg1->getType(), FRAC_Q));
+//	builder.CreateRet(ashrInst);
+//
+//	functionsToInsert.emplace_back(func);
+//	llvm::errs() << "Created fixmul function: " << func->getName() << "\n";
+//	return func;
+//}
 
 // TODO  Original version of fixrsqrt
 llvm::Function *
@@ -2952,15 +3013,15 @@ adaptTypeCast(llvm::Function & llvmIrFunction, Type * quantizedType)
 
 			switch (llvmIrInstruction->getOpcode())
 			{
-				case Instruction::Alloca:
-					handleAlloca(llvmIrInstruction, quantizedType);
-					break;
-				case Instruction::Store:
-					handleStore(llvmIrInstruction, quantizedType);
-					break;
-				case Instruction::Load:
-					handleLoad(llvmIrInstruction, quantizedType);
-					break;
+//				case Instruction::Alloca:
+//					handleAlloca(llvmIrInstruction, quantizedType);
+//					break;
+//				case Instruction::Store:
+//					handleStore(llvmIrInstruction, quantizedType);
+//					break;
+//				case Instruction::Load:
+//					handleLoad(llvmIrInstruction, quantizedType);
+//					break;
 				case Instruction::FPToUI:
 				case Instruction::FPToSI:
 				case Instruction::SIToFP:
@@ -3003,15 +3064,48 @@ adaptTypeCast(llvm::Function & llvmIrFunction, Type * quantizedType)
 	llvm::errs() << "Exiting adaptTypeCast\n";
 }
 
-void
-quantizeFunctionArguments(Function & llvmIrFunction, Type * quantizedType)
-{
-	for (int idx = 0; idx < llvmIrFunction.arg_size(); idx++)
-	{
-		auto paramOp = llvmIrFunction.getArg(idx);
-		setQuantizedType(paramOp, quantizedType);
-	}
-}
+
+
+
+
+//void
+//quantizeFunctionArguments(Function & llvmIrFunction, Type * quantizedType)
+//{
+//	for (int idx = 0; idx < llvmIrFunction.arg_size(); idx++)
+//	{
+//		auto paramOp = llvmIrFunction.getArg(idx);
+//		setQuantizedType(paramOp, quantizedType);
+//	}
+//}
+
+//void quantizeFunctionArguments(Function &llvmIrFunction, Type *quantizedType) {
+//	for (auto &arg : llvmIrFunction.args()) {
+//		if (arg.getType()->isFloatTy()) { // 检查参数是否为浮点类型
+//			// 获取原始浮点值
+//			Value *originalFloat = &arg;
+//
+//			IRBuilder<> builder(&llvmIrFunction.getEntryBlock().front());
+//
+//			// 执行乘法 (假设你有一个 FRAC_BASE 的常数)
+//			Value *scaledValue = builder.CreateFMul(originalFloat, ConstantFP::get(originalFloat->getType(), FRAC_BASE));
+//
+//			// 调用 roundf32 (假设这是你的量化逻辑)
+//			Function *roundF32 = Intrinsic::getDeclaration(llvmIrFunction.getParent(), Intrinsic::round, originalFloat->getType());
+//			Value *roundedValue = builder.CreateCall(roundF32, scaledValue);
+//
+//			// 将浮点值转换为整数类型（使用 fptosi）
+//			Value *quantizedValue = builder.CreateFPToSI(roundedValue, quantizedType);
+//
+//			// 用量化后的值替换原来的参数
+//			arg.replaceAllUsesWith(quantizedValue);  // 使用 replaceAllUsesWith 进行替换
+//
+//			// 根据需要设置量化的值或进行替换
+//			// 你可以在这里将量化后的值赋给参数或者进行进一步的操作
+//			// 例如：将参数替换为量化值
+//			// setQuantizedType(paramOp, quantizedType); // 这里可以是你的量化类型设置函数
+//		}
+//	}
+//}
 
 // Main function to perform LLVM IR auto quantization
 void
@@ -3079,7 +3173,7 @@ irPassLLVMIRAutoQuantization(State * N, llvm::Function & llvmIrFunction, std::ve
 	/*
 	 * quantize the arguments type
 	 * */
-	// quantizeFunctionArguments(llvmIrFunction, quantizedType);
+	//quantizeFunctionArguments(llvmIrFunction, quantizedType);
 
 	// Process each instruction
 	for (BasicBlock & llvmIrBasicBlock : llvmIrFunction)

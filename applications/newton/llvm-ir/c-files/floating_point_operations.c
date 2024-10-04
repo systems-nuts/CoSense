@@ -5,29 +5,12 @@
 #include <complex.h>
 #include <stdint.h>
 
-// float invSqrt(float x) {
-//	float halfx = 0.5f * x;
-//	float y = x;
-//	//#pragma unsupported
-//	long i = *(long*)&y;
-//	i = 0x5f3759df - (i>>1);
-//	y = *(float*)&i;
-//	//#end
-//	y = y * (1.5f - (halfx * y * y));
-//	return y;
-// }
-
-// double
-// my_quantize(double a)
-//{
-//	return a;
-// }
 //  Function to perform basic floating point operations
 //  Function to perform addition
-  float perform_addition(float a, float b) {
-
-	return  a + b;
- }
+//  float perform_addition(float a, float b) {
+//
+//	return  a + b;
+// }
 //
 //
 //
@@ -46,13 +29,13 @@
 
 ////////
 ////////// Function to perform multiplication
- float perform_multiplication(float a, float b) {
-	return a * b;
- }
+// float perform_multiplication(float a, float b) {
+//	return a * b;
+// }
 ////
 // float perform_division(float a, float b) {
 //	 return a / b;
-// }
+// }c
 
 // float
 // perform_constant_multiplication(float a)
@@ -376,7 +359,7 @@
 //	return step0 * norm;
 // }
 
-typedef uint64_t float64;
+// typedef uint64_t float64;
 
 // void float64_add(float64 a, float64 b, float64 *result) {
 //	// Extract components of first number
@@ -424,7 +407,7 @@ typedef uint64_t float64;
 //	*result = ((uint64_t)sign1 << 63) | ((uint64_t)exponent1 << 52) | (mantissa & 0xFFFFFFFFFFFFF);
 // }
 
-//float invSqrt(float x) {
+// float invSqrt(float x) {
 //	float halfx = 0.5f * x;
 //	float y = x;
 //	//#pragma unsupported
@@ -434,18 +417,17 @@ typedef uint64_t float64;
 //	//#end
 //	y = y * (1.5f - (halfx * y * y));
 //	return y;
-//}
+// }
 
-
-//void
-//MadgwickAHRSupdateIMU(float ax,
+// void
+// MadgwickAHRSupdateIMU(float ax,
 //		      float * q0_ptr)
 //{
 //	float q0 = *q0_ptr;
-//}
+// }
 //
-//void
-//MadgwickAHRSupdate(float gx, float ax,
+// void
+// MadgwickAHRSupdate(float gx, float ax,
 //		   float * q0_ptr)
 //{
 //	float q0 = *q0_ptr;
@@ -453,4 +435,17 @@ typedef uint64_t float64;
 //		MadgwickAHRSupdateIMU(ax, q0_ptr);
 //		return;
 //	}
-//}
+// }
+
+// void MadgwickAHRSupdate(float gx, float gy, float gz, float ax, float ay, float az, float mx, float my, float mz,
+//		   float* q0_ptr, float* q1_ptr, float* q2_ptr, float* q3_ptr) {
+
+void
+MadgwickAHRSupdate(float   mx,
+		   float * q0_ptr)
+{
+	float q0 = *q0_ptr;
+	float _2q0mx;
+
+	_2q0mx = 2.0f * q0 * mx;
+}

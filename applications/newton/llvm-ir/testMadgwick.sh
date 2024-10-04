@@ -9,6 +9,8 @@ FILE_PATH="$HOME/CoSense/applications/newton/llvm-ir/MadgwickAHRS_opt.ll"
 echo "Step 1: Generate LLVM IR file"
 clang -g0 -O0  -Xclang -disable-O0-optnone  -S -emit-llvm -Wall -Wextra  -o $HOME/CoSense/applications/newton/llvm-ir/MadgwickAHRS.ll $HOME/CoSense/applications/newton/llvm-ir/c-files/MadgwickAHRS.c
 
+
+#opt   $HOME/CoSense/applications/newton/llvm-ir/MadgwickAHRS.ll --mem2reg -S -o $HOME/CoSense/applications/newton/llvm-ir/MadgwickAHRS.ll
 # Step 2: Use newton for optimization and quantization
 echo "Step 2: Use newton for optimization and quantization"
 #cd $HOME/CoSense/src/newton && ./newton-linux-EN --llvm-ir=$HOME/CoSense/applications/newton/llvm-ir/MadgwickAHRS.ll --llvm-ir-liveness-check --llvm-ir-auto-quantization $HOME/CoSense/applications/newton/sensors/BMX055.nt
@@ -26,9 +28,9 @@ cd $HOME/CoSense/applications/newton/llvm-ir/&&
 
 # Step 4: Optimize the generated LLVM IR file
 echo "Step 4: Optimize the generated LLVM IR file"
-#opt -inline $HOME/CoSense/applications/newton/llvm-ir/MadgwickAHRS_opt.ll  -S -o $HOME/CoSense/applications/newton/llvm-ir/out.ll
-opt -inline  $HOME/CoSense/applications/newton/llvm-ir/MadgwickAHRS_opt.ll  -S -o $HOME/CoSense/applications/newton/llvm-ir/out.ll
-#opt  $HOME/CoSense/applications/newton/llvm-ir/MadgwickAHRS_opt.ll --mem2reg  -S -o $HOME/CoSense/applications/newton/llvm-ir/out.ll
+#opt $HOME/CoSense/applications/newton/llvm-ir/MadgwickAHRS_opt.ll  -S -o $HOME/CoSense/applications/newton/llvm-ir/out.ll
+opt -inline  $HOME/CoSense/applications/newton/llvm-ir/MadgwickAHRS_opt.ll  --mem2reg -S -o $HOME/CoSense/applications/newton/llvm-ir/out.ll
+#opt  $HOME/CoSense/applications/newton/llvm-ir/MadgwickAHRS_opt.ll   -S -o $HOME/CoSense/applications/newton/llvm-ir/out.ll
 #opt $HOME/CoSense/applications/newton/llvm-ir/MadgwickAHRS_opt.ll -O3 -Os  -S -o $HOME/CoSense/applications/newton/llvm-ir/out.ll
 
 # Step 5: Compile the optimized LLVM IR file to bitcode
@@ -51,9 +53,9 @@ ar -rc $HOME/CoSense/applications/newton/llvm-ir/libout.a $HOME/CoSense/applicat
 echo "Step 9: Compile the test file and link with the static library"
 #clang $HOME/CoSense/applications/newton/llvm-ir/test_madgwick.c -D INT_DATA_TYPE -no-pie -L$HOME/CoSense/applications/newton/llvm-ir -lout -O3 -Os   -o $HOME/CoSense/applications/newton/llvm-ir/main_out -lm
 
-clang $HOME/CoSense/applications/newton/llvm-ir/c-files/test_MadgwickAHRSfix.c -no-pie -L $HOME/CoSense/applications/newton/llvm-ir -lout -O3 -Os  -o $HOME/CoSense/applications/newton/llvm-ir/main_out -lm
+#clang $HOME/CoSense/applications/newton/llvm-ir/c-files/test_MadgwickAHRSfix.c -D  -no-pie -L $HOME/CoSense/applications/newton/llvm-ir -lout -O3 -Os  -o $HOME/CoSense/applications/newton/llvm-ir/main_out -lm
 
-#clang $HOME/CoSense/applications/newton/llvm-ir/test_madgwick.c -D FP_DATA_TYPE -no-pie -L$HOME/CoSense/applications/newton/llvm-ir -lout -O3 -Os   -o $HOME/CoSense/applications/newton/llvm-ir/main_out -lm
+clang $HOME/CoSense/applications/newton/llvm-ir/test_madgwick.c -D INT_DATA_TYPE -no-pie -L$HOME/CoSense/applications/newton/llvm-ir -lout -O3 -Os   -o $HOME/CoSense/applications/newton/llvm-ir/main_out -lm
 
 
 #clang $HOME/CoSense/applications/newton/llvm-ir/c-files/newtest.c  -no-pie -L$HOME/CoSense/applications/newton/llvm-ir -lout -O3 -Os   -o $HOME/CoSense/applications/newton/llvm-ir/c-files/newtest -lm

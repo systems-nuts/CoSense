@@ -19,7 +19,7 @@ sed -i 's/float\*\*/i32**/g' "$file"
 sed -i 's/float\*/i32*/g' "$file"
 
 # Now replace the call to invSqrt with the call to fixrsqrt
-sed -i 's/call i32 @invSqrt/call i32 @fixrsqrt/g' "$file"
+#sed -i 's/call i32 @invSqrt/call i32 @fixrsqrt/g' "$file"
 
 # Replace the specific call to MadgwickAHRSupdateIMU
 #sed -i 's/call void @MadgwickAHRSupdateIMU(.*)/call void @MadgwickAHRSupdateIMU(float %0, float %1, float %2, float %3, float %4, float %5, i32* %119, i32* %120, i32* %121, i32* %122)/g' "$file"
