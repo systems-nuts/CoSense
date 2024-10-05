@@ -294,9 +294,8 @@ handleLoad(Instruction * llvmIrInstruction, Type * quantizedType)
 		IRBuilder<> Builder(loadInst);
 
 		// Check if the loaded value is of floating-point type
-		Type * loadedType  = loadInst->getType();
-		//Type * pointerType = loadInst->getPointerOperandType();
-
+		Type * loadedType = loadInst->getType();
+		// Type * pointerType = loadInst->getPointerOperandType();
 
 		if (loadedType->isFloatingPointTy())
 		{
@@ -726,8 +725,6 @@ handleFMul(Instruction * llvmIrInstruction, Type * quantizedType, Function * fix
 	}
 }
 
-
-
 void
 setQuantizedType(Value * inValue, Type * quantizedType)
 {
@@ -818,40 +815,95 @@ handleStore(Instruction * llvmIrInstruction, Type * quantizedType)
 	}
 }
 
-// handle argument pointer
 void
 bitcastFloatPtrArgs(Function & F, IRBuilder<> & Builder)
 {
 	SmallVector<std::pair<Argument *, Value *>, 4> argReplacements;
-
-	Builder.SetInsertPoint(&*F.getEntryBlock().getFirstInsertionPt());
 	// Iterate over all function arguments
-	// 遍历所有函数参数
-	for (llvm::Argument &Arg : F.args()) {
-		// 检查是否为 float* 类型
-		if (Arg.getType()->isPointerTy() && Arg.getType()->getPointerElementType()->isFloatTy()) {
-			// 创建正确的 i32* 类型
-			llvm::PointerType *i32PtrType = llvm::Type::getInt32PtrTy(F.getContext());
+	for (Argument & Arg : F.args())
+	{
+		// Check if the argument is a pointer to float
+		if (Arg.getType()->isPointerTy() && Arg.getType()->getPointerElementType()->isFloatTy())
+		{
+			llvm::PointerType * i32PtrType = llvm::Type::getInt32PtrTy(F.getContext());
+			// Create a bitcast instruction at the beginning of the function
+			Builder.SetInsertPoint(&*F.getEntryBlock().getFirstInsertionPt());
+			Value * newArg = Builder.CreateBitCast(&Arg, i32PtrType, Arg.getName() + ".to_i32");
+			// llvm::Value *newArg = Builder.CreateBitCast(&Arg, i32PtrType, Arg.getName() + ".toI32Ptr");
 
-			// 对 float* 参数执行 bitcast 到 i32*
-			llvm::Value *newArg = Builder.CreateBitCast(&Arg, i32PtrType, Arg.getName() + ".toI32Ptr");
-			llvm::errs() << "Bitcast " << Arg.getName() << " to i32*\n";
-
-			// 存储原始参数和新的 bitcast 值以备后用
-			argReplacements.push_back(std::make_pair(&Arg, newArg));
+			// Store the original argument and the bitcast result
+			argReplacements.push_back({&Arg, newArg});
 		}
 	}
 
-	// Replace all uses of the original arguments with the new bitcast values
+	// Iterate over the function to replace uses of the original arguments
 	for (auto & replacement : argReplacements)
 	{
-		Argument * originalArg = replacement.first;
-		Value *	   newArg      = replacement.second;
+		Argument * oldArg = replacement.first;
+		Value *	   newArg = replacement.second;
 
-		// Replace all occurrences of the original argument with the new bitcast value
-		originalArg->replaceAllUsesWith(newArg);
+		// Replace all uses of the old argument with the new bitcasted value
+		// 遍历替换所有使用原始参数的地方
+		for (auto & replacement : argReplacements)
+		{
+			Argument * oldArg = replacement.first;
+			Value *	   newArg = replacement.second;
+
+			// 替换前，移除 bitcast 指令自身的使用
+			SmallVector<Use *, 8> usesToReplace;
+			for (auto & U : oldArg->uses())
+			{
+				User * user = U.getUser();
+				if (user != newArg)
+				{
+					usesToReplace.push_back(&U);
+				}
+			}
+
+			// 替换收集到的使用
+			for (auto * use : usesToReplace)
+			{
+				use->set(newArg);
+			}
+		}
 	}
 }
+
+// handle argument pointer
+// void
+// bitcastFloatPtrArgs(Function & F, IRBuilder<> & Builder)
+//{
+//	SmallVector<std::pair<Argument *, Value *>, 4> argReplacements;
+//
+//	Builder.SetInsertPoint(&*F.getEntryBlock().getFirstInsertionPt());
+//	// Iterate over all function arguments
+//	// 遍历所有函数参数
+//	for (llvm::Argument &Arg : F.args()) {
+//		// 检查是否为 float* 类型
+//		if (Arg.getType()->isPointerTy()) {
+//			llvm::errs() << "Recognized float pointer argument: " << Arg.getName() << "\n";
+//			// 创建正确的 i32* 类型
+//			llvm::PointerType *i32PtrType = llvm::Type::getInt32PtrTy(F.getContext());
+//
+//			// 对 float* 参数执行 bitcast 到 i32*
+//			llvm::Value *newArg = Builder.CreateBitCast(&Arg, i32PtrType, Arg.getName() + ".toI32Ptr");
+//			llvm::errs() << "Bitcast " << Arg.getName() << " to i32*\n";
+//
+//			// 存储原始参数和新的 bitcast 值以备后用
+//			argReplacements.push_back(std::make_pair(&Arg, newArg));
+//		}
+//	}
+//
+//	// Replace all uses of the original arguments with the new bitcast values
+//	for (auto & replacement : argReplacements)
+//	{
+//		Argument * originalArg = replacement.first;
+//		Value *	   newArg      = replacement.second;
+//
+//		// Replace all occurrences of the original argument with the new bitcast value
+//		originalArg->replaceAllUsesWith(newArg);
+//	}
+//}
 
 // Helper function to quantize floating-point parameters
 void
@@ -997,7 +1049,7 @@ irPassLLVMIRAutoQuantization(State * N, llvm::Function & llvmIrFunction, std::ve
 				case Instruction::Load:
 				{
 					llvm::errs() << "Handling load\n";
-					//handleLoad(llvmIrInstruction, quantizedType);
+					 handleLoad(llvmIrInstruction, quantizedType);
 					break;
 				}
 				break;
