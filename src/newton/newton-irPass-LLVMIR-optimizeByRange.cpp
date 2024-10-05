@@ -162,47 +162,18 @@ removeQuantizedSuffixInModule(llvm::Module & M)
 			}
 		}
 	}
-}
 
-void
-finalCorrectionPass(Module & M, Type * quantizedType)
-{
-	llvm::errs() << "Entering finalCorrectionPass\n";
-	for (Function & F : M)
-	{
-		for (BasicBlock & BB : F)
-		{
-			for (Instruction & I : BB)
-			{
-				// Correct Load Instructions
-				if (auto * loadInst = dyn_cast<LoadInst>(&I))
-				{
-					if (loadInst->getType() != quantizedType)
-					{
-						llvm::errs() << "Correcting load instruction: " << *loadInst << "\n";
-
-						loadInst->mutateType(quantizedType);
-					}
-				}
-
-				// Correct Store Instructions
-				if (auto * storeInst = dyn_cast<StoreInst>(&I))
-				{
-					if (storeInst->getValueOperand()->getType() != quantizedType)
-					{
-						llvm::errs() << "Correcting store instruction: " << *storeInst << "\n";
-						storeInst->getValueOperand()->mutateType(quantizedType);
-					}
-					if (storeInst->getPointerOperand()->getType()->getPointerElementType() != quantizedType)
-					{
-						llvm::errs() << "Correcting store pointer operand: " << *storeInst << "\n";
-						storeInst->getPointerOperand()->mutateType(quantizedType->getPointerTo());
-					}
-				}
+	// Remove suffix from global variables
+	for (auto &G : M.globals()) {
+		if (G.hasName()) {
+			std::string GlobalName = G.getName().str();
+			size_t pos = GlobalName.find("_quantized");
+			if (pos != std::string::npos) {
+				GlobalName.erase(pos, 10);  // Remove "_quantized"
+				G.setName(GlobalName);
 			}
 		}
 	}
-	llvm::errs() << "Exiting finalCorrectionPass\n";
 }
 
 void
@@ -644,17 +615,16 @@ irPassLLVMIROptimizeByRange(State * N, bool enableQuantization, bool enableOverl
 	//		overloadFunc(Mod, callerMap);
 
 	// Finally, erase old functions
-	eraseOldFunctions();
+	//eraseOldFunctions();
 
 	eraseOldGlobals();
 
 	// Perform text replacement to remove "_quantized" suffixes
 	removeQuantizedSuffixInModule(*Mod);
 
-	// correct fmul
-	// correctAllFMulsInModule(Mod.get());
 
-	eraseOldInstructions();
+
+	//eraseOldInstructions();
 
 	//processWhitelistedFunctions(*Mod, whitelist);
 
