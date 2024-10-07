@@ -75,60 +75,87 @@
 #include "llvm/Support/FileSystem.h"
 #include "llvm/IR/Function.h"
 
-
 using namespace llvm;
 
-
 std::set<std::string> whitelist = {
-    "MadgwickAHRSupdate"
-};
+    "MadgwickAHRSupdate"};
 
+// Define the dequantizeResult method
 
-//void processWhitelistedFunctions(Module &module, const std::set<std::string> &whitelist) {
-//	for (auto &F : module) {
-//		// 检查函数是否在白名单中
-//		if (whitelist.find(F.getName().str()) != whitelist.end()) {
-//			// 打印找到的函数名
-//			llvm::errs() << "Found whitelisted function: " << F.getName() << "\n";
-//			// 对函数的参数进行量化处理
-//			handleArguments(F);
-//			// 对返回值进行反量化处理
-//			dequantizeResults(F);
-//		}
-//	}
-//}
-//
-//void handleArguments(Function &F) {
-//	IRBuilder<> Builder(&F.getEntryBlock());
-//	for (auto &arg : F.args()) {
-//		if (arg.getType()->isFloatingPointTy()) {
-//			// 量化参数：将浮点数转换为整型（定点）
-//			Value *quantizedArg = Builder.CreateFPToSI(
-//			    Builder.CreateFMul(&arg, llvm::ConstantFP::get(arg.getType(), scale)),
-//			    IntegerType::get(arg.getContext(), 32)
-//			);
-//			// 替换原来的浮点参数
-//			arg.replaceAllUsesWith(quantizedArg);
-//		}
-//	}
-//}
+std::vector<StoreInst *> toRemove;
+void
+dequantizeResults(StoreInst * storeInst, Function & F)
+{
+	// IRBuilder<> Builder(storeInst);
+	IRBuilder<> Builder(storeInst->getNextNode());
+	auto *	    pointerOperand = storeInst->getPointerOperand();
+	llvm::errs() << "Processing StoreInst in function: " << F.getName() << " | Store instruction: " << *storeInst << "\n";
 
+	if (pointerOperand->getType()->getPointerElementType()->isIntegerTy(32))
+	{
+		llvm::errs() << "Integer pointer type detected, proceeding with dequantization. Operand: " << *pointerOperand << "\n";
+		auto * loadInst = Builder.CreateLoad(pointerOperand->getType()->getPointerElementType(), pointerOperand);
+		llvm::errs() << "Loaded value from pointer: " << *loadInst << "\n";
+		Value * convertedFloat = Builder.CreateSIToFP(loadInst, Type::getFloatTy(F.getContext()));
+		llvm::errs() << "Converted integer to float: " << *convertedFloat << "\n";
+		Value * dividedValue = Builder.CreateFDiv(convertedFloat, ConstantFP::get(Type::getFloatTy(F.getContext()), 65536.0));
+		llvm::errs() << "Divided value by FRAC_BASE: " << *dividedValue << "\n";
 
+		if (auto * bitcastInst = dyn_cast<BitCastInst>(pointerOperand))
+		{
+			//			if (bitcastInst->getSrcTy()->getPointerElementType()->isFloatTy())
+			//			{
+			//				auto * originalFloatPtr = bitcastInst->getOperand(0);
+			//				llvm::errs() << "Original float pointer: " << *originalFloatPtr << "\n";
+			//				llvm::errs() << "Storing dequantized value back to original float pointer.\n";
+			//				Builder.CreateStore(dividedValue, originalFloatPtr);
+			//				storeInst->eraseFromParent();  // Remove the old store instruction
+			//				llvm::errs() << "Original store instruction removed.\n";
+			//			}
 
+			if (auto * bitcastInst = dyn_cast<BitCastInst>(pointerOperand))
+			{
+				if (bitcastInst->getSrcTy()->getPointerElementType()->isFloatTy())
+				{
+					auto * originalFloatPtr = bitcastInst->getOperand(0);
+					Builder.CreateStore(dividedValue, originalFloatPtr);
+					// 标记原始指令以便删除
+					// toRemove.push_back(storeInst);
+				}
+			}
+		}
+	}
+	else
+	{
+		llvm::errs() << "Non-integer pointer type detected, skipping dequantization.\n";
+	}
+}
 
+// Process functions that are whitelisted for dequantization
+void
+processWhitelistedFunctions(Module & module, const std::set<std::string> & whitelist)
+{
+	for (auto & F : module)
+	{
+		if (whitelist.find(F.getName().str()) != whitelist.end())
+		{
+			llvm::errs() << "Found whitelisted function: " << F.getName() << "\n";
 
-
-
-
-
-
-
-
-
-
-
-
-
+			for (auto & B : F)
+			{
+				for (auto & I : B)
+				{
+					llvm::errs() << "Processing instruction: " << I << "\n";
+					if (auto * storeInst = dyn_cast<StoreInst>(&I))
+					{
+						llvm::errs() << "Found valid StoreInst.\n";
+						dequantizeResults(storeInst, F);
+					}
+				}
+			}
+		}
+	}
+}
 
 // Function to save the IR of a module to a file
 void
@@ -164,11 +191,14 @@ removeQuantizedSuffixInModule(llvm::Module & M)
 	}
 
 	// Remove suffix from global variables
-	for (auto &G : M.globals()) {
-		if (G.hasName()) {
+	for (auto & G : M.globals())
+	{
+		if (G.hasName())
+		{
 			std::string GlobalName = G.getName().str();
-			size_t pos = GlobalName.find("_quantized");
-			if (pos != std::string::npos) {
+			size_t	    pos	       = GlobalName.find("_quantized");
+			if (pos != std::string::npos)
+			{
 				GlobalName.erase(pos, 10);  // Remove "_quantized"
 				G.setName(GlobalName);
 			}
@@ -372,11 +402,9 @@ irPassLLVMIROptimizeByRange(State * N, bool enableQuantization, bool enableOverl
 		}
 	}
 
-
 	flexprint(N->Fe, N->Fm, N->Fpinfo, "maxPrecisionBits: %d\n", maxPrecisionBits);
 
 	maxPrecisionBits = 16;
-
 
 	/*
 	 * get const global variables
@@ -460,7 +488,7 @@ irPassLLVMIROptimizeByRange(State * N, bool enableQuantization, bool enableOverl
 		for (auto & mi : *Mod)
 		{
 			llvm::errs() << "Quantizing function: " << mi.getName() << "\n";
-			irPassLLVMIRAutoQuantization(N, mi, functionsToInsert,maxPrecisionBits);
+			irPassLLVMIRAutoQuantization(N, mi, functionsToInsert, maxPrecisionBits);
 		}
 		for (auto mi : functionsToInsert)
 		{
@@ -615,20 +643,16 @@ irPassLLVMIROptimizeByRange(State * N, bool enableQuantization, bool enableOverl
 	//		overloadFunc(Mod, callerMap);
 
 	// Finally, erase old functions
-	//eraseOldFunctions();
+	// eraseOldFunctions();
 
 	eraseOldGlobals();
 
 	// Perform text replacement to remove "_quantized" suffixes
 	removeQuantizedSuffixInModule(*Mod);
 
+	// eraseOldInstructions();
 
-
-	//eraseOldInstructions();
-
-	//processWhitelistedFunctions(*Mod, whitelist);
-
-
+	processWhitelistedFunctions(*Mod, whitelist);
 
 	const char * homeDir = getenv("HOME");
 	if (!homeDir)
@@ -641,10 +665,7 @@ irPassLLVMIROptimizeByRange(State * N, bool enableQuantization, bool enableOverl
 	saveModuleIR(*Mod, fileName);
 	// Save the optimized IR to a file
 	// saveModuleIR(*Mod, "/home/xyf/CoSense/applications/newton/llvm-ir/MadgwickAHRS_opt.ll");
-
-	// finalCorrectionPass(*Mod, quantizedType);
-	// finalCorrectionPass(*Mod, Type::getInt32Ty(Context)); // Assuming 32-bit quantization
-	//saveModuleIR(*Mod, "/home/xyf/CoSense/applications/newton/llvm-ir/floating_point_operations_output.ll");
+	// saveModuleIR(*Mod, "/home/xyf/CoSense/applications/newton/llvm-ir/floating_point_operations_output.ll");
 
 	// 替换为$HOMR
 
