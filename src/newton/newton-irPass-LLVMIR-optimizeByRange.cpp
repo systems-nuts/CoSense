@@ -93,14 +93,10 @@ dequantizeResults(StoreInst * storeInst, Function & F)
 
 	if (pointerOperand->getType()->getPointerElementType()->isIntegerTy(32))
 	{
-		llvm::errs() << "Integer pointer type detected, proceeding with dequantization. Operand: " << *pointerOperand << "\n";
-		auto * loadInst = Builder.CreateLoad(pointerOperand->getType()->getPointerElementType(), pointerOperand);
-		llvm::errs() << "Loaded value from pointer: " << *loadInst << "\n";
-		Value * convertedFloat = Builder.CreateSIToFP(loadInst, Type::getFloatTy(F.getContext()));
-		llvm::errs() << "Converted integer to float: " << *convertedFloat << "\n";
-		Value * dividedValue = Builder.CreateFDiv(convertedFloat, ConstantFP::get(Type::getFloatTy(F.getContext()), 65536.0));
-		llvm::errs() << "Divided value by FRAC_BASE: " << *dividedValue << "\n";
 
+		auto * loadInst = Builder.CreateLoad(pointerOperand->getType()->getPointerElementType(), pointerOperand);
+		Value * convertedFloat = Builder.CreateSIToFP(loadInst, Type::getFloatTy(F.getContext()));
+		Value * dividedValue = Builder.CreateFDiv(convertedFloat, ConstantFP::get(Type::getFloatTy(F.getContext()), 65536.0));
 		if (auto * bitcastInst = dyn_cast<BitCastInst>(pointerOperand))
 		{
 			//			if (bitcastInst->getSrcTy()->getPointerElementType()->isFloatTy())
@@ -575,25 +571,25 @@ irPassLLVMIROptimizeByRange(State * N, bool enableQuantization, bool enableOverl
 		/*
 		 * simplify the condition of each branch
 		 * */
-		flexprint(N->Fe, N->Fm, N->Fpinfo, "simplify control flow by range\n");
-		for (auto & mi : *Mod)
-		{
-			auto boundInfoIt = funcBoundInfo.find(mi.getName().str());
-			if (boundInfoIt != funcBoundInfo.end())
-			{
-				simplifyControlFlow(N, boundInfoIt->second, mi);
-			}
-			//		else
-			//		{
-			//			assert(false);
-			//		}
-		}
-
-		legacy::PassManager passManager;
-		passManager.add(createCFGSimplificationPass());
-		passManager.add(createInstSimplifyLegacyPass());
-		passManager.add(createGlobalDCEPass());
-		passManager.run(*Mod);
+//		flexprint(N->Fe, N->Fm, N->Fpinfo, "simplify control flow by range\n");
+//		for (auto & mi : *Mod)
+//		{
+//			auto boundInfoIt = funcBoundInfo.find(mi.getName().str());
+//			if (boundInfoIt != funcBoundInfo.end())
+//			{
+//				simplifyControlFlow(N, boundInfoIt->second, mi);
+//			}
+//			//		else
+//			//		{
+//			//			assert(false);
+//			//		}
+//		}
+//
+//		legacy::PassManager passManager;
+//		passManager.add(createCFGSimplificationPass());
+//		passManager.add(createInstSimplifyLegacyPass());
+//		passManager.add(createGlobalDCEPass());
+//		passManager.run(*Mod);
 	//
 	//	/*
 	//	 * remove the functions that are optimized by passes.
