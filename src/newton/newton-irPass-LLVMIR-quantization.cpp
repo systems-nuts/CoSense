@@ -118,7 +118,8 @@ createFixMul(Module * irModule, Type * quantizedType, std::vector<llvm::Function
 	llvm::Value *		     sext1     = builder.CreateSExt(arg1, higherQuantizedType);
 	llvm::Function::arg_iterator arg2      = &*(++arg1);
 	llvm::Value *		     sext2     = builder.CreateSExt(arg2, higherQuantizedType);
-	llvm::Value *		     mulInst   = builder.CreateNSWMul(sext1, sext2);
+	//llvm::Value *		     mulInst   = builder.CreateNSWMul(sext1, sext2);
+	llvm::Value *		     mulInst   = builder.CreateMul(sext1, sext2);
 	llvm::Value *		     ashrInst  = builder.CreateLShr(mulInst, ConstantInt::get(higherQuantizedType, FRAC_Q));
 	llvm::Value *		     truncInst = builder.CreateTrunc(ashrInst, quantizedType);
 	builder.CreateRet(truncInst);
@@ -180,11 +181,9 @@ createFixRsqrt(llvm::Module * irModule, Type * quantizedType, std::vector<llvm::
 
 	fp_y = builder.CreateFMul(fp_y, ConstantFP::get(llvm::Type::getFloatTy(irModule->getContext()), 1.0f / FRAC_BASE));
 
-	// Equivalent of: %4 = fmul float %3, 0x3F50000000000000
-	// fp_y = builder.CreateFMul(fp_y, llvm::ConstantFP::get(llvm::Type::getFloatTy(irModule->getContext()), 0.0009765625));
-
 	llvm::Value * i = builder.CreateBitCast(fp_y, llvm::Type::getInt32Ty(irModule->getContext()));
-	i		= builder.CreateNSWSub(ConstantInt::get(llvm::Type::getInt32Ty(irModule->getContext()), 0x5f3759df), builder.CreateLShr(i, 1));
+	//i		= builder.CreateNSWSub(ConstantInt::get(llvm::Type::getInt32Ty(irModule->getContext()), 0x5f3759df), builder.CreateLShr(i, 1));
+	i		= builder.CreateSub(ConstantInt::get(llvm::Type::getInt32Ty(irModule->getContext()), 0x5f3759df), builder.CreateLShr(i, 1));
 	fp_y		= builder.CreateBitCast(i, llvm::Type::getFloatTy(irModule->getContext()));
 
 	// Step 3: int_y = fp_y * FRAC_BASE;
@@ -331,7 +330,8 @@ handleFAdd(Instruction * inInstruction, Type * quantizedType)
 	}
 
 	// Create fixed-point addition
-	Value * newInst = Builder.CreateNSWAdd(op0, op1);
+	//Value * newInst = Builder.CreateNSWAdd(op0, op1);
+	Value * newInst = Builder.CreateAdd(op0, op1);
 
 	// Replace the original FAdd instruction with the new fixed-point addition
 	inInstruction->replaceAllUsesWith(newInst);
@@ -368,7 +368,8 @@ handleFSub(Instruction * inInstruction, Type * quantizedType)
 	}
 
 	// Create fixed-point subtraction
-	Value * newInst = Builder.CreateNSWSub(op0, op1);
+	//Value * newInst = Builder.CreateNSWSub(op0, op1);
+	Value * newInst = Builder.CreateSub(op0, op1);
 
 	// Replace the original FSub instruction with the new fixed-point subtraction
 	inInstruction->replaceAllUsesWith(newInst);
@@ -702,8 +703,8 @@ handleFMul(Instruction * llvmIrInstruction, Type * quantizedType, Function * fix
 	if (isa<ConstantInt>(lhs) || isa<ConstantInt>(rhs))
 	{
 		llvm::errs() << "One of the operands is an integer constant, using mul\n";
-		// Value * newInst = Builder.CreateMul(lhs, rhs);
-		Value * newInst = Builder.CreateNSWMul(lhs, rhs);
+		Value * newInst = Builder.CreateMul(lhs, rhs);
+		//Value * newInst = Builder.CreateNSWMul(lhs, rhs);
 		llvmIrInstruction->replaceAllUsesWith(newInst);
 		llvmIrInstruction->eraseFromParent();
 		return;
@@ -895,6 +896,82 @@ bitcastFloatPtrArgs(Function & F, IRBuilder<> & Builder)
 	}
 }
 
+//void bitcastFloatPtrArgs(Function & F, IRBuilder<> & Builder)
+//{
+//	// Check if the function is the specific one to be skipped
+//	if (F.getName() == "MadgwickAHRSupdateIMU")
+//	{
+//		llvm::errs() << "Skipping bitcast for function: " << F.getName() << "\n";
+//		return;	 // Early exit if it's the function to skip
+//	}
+//
+//	llvm::errs() << "Bitcasting float pointer arguments for function: " << F.getName() << "\n";
+//
+//	SmallVector<std::pair<Argument *, Value *>, 4> argReplacements;
+//	// Iterate over all function arguments
+//	for (Argument & Arg : F.args())
+//	{
+//		// Check if the argument is a pointer to float
+//		if (Arg.getType()->isPointerTy() && Arg.getType()->getPointerElementType()->isFloatTy())
+//		{
+//			llvm::PointerType * i32PtrType = llvm::Type::getInt32PtrTy(F.getContext());
+//			// Create a bitcast instruction at the beginning of the function
+//
+//
+//			Builder.SetInsertPoint(&*F.getEntryBlock().getFirstInsertionPt());
+//
+//			Value *elemPtr = Builder.CreateGEP(&Arg, 0, "elemPtr");
+//			//load
+//			Value *elem = Builder.CreateLoad(elemPtr, "elem");
+//			    Value *scaled = Builder.CreateFMul(&Arg, ConstantFP::get(Arg.getType()->getPointerElementType(), FRAC_BASE), Arg.getName() + ".scaled");
+//			// 加0.5
+//			//Value * rounded = Builder.CreateFAdd(scaled, ConstantFP::get(Arg.getType()->getPointerElementType(), 0.5f));
+//			Value *rounded = Builder.CreateFAdd(scaled, ConstantFP::get(Arg.getType()->getPointerElementType(), 0.5f), Arg.getName() + ".rounded");
+//			//Value * newArg	= Builder.CreateFPToSI(rounded, i32PtrType);
+//			Value *newArg = Builder.CreateFPToSI(rounded, i32PtrType, Arg.getName() + ".quantized");
+//			// llvm::Value *newArg = Builder.CreateBitCast(&Arg, i32PtrType, Arg.getName() + ".toI32Ptr");
+//
+//
+//
+//			// Store the original argument and the bitcast result
+//			argReplacements.push_back({&Arg, newArg});
+//		}
+//	}
+//
+//
+//
+//	// Iterate over the function to replace uses of the original arguments
+//	for (auto & replacement : argReplacements)
+//	{
+//		Argument * oldArg = replacement.first;
+//		Value *	   newArg = replacement.second;
+//
+//		// Replace all uses of the old argument with the new bitcasted value
+//		// 遍历替换所有使用原始参数的地方
+//		for (auto & replacement : argReplacements)
+//		{
+//			Argument * oldArg = replacement.first;
+//			Value *	   newArg = replacement.second;
+//
+//			SmallVector<Use *, 8> usesToReplace;
+//			for (auto & U : oldArg->uses())
+//			{
+//				User * user = U.getUser();
+//				if (user != newArg)
+//				{
+//					usesToReplace.push_back(&U);
+//				}
+//			}
+//
+//			for (auto * use : usesToReplace)
+//			{
+//				use->set(newArg);
+//			}
+//		}
+//	}
+//
+//}
+
 
 
 void
@@ -1069,7 +1146,6 @@ shouldSkipFunction(const std::string & functionName)
 {
 	// List of function names to skip
 	static const std::unordered_set<std::string> skipFunctions = {
-	    "llvm.round.f32",
 	    "llvm.dbg.declare",
 	    "llvm.dbg.value",
 	    "llvm.dbg.label",
@@ -1077,7 +1153,6 @@ shouldSkipFunction(const std::string & functionName)
 	    "fixsqrt",
 	    "fixrsqrt",
 	    "fixmul",
-	    "sinf",
 	    "llvm.sqrt.f64",
 	    "llvm.sqrt.f32",
 	    "sqrt",
@@ -1086,15 +1161,7 @@ shouldSkipFunction(const std::string & functionName)
 	return skipFunctions.find(functionName) != skipFunctions.end();
 }
 
-//void
-//quantizeArguments(Function & llvmIrFunction, Type * quantizedType)
-//{
-//	for (int idx = 0; idx < llvmIrFunction.arg_size(); idx++)
-//	{
-//		auto paramOp = llvmIrFunction.getArg(idx);
-//		setQuantizedType(paramOp, quantizedType);
-//	}
-//}
+
 
 
 void quantizeArguments(llvm::Function &llvmIrFunction, llvm::Type *quantizedType) {
@@ -1112,9 +1179,6 @@ void quantizeArguments(llvm::Function &llvmIrFunction, llvm::Type *quantizedType
 }
 
 
-
-
-
 // Main function to perform LLVM IR auto quantization
 void
 irPassLLVMIRAutoQuantization(State * N, llvm::Function & llvmIrFunction, std::vector<llvm::Function *> & functionsToInsert, int maxPrecisionBits)
@@ -1127,7 +1191,6 @@ irPassLLVMIRAutoQuantization(State * N, llvm::Function & llvmIrFunction, std::ve
 	std::string functionName = llvmIrFunction.getName().str();
 	if (shouldSkipFunction(functionName))
 	{
-		llvm::errs() << "Should Skipping function: " << functionName << "\n";
 		return;
 	}
 
@@ -1206,7 +1269,7 @@ irPassLLVMIRAutoQuantization(State * N, llvm::Function & llvmIrFunction, std::ve
 				case Instruction::Load:
 				{
 					llvm::errs() << "Handling load\n";
-					handleLoad(llvmIrInstruction, quantizedType);
+					//handleLoad(llvmIrInstruction, quantizedType);
 					break;
 				}
 				break;

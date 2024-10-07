@@ -119,8 +119,7 @@ dequantizeResults(StoreInst * storeInst, Function & F)
 				{
 					auto * originalFloatPtr = bitcastInst->getOperand(0);
 					Builder.CreateStore(dividedValue, originalFloatPtr);
-					// 标记原始指令以便删除
-					// toRemove.push_back(storeInst);
+
 				}
 			}
 		}
@@ -573,28 +572,28 @@ irPassLLVMIROptimizeByRange(State * N, bool enableQuantization, bool enableOverl
 	//		collectCalleeInfo(calleeNames, funcBoundInfo, boundInfo);
 	//	}
 	//
-	//	/*
-	//	 * simplify the condition of each branch
-	//	 * */
-	//	flexprint(N->Fe, N->Fm, N->Fpinfo, "simplify control flow by range\n");
-	//	for (auto & mi : *Mod)
-	//	{
-	//		auto boundInfoIt = funcBoundInfo.find(mi.getName().str());
-	//		if (boundInfoIt != funcBoundInfo.end())
-	//		{
-	//			simplifyControlFlow(N, boundInfoIt->second, mi);
-	//		}
-	//		//		else
-	//		//		{
-	//		//			assert(false);
-	//		//		}
-	//	}
-	//
-	//	legacy::PassManager passManager;
-	//	passManager.add(createCFGSimplificationPass());
-	//	passManager.add(createInstSimplifyLegacyPass());
-	//	passManager.add(createGlobalDCEPass());
-	//	passManager.run(*Mod);
+		/*
+		 * simplify the condition of each branch
+		 * */
+		flexprint(N->Fe, N->Fm, N->Fpinfo, "simplify control flow by range\n");
+		for (auto & mi : *Mod)
+		{
+			auto boundInfoIt = funcBoundInfo.find(mi.getName().str());
+			if (boundInfoIt != funcBoundInfo.end())
+			{
+				simplifyControlFlow(N, boundInfoIt->second, mi);
+			}
+			//		else
+			//		{
+			//			assert(false);
+			//		}
+		}
+
+		legacy::PassManager passManager;
+		passManager.add(createCFGSimplificationPass());
+		passManager.add(createInstSimplifyLegacyPass());
+		passManager.add(createGlobalDCEPass());
+		passManager.run(*Mod);
 	//
 	//	/*
 	//	 * remove the functions that are optimized by passes.
