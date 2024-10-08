@@ -84,7 +84,7 @@ std::set<std::string> whitelist = {
 
 std::vector<StoreInst *> toRemove;
 void
-dequantizeResults(StoreInst * storeInst, Function & F)
+dequantizeResults(StoreInst * storeInst, Function & F,int maxPrecisionBits)
 {
 	// IRBuilder<> Builder(storeInst);
 	IRBuilder<> Builder(storeInst->getNextNode());
@@ -93,42 +93,25 @@ dequantizeResults(StoreInst * storeInst, Function & F)
 
 	if (pointerOperand->getType()->getPointerElementType()->isIntegerTy(32))
 	{
-
-		auto * loadInst = Builder.CreateLoad(pointerOperand->getType()->getPointerElementType(), pointerOperand);
+		auto *	loadInst       = Builder.CreateLoad(pointerOperand->getType()->getPointerElementType(), pointerOperand);
 		Value * convertedFloat = Builder.CreateSIToFP(loadInst, Type::getFloatTy(F.getContext()));
-		Value * dividedValue = Builder.CreateFDiv(convertedFloat, ConstantFP::get(Type::getFloatTy(F.getContext()), 65536.0));
+		double  fracBase       = pow(2.0, maxPrecisionBits);
+		Value * dividedValue   = Builder.CreateFDiv(convertedFloat, ConstantFP::get(Type::getFloatTy(F.getContext()), fracBase));
+
 		if (auto * bitcastInst = dyn_cast<BitCastInst>(pointerOperand))
 		{
-			//			if (bitcastInst->getSrcTy()->getPointerElementType()->isFloatTy())
-			//			{
-			//				auto * originalFloatPtr = bitcastInst->getOperand(0);
-			//				llvm::errs() << "Original float pointer: " << *originalFloatPtr << "\n";
-			//				llvm::errs() << "Storing dequantized value back to original float pointer.\n";
-			//				Builder.CreateStore(dividedValue, originalFloatPtr);
-			//				storeInst->eraseFromParent();  // Remove the old store instruction
-			//				llvm::errs() << "Original store instruction removed.\n";
-			//			}
-
-			if (auto * bitcastInst = dyn_cast<BitCastInst>(pointerOperand))
+			if (bitcastInst->getSrcTy()->getPointerElementType()->isFloatTy())
 			{
-				if (bitcastInst->getSrcTy()->getPointerElementType()->isFloatTy())
-				{
-					auto * originalFloatPtr = bitcastInst->getOperand(0);
-					Builder.CreateStore(dividedValue, originalFloatPtr);
-
-				}
+				auto * originalFloatPtr = bitcastInst->getOperand(0);
+				Builder.CreateStore(dividedValue, originalFloatPtr);
 			}
 		}
-	}
-	else
-	{
-		llvm::errs() << "Non-integer pointer type detected, skipping dequantization.\n";
 	}
 }
 
 // Process functions that are whitelisted for dequantization
 void
-processWhitelistedFunctions(Module & module, const std::set<std::string> & whitelist)
+processWhitelistedFunctions(Module & module, const std::set<std::string> & whitelist,int maxPrecisionBits)
 {
 	for (auto & F : module)
 	{
@@ -144,7 +127,7 @@ processWhitelistedFunctions(Module & module, const std::set<std::string> & white
 					if (auto * storeInst = dyn_cast<StoreInst>(&I))
 					{
 						llvm::errs() << "Found valid StoreInst.\n";
-						dequantizeResults(storeInst, F);
+						dequantizeResults(storeInst, F,maxPrecisionBits);
 					}
 				}
 			}
@@ -179,7 +162,7 @@ removeQuantizedSuffixInModule(llvm::Module & M)
 			size_t	    pos	     = FuncName.find("_quantized");
 			if (pos != std::string::npos)
 			{
-				FuncName.erase(pos, 10);  // Remove "_quantized"
+				FuncName.erase(pos, 10);
 				F.setName(FuncName);
 			}
 		}
@@ -568,28 +551,28 @@ irPassLLVMIROptimizeByRange(State * N, bool enableQuantization, bool enableOverl
 	//		collectCalleeInfo(calleeNames, funcBoundInfo, boundInfo);
 	//	}
 	//
-		/*
-		 * simplify the condition of each branch
-		 * */
-//		flexprint(N->Fe, N->Fm, N->Fpinfo, "simplify control flow by range\n");
-//		for (auto & mi : *Mod)
+	/*
+	 * simplify the condition of each branch
+	 * */
+//	flexprint(N->Fe, N->Fm, N->Fpinfo, "simplify control flow by range\n");
+//	for (auto & mi : *Mod)
+//	{
+//		auto boundInfoIt = funcBoundInfo.find(mi.getName().str());
+//		if (boundInfoIt != funcBoundInfo.end())
 //		{
-//			auto boundInfoIt = funcBoundInfo.find(mi.getName().str());
-//			if (boundInfoIt != funcBoundInfo.end())
-//			{
-//				simplifyControlFlow(N, boundInfoIt->second, mi);
-//			}
-//			//		else
-//			//		{
-//			//			assert(false);
-//			//		}
+//			simplifyControlFlow(N, boundInfoIt->second, mi);
 //		}
+//		//		else
+//		//		{
+//		//			assert(false);
+//		//		}
+//	}
 //
-//		legacy::PassManager passManager;
-//		passManager.add(createCFGSimplificationPass());
-//		passManager.add(createInstSimplifyLegacyPass());
-//		passManager.add(createGlobalDCEPass());
-//		passManager.run(*Mod);
+//	legacy::PassManager passManager;
+//	passManager.add(createCFGSimplificationPass());
+//	passManager.add(createInstSimplifyLegacyPass());
+//	passManager.add(createGlobalDCEPass());
+//	passManager.run(*Mod);
 	//
 	//	/*
 	//	 * remove the functions that are optimized by passes.
@@ -638,16 +621,16 @@ irPassLLVMIROptimizeByRange(State * N, bool enableQuantization, bool enableOverl
 	//		overloadFunc(Mod, callerMap);
 
 	// Finally, erase old functions
-	// eraseOldFunctions();
+	eraseOldFunctions();
 
 	eraseOldGlobals();
 
 	// Perform text replacement to remove "_quantized" suffixes
 	removeQuantizedSuffixInModule(*Mod);
 
-	// eraseOldInstructions();
+	//eraseOldInstructions();
 
-	processWhitelistedFunctions(*Mod, whitelist);
+	processWhitelistedFunctions(*Mod, whitelist, maxPrecisionBits);
 
 	const char * homeDir = getenv("HOME");
 	if (!homeDir)

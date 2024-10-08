@@ -118,8 +118,8 @@ createFixMul(Module * irModule, Type * quantizedType, std::vector<llvm::Function
 	llvm::Value *		     sext1 = builder.CreateSExt(arg1, higherQuantizedType);
 	llvm::Function::arg_iterator arg2  = &*(++arg1);
 	llvm::Value *		     sext2 = builder.CreateSExt(arg2, higherQuantizedType);
-	// llvm::Value *		     mulInst   = builder.CreateNSWMul(sext1, sext2);
-	llvm::Value * mulInst	= builder.CreateMul(sext1, sext2);
+	llvm::Value *		     mulInst   = builder.CreateNSWMul(sext1, sext2);
+	//llvm::Value * mulInst	= builder.CreateMul(sext1, sext2);
 	llvm::Value * ashrInst	= builder.CreateLShr(mulInst, ConstantInt::get(higherQuantizedType, FRAC_Q));
 	llvm::Value * truncInst = builder.CreateTrunc(ashrInst, quantizedType);
 	builder.CreateRet(truncInst);
@@ -182,8 +182,8 @@ createFixRsqrt(llvm::Module * irModule, Type * quantizedType, std::vector<llvm::
 	fp_y = builder.CreateFMul(fp_y, ConstantFP::get(llvm::Type::getFloatTy(irModule->getContext()), 1.0f / FRAC_BASE));
 
 	llvm::Value * i = builder.CreateBitCast(fp_y, llvm::Type::getInt32Ty(irModule->getContext()));
-	// i		= builder.CreateNSWSub(ConstantInt::get(llvm::Type::getInt32Ty(irModule->getContext()), 0x5f3759df), builder.CreateLShr(i, 1));
-	i    = builder.CreateSub(ConstantInt::get(llvm::Type::getInt32Ty(irModule->getContext()), 0x5f3759df), builder.CreateLShr(i, 1));
+	i		= builder.CreateNSWSub(ConstantInt::get(llvm::Type::getInt32Ty(irModule->getContext()), 0x5f3759df), builder.CreateLShr(i, 1));
+	//i    = builder.CreateSub(ConstantInt::get(llvm::Type::getInt32Ty(irModule->getContext()), 0x5f3759df), builder.CreateLShr(i, 1));
 	fp_y = builder.CreateBitCast(i, llvm::Type::getFloatTy(irModule->getContext()));
 
 	// Step 3: int_y = fp_y * FRAC_BASE;
@@ -226,6 +226,25 @@ eraseOldGlobals()
 	}
 	globalsToErase.clear();
 }
+
+
+// A list of functions to erase after processing
+std::vector<Function *> functionsToErase;
+
+// Function to actually erase functions after processing
+void
+eraseOldFunctions()
+{
+	llvm::errs() << "Entering eraseOldFunctions\n";
+	for (auto * func : functionsToErase)
+	{
+		llvm::errs() << "Erasing old function: " << func->getName() << "\n";
+		func->eraseFromParent();
+	}
+	functionsToErase.clear();
+	llvm::errs() << "Exiting eraseOldFunctions\n";
+}
+
 
 void
 updateGlobalVariables(Module * module, Type * quantizedType)
@@ -395,8 +414,8 @@ handleFAdd(Instruction * inInstruction, Type * quantizedType)
 	}
 
 	// Create fixed-point addition
-	// Value * newInst = Builder.CreateNSWAdd(op0, op1);
-	Value * newInst = Builder.CreateAdd(op0, op1);
+	Value * newInst = Builder.CreateNSWAdd(op0, op1);
+	//Value * newInst = Builder.CreateAdd(op0, op1);
 
 	// Replace the original FAdd instruction with the new fixed-point addition
 	inInstruction->replaceAllUsesWith(newInst);
@@ -432,8 +451,8 @@ handleFSub(Instruction * inInstruction, Type * quantizedType)
 	}
 
 	// Create fixed-point subtraction
-	// Value * newInst = Builder.CreateNSWSub(op0, op1);
-	Value * newInst = Builder.CreateSub(op0, op1);
+	Value * newInst = Builder.CreateNSWSub(op0, op1);
+	//Value * newInst = Builder.CreateSub(op0, op1);
 
 	// Replace the original FSub instruction with the new fixed-point subtraction
 	inInstruction->replaceAllUsesWith(newInst);
@@ -966,83 +985,6 @@ bitcastFloatPtrArgs(Function & F, IRBuilder<> & Builder)
 	}
 }
 
-
-// void bitcastFloatPtrArgs(Function & F, IRBuilder<> & Builder)
-//{
-//	// Check if the function is the specific one to be skipped
-//	if (F.getName() == "MadgwickAHRSupdateIMU")
-//	{
-//		llvm::errs() << "Skipping bitcast for function: " << F.getName() << "\n";
-//		return;	 // Early exit if it's the function to skip
-//	}
-//
-//	llvm::errs() << "Bitcasting float pointer arguments for function: " << F.getName() << "\n";
-//
-//	SmallVector<std::pair<Argument *, Value *>, 4> argReplacements;
-//	// Iterate over all function arguments
-//	for (Argument & Arg : F.args())
-//	{
-//		// Check if the argument is a pointer to float
-//		if (Arg.getType()->isPointerTy() && Arg.getType()->getPointerElementType()->isFloatTy())
-//		{
-//			llvm::PointerType * i32PtrType = llvm::Type::getInt32PtrTy(F.getContext());
-//			// Create a bitcast instruction at the beginning of the function
-//
-//
-//			Builder.SetInsertPoint(&*F.getEntryBlock().getFirstInsertionPt());
-//
-//			Value *elemPtr = Builder.CreateGEP(&Arg, 0, "elemPtr");
-//			//load
-//			Value *elem = Builder.CreateLoad(elemPtr, "elem");
-//			    Value *scaled = Builder.CreateFMul(&Arg, ConstantFP::get(Arg.getType()->getPointerElementType(), FRAC_BASE), Arg.getName() + ".scaled");
-//			// 加0.5
-//			//Value * rounded = Builder.CreateFAdd(scaled, ConstantFP::get(Arg.getType()->getPointerElementType(), 0.5f));
-//			Value *rounded = Builder.CreateFAdd(scaled, ConstantFP::get(Arg.getType()->getPointerElementType(), 0.5f), Arg.getName() + ".rounded");
-//			//Value * newArg	= Builder.CreateFPToSI(rounded, i32PtrType);
-//			Value *newArg = Builder.CreateFPToSI(rounded, i32PtrType, Arg.getName() + ".quantized");
-//			// llvm::Value *newArg = Builder.CreateBitCast(&Arg, i32PtrType, Arg.getName() + ".toI32Ptr");
-//
-//
-//
-//			// Store the original argument and the bitcast result
-//			argReplacements.push_back({&Arg, newArg});
-//		}
-//	}
-//
-//
-//
-//	// Iterate over the function to replace uses of the original arguments
-//	for (auto & replacement : argReplacements)
-//	{
-//		Argument * oldArg = replacement.first;
-//		Value *	   newArg = replacement.second;
-//
-//		// Replace all uses of the old argument with the new bitcasted value
-//		// 遍历替换所有使用原始参数的地方
-//		for (auto & replacement : argReplacements)
-//		{
-//			Argument * oldArg = replacement.first;
-//			Value *	   newArg = replacement.second;
-//
-//			SmallVector<Use *, 8> usesToReplace;
-//			for (auto & U : oldArg->uses())
-//			{
-//				User * user = U.getUser();
-//				if (user != newArg)
-//				{
-//					usesToReplace.push_back(&U);
-//				}
-//			}
-//
-//			for (auto * use : usesToReplace)
-//			{
-//				use->set(newArg);
-//			}
-//		}
-//	}
-//
-// }
-
 void
 handleRsqrtCall(CallInst * llvmIrCallInstruction, Type * quantizedType, Function * fixrsqrt)
 {
@@ -1068,33 +1010,53 @@ handleSqrtCall(CallInst * llvmIrCallInstruction, Type * quantizedType, Function 
 	IRBuilder<> Builder(llvmIrCallInstruction);
 	auto	    operand = llvmIrCallInstruction->getOperand(0);
 
-	// Ensure operand is in the correct type
+	// Convert the operand to fixed-point format if necessary
 	if (operand->getType()->isFloatingPointTy())
 	{
 		operand = Builder.CreateFPToSI(operand, quantizedType);
 	}
 
-	// Convert the operand from fixed-point (int32) to float
-	llvm::Value * operandAsFloat = Builder.CreateSIToFP(operand, llvm::Type::getFloatTy(llvmIrCallInstruction->getContext()));
-
-	// Call llvm.sqrt.f32 to compute the square root of the float value
-	llvm::Value * sqrtFloat = Builder.CreateCall(
-	    Intrinsic::getDeclaration(llvmIrCallInstruction->getModule(), Intrinsic::sqrt, llvm::Type::getFloatTy(llvmIrCallInstruction->getContext())),
-	    {operandAsFloat});
-
-	// Convert the result back to int32
-	llvm::Value * sqrtFixedPoint = Builder.CreateFPToSI(sqrtFloat, quantizedType);
-
-	// Apply the shift-left operation (shl i32 %result, 5)
-	llvm::Value * shiftedSqrt = Builder.CreateShl(sqrtFixedPoint, ConstantInt::get(quantizedType, 5));
-
-	// Replace the original instruction with the new fixed-point sqrt result
-	llvmIrCallInstruction->replaceAllUsesWith(shiftedSqrt);
+	// Create call to the fixed-point sqrt function
+	llvm::Value * sqrtResult = Builder.CreateCall(fixsqrt, {operand});
+	// No need to apply shl and compensation if it's already done in createFixSqrt
+	llvmIrCallInstruction->replaceAllUsesWith(sqrtResult);
 	llvmIrCallInstruction->eraseFromParent();
+
 }
 
+//void
+//handleSqrtCall(CallInst * llvmIrCallInstruction, Type * quantizedType, Function * fixsqrt)
+//{
+//	IRBuilder<> Builder(llvmIrCallInstruction);
+//	auto	    operand = llvmIrCallInstruction->getOperand(0);
+//
+//	// Ensure operand is in the correct type
+//	if (operand->getType()->isFloatingPointTy())
+//	{
+//		operand = Builder.CreateFPToSI(operand, quantizedType);
+//	}
+//
+//	// Convert the operand from fixed-point (int32) to float
+//	llvm::Value * operandAsFloat = Builder.CreateSIToFP(operand, llvm::Type::getFloatTy(llvmIrCallInstruction->getContext()));
+//
+//	// Call llvm.sqrt.f32 to compute the square root of the float value
+//	llvm::Value * sqrtFloat = Builder.CreateCall(
+//	    Intrinsic::getDeclaration(llvmIrCallInstruction->getModule(), Intrinsic::sqrt, llvm::Type::getFloatTy(llvmIrCallInstruction->getContext())),
+//	    {operandAsFloat});
+//
+//	// Convert the result back to int32
+//	llvm::Value * sqrtFixedPoint = Builder.CreateFPToSI(sqrtFloat, quantizedType);
+//
+//	// Apply the shift-left operation (shl i32 %result, 5)
+//	llvm::Value * shiftedSqrt = Builder.CreateShl(sqrtFixedPoint, ConstantInt::get(quantizedType, 5));
+//
+//	// Replace the original instruction with the new fixed-point sqrt result
+//	llvmIrCallInstruction->replaceAllUsesWith(shiftedSqrt);
+//	llvmIrCallInstruction->eraseFromParent();
+//}
+
 void
-// handleCall(CallInst * llvmIrCallInstruction, Type * quantizedType, std::vector<llvm::Function *> & functionsToInsert, llvm::Function * fixsqrt, llvm::Function * fixrsqrt)
+
 handleCall(CallInst * llvmIrCallInstruction, Type * quantizedType, std::vector<llvm::Function *> & functionsToInsert, llvm::Function * fixsqrt, llvm::Function * fixrsqrt)
 {
 	llvm::errs() << "Handling Call\n";
@@ -1104,7 +1066,7 @@ handleCall(CallInst * llvmIrCallInstruction, Type * quantizedType, std::vector<l
 
 	std::string funcName = calledFunction->getName().str();
 
-	if (funcName == "invSqrt" || funcName == "invSqrt_quantized")
+	if (funcName == "invSqrt" )
 	{
 		IRBuilder<>   Builder(llvmIrCallInstruction);
 		Instruction * insertPoint = llvmIrCallInstruction->getNextNode();
@@ -1112,6 +1074,12 @@ handleCall(CallInst * llvmIrCallInstruction, Type * quantizedType, std::vector<l
 		Value * newInst = nullptr;
 		llvm::errs() << "Handling invsqrt call\n";
 		handleRsqrtCall(llvmIrCallInstruction, quantizedType, fixrsqrt);
+
+		// Add @invSqrt function to functionsToErase if it is no longer used
+		if (calledFunction->use_empty()) // Check if the function has no more uses
+		{
+			functionsToErase.push_back(calledFunction); // Add it to the list for later erasure
+		}
 	}
 
 	if (!calledFunction->getName().startswith("llvm.dbg.value") &&
@@ -1125,13 +1093,15 @@ handleCall(CallInst * llvmIrCallInstruction, Type * quantizedType, std::vector<l
 			Instruction * insertPoint = llvmIrCallInstruction->getNextNode();
 			Builder.SetInsertPoint(insertPoint);
 			Value * newInst = nullptr;
-
-			// std::string funcName = calledFunction->getName().str();
-
-			if (funcName == "sqrt" || funcName == "sqrtf" || funcName == "llvm.sqrt.f64" || funcName == "llvm.sqrt.f32")
+			if (funcName == "sqrt" || funcName == "sqrtf" )
 			{
 				// For sqrt
 				handleSqrtCall(llvmIrCallInstruction, quantizedType, fixsqrt);
+				if (calledFunction->use_empty())
+				{
+					functionsToErase.push_back(calledFunction);
+				}
+
 			}
 			else
 			{
@@ -1310,6 +1280,9 @@ adaptTypeCast(llvm::Function & llvmIrFunction, Type * quantizedType)
 		}
 	}
 }
+
+
+
 
 // Main function to perform LLVM IR auto quantization
 void
@@ -1518,5 +1491,7 @@ irPassLLVMIRAutoQuantization(State * N, llvm::Function & llvmIrFunction, std::ve
 
 	// adaptTypeCast(llvmIrFunction, quantizedType);
 
+	// Process functions that are whitelisted for dequantization
+	//processWhitelistedFunctions(*module, whitelist);
 	return;
 }
