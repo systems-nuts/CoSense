@@ -382,7 +382,7 @@ irPassLLVMIROptimizeByRange(State * N, bool enableQuantization, bool enableOverl
 
 	flexprint(N->Fe, N->Fm, N->Fpinfo, "maxPrecisionBits: %d\n", maxPrecisionBits);
 
-	maxPrecisionBits = 12;
+	maxPrecisionBits = 13;
 
 	/*
 	 * get const global variables

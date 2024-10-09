@@ -1107,61 +1107,51 @@ performFixedPointSqrt(IRBuilder<> &builder, Module *irModule, Value *fixedPointV
 }
 
 
+//void
+//handleSqrtCall(CallInst * llvmIrCallInstruction, Type * quantizedType)
+//{
+//	IRBuilder<> Builder(llvmIrCallInstruction);
+//	auto	    operand = llvmIrCallInstruction->getOperand(0);
+//
+//	// Convert the operand to fixed-point format if necessary
+//	if (operand->getType()->isFloatingPointTy())
+//	{
+//		operand = Builder.CreateFPToSI(operand, quantizedType);
+//	}
+//
+//	// Create call to the fixed-point sqrt function
+//	//llvm::Value * sqrtResult = Builder.CreateCall(fixsqrt, {operand});
+//	//手动写减少call overhead
+//	llvm::Value * sqrtResult = performFixedPointSqrt(Builder, llvmIrCallInstruction->getModule(), operand, quantizedType, FRAC_Q, llvmIrCallInstruction->getContext());
+//	// No need to apply shl and compensation if it's already done in createFixSqrt
+//	llvmIrCallInstruction->replaceAllUsesWith(sqrtResult);
+//	llvmIrCallInstruction->eraseFromParent();
+//}
+
 void
-handleSqrtCall(CallInst * llvmIrCallInstruction, Type * quantizedType)
+handleSqrtCall(CallInst * llvmIrCallInstruction, Type * quantizedType, Function * fixsqrt)
 {
 	IRBuilder<> Builder(llvmIrCallInstruction);
 	auto	    operand = llvmIrCallInstruction->getOperand(0);
 
-	// Convert the operand to fixed-point format if necessary
+	// Ensure operand is in the correct type
 	if (operand->getType()->isFloatingPointTy())
 	{
 		operand = Builder.CreateFPToSI(operand, quantizedType);
 	}
 
 	// Create call to the fixed-point sqrt function
-	//llvm::Value * sqrtResult = Builder.CreateCall(fixsqrt, {operand});
-	//手动写减少call overhead
-	llvm::Value * sqrtResult = performFixedPointSqrt(Builder, llvmIrCallInstruction->getModule(), operand, quantizedType, FRAC_Q, llvmIrCallInstruction->getContext());
-	// No need to apply shl and compensation if it's already done in createFixSqrt
+	llvm::Value * sqrtResult = Builder.CreateCall(fixsqrt, {operand});
+
+	// Replace the original instruction with the new fixed-point sqrt result
 	llvmIrCallInstruction->replaceAllUsesWith(sqrtResult);
 	llvmIrCallInstruction->eraseFromParent();
 }
 
-// void
-// handleSqrtCall(CallInst * llvmIrCallInstruction, Type * quantizedType, Function * fixsqrt)
-//{
-//	IRBuilder<> Builder(llvmIrCallInstruction);
-//	auto	    operand = llvmIrCallInstruction->getOperand(0);
-//
-//	// Ensure operand is in the correct type
-//	if (operand->getType()->isFloatingPointTy())
-//	{
-//		operand = Builder.CreateFPToSI(operand, quantizedType);
-//	}
-//
-//	// Convert the operand from fixed-point (int32) to float
-//	llvm::Value * operandAsFloat = Builder.CreateSIToFP(operand, llvm::Type::getFloatTy(llvmIrCallInstruction->getContext()));
-//
-//	// Call llvm.sqrt.f32 to compute the square root of the float value
-//	llvm::Value * sqrtFloat = Builder.CreateCall(
-//	    Intrinsic::getDeclaration(llvmIrCallInstruction->getModule(), Intrinsic::sqrt, llvm::Type::getFloatTy(llvmIrCallInstruction->getContext())),
-//	    {operandAsFloat});
-//
-//	// Convert the result back to int32
-//	llvm::Value * sqrtFixedPoint = Builder.CreateFPToSI(sqrtFloat, quantizedType);
-//
-//	// Apply the shift-left operation (shl i32 %result, 5)
-//	llvm::Value * shiftedSqrt = Builder.CreateShl(sqrtFixedPoint, ConstantInt::get(quantizedType, 5));
-//
-//	// Replace the original instruction with the new fixed-point sqrt result
-//	llvmIrCallInstruction->replaceAllUsesWith(shiftedSqrt);
-//	llvmIrCallInstruction->eraseFromParent();
-// }
-
 void
 
-handleCall(CallInst * llvmIrCallInstruction, Type * quantizedType, std::vector<llvm::Function *> & functionsToInsert,  llvm::Function * fixrsqrt)
+//handleCall(CallInst * llvmIrCallInstruction, Type * quantizedType, std::vector<llvm::Function *> & functionsToInsert,  llvm::Function * fixrsqrt)
+    handleCall(CallInst * llvmIrCallInstruction, Type * quantizedType, std::vector<llvm::Function *> & functionsToInsert, llvm::Function * fixsqrt, llvm::Function * fixrsqrt)
 {
 	llvm::errs() << "Handling Call\n";
 	Function * calledFunction = llvmIrCallInstruction->getCalledFunction();
@@ -1200,7 +1190,8 @@ handleCall(CallInst * llvmIrCallInstruction, Type * quantizedType, std::vector<l
 			if (funcName == "sqrt" || funcName == "sqrtf")
 			{
 				// For sqrt
-				handleSqrtCall(llvmIrCallInstruction, quantizedType);
+				//handleSqrtCall(llvmIrCallInstruction, quantizedType);
+				handleSqrtCall(llvmIrCallInstruction, quantizedType, fixsqrt);
 				if (calledFunction->use_empty())
 				{
 					functionsToErase.push_back(calledFunction);
@@ -1443,7 +1434,7 @@ irPassLLVMIRAutoQuantization(State * N, llvm::Function & llvmIrFunction, std::ve
 	 * generate hardcode function
 	 * */
 	//llvm::Function * fixmul	  = createFixMul(module, quantizedType, functionsToInsert);
-	//llvm::Function * fixsqrt  = createFixSqrt(module, quantizedType, functionsToInsert);
+	llvm::Function * fixsqrt  = createFixSqrt(module, quantizedType, functionsToInsert);
 	llvm::Function * fixrsqrt = createFixRsqrt(module, quantizedType, functionsToInsert);
 
 	for (BasicBlock & llvmIrBasicBlock : llvmIrFunction)
@@ -1465,7 +1456,8 @@ irPassLLVMIRAutoQuantization(State * N, llvm::Function & llvmIrFunction, std::ve
 					handleAlloca(cast<AllocaInst>(llvmIrInstruction), quantizedType);
 					break;
 				case Instruction::Call:
-					handleCall(cast<CallInst>(llvmIrInstruction), quantizedType, functionsToInsert,  fixrsqrt);
+					//handleCall(cast<CallInst>(llvmIrInstruction), quantizedType, functionsToInsert,  fixrsqrt);
+					handleCall(cast<CallInst>(llvmIrInstruction), quantizedType, functionsToInsert, fixsqrt, fixrsqrt);
 					break;
 				case Instruction::GetElementPtr:
 				case Instruction::Load:
