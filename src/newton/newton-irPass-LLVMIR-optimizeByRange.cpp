@@ -382,7 +382,7 @@ irPassLLVMIROptimizeByRange(State * N, bool enableQuantization, bool enableOverl
 
 	flexprint(N->Fe, N->Fm, N->Fpinfo, "maxPrecisionBits: %d\n", maxPrecisionBits);
 
-	maxPrecisionBits = 16;
+	maxPrecisionBits = 12;
 
 	/*
 	 * get const global variables
@@ -639,10 +639,10 @@ irPassLLVMIROptimizeByRange(State * N, bool enableQuantization, bool enableOverl
 		return;
 	}
 	// Save the optimized IR to a file
-	std::string fileName = std::string(homeDir) + "/CoSense/applications/newton/llvm-ir/MadgwickAHRS_opt.ll";
-	saveModuleIR(*Mod, fileName);
+	//std::string fileName = std::string(homeDir) + "/CoSense/applications/newton/llvm-ir/MadgwickAHRS_output.ll";
+	//saveModuleIR(*Mod, fileName);
 	// Save the optimized IR to a file
-	// saveModuleIR(*Mod, "/home/xyf/CoSense/applications/newton/llvm-ir/MadgwickAHRS_opt.ll");
+	saveModuleIR(*Mod, "/home/xyf/CoSense/applications/newton/llvm-ir/MadgwickAHRS_output.ll");
 	// saveModuleIR(*Mod, "/home/xyf/CoSense/applications/newton/llvm-ir/floating_point_operations_output.ll");
 
 	// 替换为$HOMR
