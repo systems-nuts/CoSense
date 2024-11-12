@@ -767,7 +767,25 @@ checkAndSimplifyForConstant(ConstantFP * constFP, Value * otherOperand, Instruct
 //		}
 //	}
 //}
+// 64bit fixed point multiplication
+llvm::Value *
+performFixedPointMul(llvm::IRBuilder<> & Builder, llvm::Value * lhs, llvm::Value * rhs, unsigned FRAC_Q)
+{
+	// Sign extend the 32-bit operands to 64-bit integers
+	llvm::Value * lhs64 = Builder.CreateSExt(lhs, llvm::Type::getInt64Ty(Builder.getContext()));
+	llvm::Value * rhs64 = Builder.CreateSExt(rhs, llvm::Type::getInt64Ty(Builder.getContext()));
 
+	// Perform 64-bit multiplication
+	llvm::Value * mulResult64 = Builder.CreateNSWMul(lhs64, rhs64);
+
+	// Right shift the result to simulate fixed-point division by FRAC_Q
+	llvm::Value * divResult64 = Builder.CreateLShr(mulResult64, llvm::ConstantInt::get(llvm::Type::getInt64Ty(Builder.getContext()), FRAC_Q));
+
+	// Truncate the 64-bit result back to 32-bit integer
+	llvm::Value * result32 = Builder.CreateTrunc(divResult64, llvm::Type::getInt32Ty(Builder.getContext()));
+
+	return result32;
+}
 
 
 void handleFMul(Instruction *llvmIrInstruction, Type *quantizedType, Function *fixmul,
@@ -876,6 +894,30 @@ void handleFMul(Instruction *llvmIrInstruction, Type *quantizedType, Function *f
 		llvmIrInstruction->replaceAllUsesWith(callInst);
 		llvmIrInstruction->eraseFromParent();
 	}
+
+
+//	// 64bit
+//	{
+//		llvm::Value * newInst = performFixedPointMul(Builder, lhs, rhs, FRAC_Q);
+//		llvmIrInstruction->replaceAllUsesWith(newInst);
+//		llvmIrInstruction->eraseFromParent();
+//	}
+//
+//
+//	// 32bit
+//	//			{
+//	//				llvm::errs() << "Both operands are integers, performing  multiplication and shifting...\n";
+//	//
+//	//				// Perform multiplication directly
+//	//				llvm::Value * mulResult = Builder.CreateMul(lhs, rhs, "");
+//	//
+//	//				// Perform right arithmetic shift
+//	//				llvm::Value * shiftResult = Builder.CreateLShr(mulResult, llvm::ConstantInt::get(lhs->getType(), FRAC_Q));
+//	//
+//	//				// Replace all uses of the original instruction with the result of the shift
+//	//				llvmIrInstruction->replaceAllUsesWith(shiftResult);
+//	//				llvmIrInstruction->eraseFromParent();
+//	//			}
 }
 
 void

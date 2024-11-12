@@ -84,7 +84,7 @@ std::set<std::string> whitelist = {
 
 std::vector<StoreInst *> toRemove;
 void
-dequantizeResults(StoreInst * storeInst, Function & F,int maxPrecisionBits)
+dequantizeResults(StoreInst * storeInst, Function & F, int maxPrecisionBits)
 {
 	// IRBuilder<> Builder(storeInst);
 	IRBuilder<> Builder(storeInst->getNextNode());
@@ -95,8 +95,9 @@ dequantizeResults(StoreInst * storeInst, Function & F,int maxPrecisionBits)
 	{
 		auto *	loadInst       = Builder.CreateLoad(pointerOperand->getType()->getPointerElementType(), pointerOperand);
 		Value * convertedFloat = Builder.CreateSIToFP(loadInst, Type::getFloatTy(F.getContext()));
-		double  fracBase       = pow(2.0, maxPrecisionBits);
-		Value * dividedValue   = Builder.CreateFDiv(convertedFloat, ConstantFP::get(Type::getFloatTy(F.getContext()), fracBase));
+		double	fracBase       = pow(2.0, maxPrecisionBits);
+		// Value * dividedValue   = Builder.CreateFDiv(convertedFloat, ConstantFP::get(Type::getFloatTy(F.getContext()), fracBase));
+		Value * dividedValue = Builder.CreateFMul(convertedFloat, ConstantFP::get(Type::getFloatTy(F.getContext()), 1.0 / fracBase));
 
 		if (auto * bitcastInst = dyn_cast<BitCastInst>(pointerOperand))
 		{
@@ -109,9 +110,57 @@ dequantizeResults(StoreInst * storeInst, Function & F,int maxPrecisionBits)
 	}
 }
 
+// void
+// dequantizeResults(StoreInst * storeInst, Function & F, int maxPrecisionBits)
+//{
+//	IRBuilder<> Builder(storeInst->getNextNode());
+//	auto *	    pointerOperand = storeInst->getPointerOperand();
+//	llvm::errs() << "Processing StoreInst in function: " << F.getName() << " | Store instruction: " << *storeInst << "\n";
+//
+//	// Check if the stored value is an integer (fixed-point)
+//	if (pointerOperand->getType()->getPointerElementType()->isIntegerTy(32))
+//	{
+//		auto * loadInst = Builder.CreateLoad(pointerOperand->getType()->getPointerElementType(), pointerOperand);
+//
+//		// Get the integer part by shifting right by FRAC_Q
+//		Value * intPart = Builder.CreateAShr(loadInst, maxPrecisionBits, "int_part");
+//
+//		// Get the fractional part by masking out the integer bits
+//		Value * mask = ConstantInt::get(loadInst->getType(), (1 << maxPrecisionBits) - 1);
+//		Value * fracPart = Builder.CreateAnd(loadInst, mask, "frac_part");
+//
+//		// Convert the integer and fractional parts to float
+//		Value * floatIntPart = Builder.CreateSIToFP(intPart, Type::getFloatTy(F.getContext()), "float_int_part");
+//		Value * floatFracPart = Builder.CreateSIToFP(fracPart, Type::getFloatTy(F.getContext()), "float_frac_part");
+//
+//		// Reconstruct the floating-point value: float_value = int_part + (frac_part / FRAC_BASE)
+////		double fracBase = pow(2.0, maxPrecisionBits);
+////		Value * scaledFracPart = Builder.CreateFDiv(floatFracPart, ConstantFP::get(Type::getFloatTy(F.getContext()), fracBase), "scaled_frac_part");
+//
+//
+//
+//		double reciprocalFracBase = 1.0 / pow(2.0, maxPrecisionBits);
+//		Value * reciprocalValue = ConstantFP::get(Type::getFloatTy(F.getContext()), reciprocalFracBase);
+//		Value * scaledFracPart = Builder.CreateFMul(floatFracPart, reciprocalValue, "scaled_frac_part");
+//
+//		// Final floating-point value
+//		Value * finalFloatValue = Builder.CreateFAdd(floatIntPart, scaledFracPart, "final_float_value");
+//
+//		// If the pointer operand was originally a float, store the reconstructed floating-point value
+//		if (auto * bitcastInst = dyn_cast<BitCastInst>(pointerOperand))
+//		{
+//			if (bitcastInst->getSrcTy()->getPointerElementType()->isFloatTy())
+//			{
+//				auto * originalFloatPtr = bitcastInst->getOperand(0);
+//				Builder.CreateStore(finalFloatValue, originalFloatPtr);
+//			}
+//		}
+//	}
+//}
+
 // Process functions that are whitelisted for dequantization
 void
-processWhitelistedFunctions(Module & module, const std::set<std::string> & whitelist,int maxPrecisionBits)
+processWhitelistedFunctions(Module & module, const std::set<std::string> & whitelist, int maxPrecisionBits)
 {
 	for (auto & F : module)
 	{
@@ -127,7 +176,7 @@ processWhitelistedFunctions(Module & module, const std::set<std::string> & white
 					if (auto * storeInst = dyn_cast<StoreInst>(&I))
 					{
 						llvm::errs() << "Found valid StoreInst.\n";
-						dequantizeResults(storeInst, F,maxPrecisionBits);
+						dequantizeResults(storeInst, F, maxPrecisionBits);
 					}
 				}
 			}
@@ -382,7 +431,7 @@ irPassLLVMIROptimizeByRange(State * N, bool enableQuantization, bool enableOverl
 
 	flexprint(N->Fe, N->Fm, N->Fpinfo, "maxPrecisionBits: %d\n", maxPrecisionBits);
 
-	maxPrecisionBits = 13;
+	maxPrecisionBits = 16;
 
 	/*
 	 * get const global variables
@@ -458,15 +507,45 @@ irPassLLVMIROptimizeByRange(State * N, bool enableQuantization, bool enableOverl
 		}
 	}
 
+	/*
+	 * analyze the range of all local variables in each function
+	 * */
+//	flexprint(N->Fe, N->Fm, N->Fpinfo, "infer bound\n");
+//	std::map<std::string, CallInst *> callerMap;
+//	callerMap.clear();
+//	funcBoundInfo.clear();
+//	bool useOverLoad = false;
+
+
+
+//	for (auto & mi : *Mod)
+//	{
+//		auto boundInfo = new BoundInfo();
+//		mergeBoundInfo(boundInfo, globalBoundInfo);
+//		rangeAnalysis(N, mi, boundInfo, callerMap, typeRange, virtualRegisterVectorRange, useOverLoad);
+//		funcBoundInfo.emplace(mi.getName().str(), boundInfo);
+//		std::vector<std::string> calleeNames;
+//		collectCalleeInfo(calleeNames, funcBoundInfo, boundInfo);
+//	}
+
+
 	if (enableQuantization)
 	{
 		flexprint(N->Fe, N->Fm, N->Fpinfo, "auto quantization\n");
+
+
 		llvm::errs() << "Auto quantization enabled\n";
 		std::vector<llvm::Function *> functionsToInsert;
 		for (auto & mi : *Mod)
 		{
+			auto boundInfo = new BoundInfo();
+			mergeBoundInfo(boundInfo, globalBoundInfo);
+
+			funcBoundInfo.emplace(mi.getName().str(), boundInfo);
+
 			llvm::errs() << "Quantizing function: " << mi.getName() << "\n";
-			irPassLLVMIRAutoQuantization(N, mi, functionsToInsert, maxPrecisionBits);
+			//irPassLLVMIRAutoQuantization(N, mi, functionsToInsert, maxPrecisionBits);
+			irPassLLVMIRAutoQuantization(N, mi,  typeRange,virtualRegisterVectorRange, functionsToInsert, maxPrecisionBits);
 		}
 		for (auto mi : functionsToInsert)
 		{
@@ -475,13 +554,44 @@ irPassLLVMIROptimizeByRange(State * N, bool enableQuantization, bool enableOverl
 		}
 	}
 
-	// Range Analysis
+	// TODO : i32 i64 check
 
+	/*
+	 * analyze the range of all local variables in each function
+	 * */
+
+	//	flexprint(N->Fe, N->Fm, N->Fpinfo, "infer bound\n");
+	//	std::map<std::string, CallInst *> callerMap;
+	//	callerMap.clear();
+	//	funcBoundInfo.clear();
+	//	bool useOverLoad = false;
+	//	for (auto & mi : *Mod)
+//	{
+//		auto boundInfo = new BoundInfo();
+//		mergeBoundInfo(boundInfo, globalBoundInfo);
+//		rangeAnalysis(N, mi, boundInfo, callerMap, typeRange, virtualRegisterVectorRange, useOverLoad);
+//		funcBoundInfo.emplace(mi.getName().str(), boundInfo);
+//		std::vector<std::string> calleeNames;
+//		collectCalleeInfo(calleeNames, funcBoundInfo, boundInfo);
+//	}
+	//
+	//	flexprint(N->Fe, N->Fm, N->Fpinfo, "shrink mul data type by range\n");
 	//	for (auto & mi : *Mod)
 	//	{
-	//		rangeAnalysis(mi);
-	//
+	//		auto boundInfoIt = funcBoundInfo.find(mi.getName().str());
+	//		if (boundInfoIt != funcBoundInfo.end())
+	//		{
+	//			shrinkType(N, boundInfoIt->second, mi);
+	//		}
 	//	}
+
+	// Range Analysis
+
+	//		for (auto & mi : *Mod)
+	//		{
+	//			rangeAnalysis(mi);
+	//
+	//		}
 
 	//	/*
 	//	 * analyze the range of all local variables in each function
@@ -554,25 +664,25 @@ irPassLLVMIROptimizeByRange(State * N, bool enableQuantization, bool enableOverl
 	/*
 	 * simplify the condition of each branch
 	 * */
-//	flexprint(N->Fe, N->Fm, N->Fpinfo, "simplify control flow by range\n");
-//	for (auto & mi : *Mod)
-//	{
-//		auto boundInfoIt = funcBoundInfo.find(mi.getName().str());
-//		if (boundInfoIt != funcBoundInfo.end())
-//		{
-//			simplifyControlFlow(N, boundInfoIt->second, mi);
-//		}
-//		//		else
-//		//		{
-//		//			assert(false);
-//		//		}
-//	}
-//
-//	legacy::PassManager passManager;
-//	passManager.add(createCFGSimplificationPass());
-//	passManager.add(createInstSimplifyLegacyPass());
-//	passManager.add(createGlobalDCEPass());
-//	passManager.run(*Mod);
+	//	flexprint(N->Fe, N->Fm, N->Fpinfo, "simplify control flow by range\n");
+	//	for (auto & mi : *Mod)
+	//	{
+	//		auto boundInfoIt = funcBoundInfo.find(mi.getName().str());
+	//		if (boundInfoIt != funcBoundInfo.end())
+	//		{
+	//			simplifyControlFlow(N, boundInfoIt->second, mi);
+	//		}
+	//		//		else
+	//		//		{
+	//		//			assert(false);
+	//		//		}
+	//	}
+	//
+	//	legacy::PassManager passManager;
+	//	passManager.add(createCFGSimplificationPass());
+	//	passManager.add(createInstSimplifyLegacyPass());
+	//	passManager.add(createGlobalDCEPass());
+	//	passManager.run(*Mod);
 	//
 	//	/*
 	//	 * remove the functions that are optimized by passes.
@@ -628,7 +738,7 @@ irPassLLVMIROptimizeByRange(State * N, bool enableQuantization, bool enableOverl
 	// Perform text replacement to remove "_quantized" suffixes
 	removeQuantizedSuffixInModule(*Mod);
 
-	//eraseOldInstructions();
+	// eraseOldInstructions();
 
 	processWhitelistedFunctions(*Mod, whitelist, maxPrecisionBits);
 
@@ -639,8 +749,8 @@ irPassLLVMIROptimizeByRange(State * N, bool enableQuantization, bool enableOverl
 		return;
 	}
 	// Save the optimized IR to a file
-	//std::string fileName = std::string(homeDir) + "/CoSense/applications/newton/llvm-ir/MadgwickAHRS_output.ll";
-	//saveModuleIR(*Mod, fileName);
+	// std::string fileName = std::string(homeDir) + "/CoSense/applications/newton/llvm-ir/MadgwickAHRS_output.ll";
+	// saveModuleIR(*Mod, fileName);
 	// Save the optimized IR to a file
 	saveModuleIR(*Mod, "/home/xyf/CoSense/applications/newton/llvm-ir/MadgwickAHRS_output.ll");
 	// saveModuleIR(*Mod, "/home/xyf/CoSense/applications/newton/llvm-ir/floating_point_operations_output.ll");
