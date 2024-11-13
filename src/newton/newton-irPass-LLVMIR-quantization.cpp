@@ -191,7 +191,7 @@ createFixRsqrt(llvm::Module * irModule, Type * quantizedType, std::vector<llvm::
 	llvm::Value *		     x	  = &*args++;
 
 	// Create the fixed-point multiplication function
-	llvm::Function * fixMulFunc = createFixMul(irModule, quantizedType, functionsToInsert);
+	//llvm::Function * fixMulFunc = createFixMul(irModule, quantizedType, functionsToInsert);
 
 
 	// Step 1: int_halfx = mulfix(0.5 * FRAC_BASE, x);
@@ -372,7 +372,9 @@ quantizePointer(LoadInst * loadInst, IRBuilder<> & Builder, Type * quantizedType
 
 	llvm::errs() << "Replaced load with quantized integer value.\n";
 }
-
+/**
+ * handleLoad
+ */
 void
 handleLoad(Instruction * llvmIrInstruction, Type * quantizedType)
 {
@@ -385,7 +387,9 @@ handleLoad(Instruction * llvmIrInstruction, Type * quantizedType)
 			Value *	   pointerOperand = loadInst->getPointerOperand();
 			Function * parentFunc	  = loadInst->getFunction();
 
-			if (isa<GlobalVariable>(pointerOperand) || parentFunc->getName() == "MadgwickAHRSupdateIMU")
+			if (isa<GlobalVariable>(pointerOperand) ||
+			    parentFunc->getName() == "MadgwickAHRSupdateIMU" ||
+			    parentFunc->getName() == "MahonyAHRSupdateIMU")
 			{
 				llvm::errs() << "Handling load from global variable: " << *pointerOperand << "\n";
 				LoadInst * newLoadInst = Builder.CreateLoad(quantizedType, pointerOperand, loadInst->getName() + ".global_quantized");
@@ -394,15 +398,7 @@ handleLoad(Instruction * llvmIrInstruction, Type * quantizedType)
 				loadInst->eraseFromParent();
 			}
 
-			//			if (parentFunc->getName() == "MadgwickAHRSupdateIMU")
-			//			{
-			//				llvm::errs() << "Handling load for MadgwickAHRSupdateIMU: " << *pointerOperand << "\n";
-			//				LoadInst *newLoadInst = Builder.CreateLoad(quantizedType, pointerOperand, loadInst->getName() + ".global_quantized");
-			//				llvm ::errs() << "New load instruction: " << *newLoadInst << "\n";
-			//				loadInst->replaceAllUsesWith(newLoadInst);
-			//				loadInst->eraseFromParent();
-			//			}
-
+			// Quantize local pointers
 			else if (!isa<GlobalVariable>(pointerOperand))
 			{
 				quantizePointer(loadInst, Builder, quantizedType, loadedType);
@@ -948,13 +944,13 @@ handleStore(Instruction * llvmIrInstruction, Type * quantizedType)
 		}
 	}
 }
-
+bool isTargetFunction(Function &func);
 void
 bitcastFloatPtrArgs(Function & F, IRBuilder<> & Builder)
 {
 	// Check if the function is the specific one to be skipped
-	if (F.getName() == "MadgwickAHRSupdateIMU")
-	{
+	//if is target function,skip
+	if (isTargetFunction(F)){
 		llvm::errs() << "Skipping bitcast for function: " << F.getName() << "\n";
 		return;	 // Early exit if it's the function to skip
 	}
@@ -1219,7 +1215,7 @@ void
 quantizeFunctionArguments(llvm::Function & func, llvm::IRBuilder<> & builder)
 {
 	// Skip the function if it is MadgwickAHRSupdateIMU
-	if (func.getName() == "MadgwickAHRSupdateIMU")
+	if (isTargetFunction(func))
 	{
 		llvm::errs() << "Skipping quantization for: " << func.getName() << "\n";
 		return;
@@ -1284,11 +1280,15 @@ shouldSkipFunction(const std::string & functionName)
 	return skipFunctions.find(functionName) != skipFunctions.end();
 }
 
+bool isTargetFunction(Function &func) {
+	return func.getName() == "MadgwickAHRSupdateIMU" ||
+	       func.getName() == "MahonyAHRSupdateIMU";
+}
+
 void
 quantizeArguments(llvm::Function & llvmIrFunction, llvm::Type * quantizedType)
 {
-	// Check if the function is specifically MadgwickAHRSupdateIMU
-	if (llvmIrFunction.getName() == "MadgwickAHRSupdateIMU")
+	if (isTargetFunction(llvmIrFunction))
 	{
 		llvm::errs() << "Quantizing arguments for function: " << llvmIrFunction.getName() << "\n";
 
@@ -1471,6 +1471,7 @@ irPassLLVMIRAutoQuantization(State * N, llvm::Function & llvmIrFunction, std::ve
 					 * */
 					llvm::errs() << "handle store " << *llvmIrInstruction << "\n";
 					// setQuantizedType(llvmIrInstruction->getOperand(0), quantizedType);
+					handleStore(llvmIrInstruction, quantizedType);
 					break;
 
 				case Instruction::FMul:
