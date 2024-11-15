@@ -2,35 +2,61 @@
 #include "newton-irPass-LLVMIR-quantization.h"
 #include "llvm/Support/raw_ostream.h"
 #include <unordered_map>
-#include <llvm-14/llvm/IR/Value.h>
 #include "llvm/IR/Metadata.h"
 using namespace llvm;
 
 unsigned int FRAC_Q;
 #define FRAC_BASE (1 << FRAC_Q)
+
 #define BIT_WIDTH 32
 
-
-
-
-// 64bit fixed point multiplication
 llvm::Value *
-performFixedPointMul(llvm::IRBuilder<> & Builder, llvm::Value * lhs, llvm::Value * rhs, unsigned FRAC_Q)
+performFixedPointMul(llvm::IRBuilder<> &Builder, llvm::Value *lhs, llvm::Value *rhs, unsigned FRAC_Q)
 {
-	// Sign extend the 32-bit operands to 64-bit integers
-	llvm::Value * lhs64 = Builder.CreateSExt(lhs, llvm::Type::getInt64Ty(Builder.getContext()));
-	llvm::Value * rhs64 = Builder.CreateSExt(rhs, llvm::Type::getInt64Ty(Builder.getContext()));
+	llvm::Value *result = nullptr;
 
-	// Perform 64-bit multiplication
-	llvm::Value * mulResult64 = Builder.CreateNSWMul(lhs64, rhs64);
+	switch (BIT_WIDTH)
+	{
+		case 16:
+		{
+			// Sign extend the 16-bit operands to 32-bit integers
+			llvm::Value *lhs32 = Builder.CreateSExt(lhs, llvm::Type::getInt32Ty(Builder.getContext()));
+			llvm::Value *rhs32 = Builder.CreateSExt(rhs, llvm::Type::getInt32Ty(Builder.getContext()));
 
-	// Right shift the result to simulate fixed-point division by FRAC_Q
-	llvm::Value * divResult64 = Builder.CreateLShr(mulResult64, llvm::ConstantInt::get(llvm::Type::getInt64Ty(Builder.getContext()), FRAC_Q));
+			// Perform 32-bit multiplication
+			llvm::Value *mulResult32 = Builder.CreateNSWMul(lhs32, rhs32);
 
-	// Truncate the 64-bit result back to 32-bit integer
-	llvm::Value * result32 = Builder.CreateTrunc(divResult64, llvm::Type::getInt32Ty(Builder.getContext()));
+			// Right shift the result to simulate fixed-point division by FRAC_Q
+			llvm::Value *divResult32 = Builder.CreateLShr(mulResult32, llvm::ConstantInt::get(llvm::Type::getInt32Ty(Builder.getContext()), FRAC_Q));
 
-	return result32;
+			// Truncate the result back to 16-bit integer
+			result = Builder.CreateTrunc(divResult32, llvm::Type::getInt16Ty(Builder.getContext()));
+			break;
+		}
+		case 32:
+		{
+			// Sign extend the 32-bit operands to 64-bit integers
+			llvm::Value *lhs64 = Builder.CreateSExt(lhs, llvm::Type::getInt64Ty(Builder.getContext()));
+			llvm::Value *rhs64 = Builder.CreateSExt(rhs, llvm::Type::getInt64Ty(Builder.getContext()));
+
+			// Perform 64-bit multiplication
+			llvm::Value *mulResult64 = Builder.CreateNSWMul(lhs64, rhs64);
+
+			// Right shift the result to simulate fixed-point division by FRAC_Q
+			llvm::Value *divResult64 = Builder.CreateLShr(mulResult64, llvm::ConstantInt::get(llvm::Type::getInt64Ty(Builder.getContext()), FRAC_Q));
+
+			// Truncate the 64-bit result back to 32-bit integer
+			result = Builder.CreateTrunc(divResult64, llvm::Type::getInt32Ty(Builder.getContext()));
+			break;
+		}
+		default: // 处理不支持的位宽
+		{
+			llvm::errs() << "Unsupported BIT_WIDTH: " << BIT_WIDTH << "\n";
+			break;
+		}
+	}
+
+	return result;
 }
 
 
@@ -205,10 +231,36 @@ createFixRsqrt(llvm::Module * irModule, Type * quantizedType, std::vector<llvm::
 	fp_y = builder.CreateFMul(fp_y, ConstantFP::get(llvm::Type::getFloatTy(irModule->getContext()), 1.0f / FRAC_BASE));
 	//performFixedPointMul
 
+	//llvm::Value *i = nullptr;
+//	switch (BIT_WIDTH)
+//	{
+//		case 16:
+//		{
+//			// Cast fp_y to 16-bit integer
+//			i = builder.CreateFPToSI(fp_y, llvm::Type::getInt16Ty(irModule->getContext()));
+//			// Perform adjustment for 16-bit
+//			i = builder.CreateNSWSub(
+//			    llvm::ConstantInt::get(llvm::Type::getInt16Ty(irModule->getContext()), 0x5f3759df),  // 16-bit equivalent
+//			    builder.CreateLShr(i, 1));
+//			fp_y = builder.CreateSIToFP(i, llvm::Type::getFloatTy(irModule->getContext()));
+//			break;
+//		}
+//		default:
+//		{
+//			// Cast fp_y to 32-bit integer
+//			i = builder.CreateBitCast(fp_y, llvm::Type::getInt32Ty(irModule->getContext()));
+//			// Perform adjustment for 32-bit
+//			i = builder.CreateNSWSub(
+//			    llvm::ConstantInt::get(llvm::Type::getInt32Ty(irModule->getContext()), 0x5f3759df),	 // 32-bit equivalent
+//			    builder.CreateLShr(i, 1));
+//			fp_y = builder.CreateBitCast(i, llvm::Type::getFloatTy(irModule->getContext()));
+//			break;
+//		}
+//	}
+
 
 	llvm::Value * i = builder.CreateBitCast(fp_y, llvm::Type::getInt32Ty(irModule->getContext()));
 	i		= builder.CreateNSWSub(ConstantInt::get(llvm::Type::getInt32Ty(irModule->getContext()), 0x5f3759df), builder.CreateLShr(i, 1));
-	// i    = builder.CreateSub(ConstantInt::get(llvm::Type::getInt32Ty(irModule->getContext()), 0x5f3759df), builder.CreateLShr(i, 1));
 	fp_y = builder.CreateBitCast(i, llvm::Type::getFloatTy(irModule->getContext()));
 
 	// Step 3: int_y = fp_y * FRAC_BASE;
@@ -694,7 +746,19 @@ void
 simplifyUsingShift(Value * operand, Instruction * instruction, int shiftAmount, bool isRightShift)
 {
 	llvm::IRBuilder<> Builder(instruction);
-	Type *		  intType    = Type::getInt32Ty(instruction->getContext());
+	//Type *		  intType    = Type::getInt32Ty(instruction->getContext());
+	llvm::Type *intType = nullptr;
+
+	switch (BIT_WIDTH)
+	{
+		case 16:
+			intType = llvm::Type::getInt16Ty(instruction->getContext()); // Use 16-bit integer type
+			break;
+
+		default:
+			intType = llvm::Type::getInt32Ty(instruction->getContext()); // Use 32-bit integer type
+			break;
+	}
 	Value *		  shiftValue = ConstantInt::get(intType, shiftAmount);
 	Instruction *	  shiftInst;
 
@@ -920,8 +984,23 @@ handleStore(Instruction * llvmIrInstruction, Type * quantizedType)
 	if (auto llvmIrStoreInstruction = dyn_cast<StoreInst>(llvmIrInstruction))
 	{
 		IRBuilder<> Builder(llvmIrStoreInstruction);
-
+		auto valueOperand = llvmIrStoreInstruction->getValueOperand();
+		auto pointerOperand = llvmIrStoreInstruction->getPointerOperand();
 		auto valueType = llvmIrStoreInstruction->getValueOperand()->getType();
+		auto pointerType = pointerOperand->getType()->getPointerElementType();
+
+		// 如果左边是 i16，右边是 i32*，扩展 i16 为 i32
+//		if (valueType->isIntegerTy(16) && pointerType->isIntegerTy(32))
+//		{
+//			llvm::errs() << "Expanding i16 value to i32 for store\n";
+//
+//			// 扩展 i16 到 i32
+//			auto extendedValue = Builder.CreateSExt(valueOperand, Type::getInt32Ty(llvmIrInstruction->getContext()));
+//
+//			// 更新 Store 指令的值操作数
+//			llvmIrStoreInstruction->setOperand(0, extendedValue);
+//		}
+
 		if (valueType->isFloatTy() || valueType->isDoubleTy())
 		{
 			llvm::errs() << "Original store value type: " << *valueType << "\n";
@@ -933,7 +1012,7 @@ handleStore(Instruction * llvmIrInstruction, Type * quantizedType)
 			llvmIrStoreInstruction->setOperand(0, quantizedValue);
 		}
 
-		auto pointerType = llvmIrStoreInstruction->getPointerOperand()->getType()->getPointerElementType();
+		//auto pointerType = llvmIrStoreInstruction->getPointerOperand()->getType()->getPointerElementType();
 		if (pointerType->isFloatTy() || pointerType->isDoubleTy())
 		{
 			llvm::errs() << "Original store pointer type: " << *pointerType << "\n";
@@ -968,6 +1047,14 @@ bitcastFloatPtrArgs(Function & F, IRBuilder<> & Builder)
 			Value * newArg = Builder.CreateBitCast(&Arg, i32PtrType, Arg.getName() + ".to_i32_ptr");
 			// llvm::Value *newArg = Builder.CreateBitCast(&Arg, i32PtrType, Arg.getName() + ".toI32Ptr");
 
+			// Second bitcast: i32* -> i16*, if BIT_WIDTH == 16
+//			if (BIT_WIDTH == 16)
+//			{
+//				llvm::Type *i16Type = llvm::Type::getInt16Ty(F.getContext());
+//				Value *truncArg = Builder.CreateBitCast(newArg, i16Type->getPointerTo(), Arg.getName() + ".to_i16_ptr");
+//				newArg = truncArg; // Update newArg to the truncated value
+//			}
+
 			// Store the original argument and the bitcast result
 			argReplacements.push_back({&Arg, newArg});
 		}
@@ -979,12 +1066,6 @@ bitcastFloatPtrArgs(Function & F, IRBuilder<> & Builder)
 	{
 		Argument * oldArg = replacement.first;
 		Value *	   newArg = replacement.second;
-
-		// Replace all uses of the old argument with the new bitcasted value
-		for (auto & replacement : argReplacements)
-		{
-			Argument * oldArg = replacement.first;
-			Value *	   newArg = replacement.second;
 
 			// 替换前，移除 bitcast 指令自身的使用
 			SmallVector<Use *, 8> usesToReplace;
@@ -998,20 +1079,20 @@ bitcastFloatPtrArgs(Function & F, IRBuilder<> & Builder)
 					llvm::errs() << "Skipping load instruction: " << *user << "\n";
 					continue;  // 跳过 Load 指令
 				}
-
+				// Skip if the user is the newArg itself
 				if (user != newArg)
 				{
 					usesToReplace.push_back(&U);
 				}
 			}
-
+			// Perform the replacements
 			for (auto * use : usesToReplace)
 			{
 				use->set(newArg);
 			}
 		}
 	}
-}
+
 
 void
 handleRsqrtCall(CallInst * llvmIrCallInstruction, Type * quantizedType, Function * fixrsqrt)
@@ -1236,7 +1317,32 @@ quantizeFunctionArguments(llvm::Function & func, llvm::IRBuilder<> & builder)
 			// Create multiplication and rounding instructions
 			llvm::Instruction * scaled    = cast<llvm::Instruction>(builder.CreateFMul(&arg, llvm::ConstantFP::get(arg.getContext(), llvm::APFloat((float)FRAC_BASE)), arg.getName() + ".scaled"));
 			llvm::Instruction * rounded   = cast<llvm::Instruction>(builder.CreateFAdd(scaled, llvm::ConstantFP::get(arg.getContext(), llvm::APFloat(0.5f)), arg.getName() + ".rounded"));
-			llvm::Instruction * quantized = cast<llvm::Instruction>(builder.CreateFPToSI(rounded, llvm::Type::getInt32Ty(arg.getContext()), arg.getName() + ".changed"));
+			//llvm::Instruction * quantized = cast<llvm::Instruction>(builder.CreateFPToSI(rounded, llvm::Type::getInt32Ty(arg.getContext()), arg.getName() + ".changed"));
+			llvm::Instruction *quantized = nullptr;
+
+			switch (BIT_WIDTH)
+			{
+				case 16:
+				{
+					// Convert floating-point to 16-bit integer
+					quantized = cast<llvm::Instruction>(
+					    builder.CreateFPToSI(
+						rounded,
+						llvm::Type::getInt16Ty(arg.getContext()),  // Use 16-bit integer type
+						arg.getName() + ".changed"));
+					break;
+				}
+				default:
+				{
+					// Convert floating-point to 32-bit integer
+					quantized = cast<llvm::Instruction>(
+					    builder.CreateFPToSI(
+						rounded,
+						llvm::Type::getInt32Ty(arg.getContext()),  // Use 32-bit integer type
+						arg.getName() + ".changed"));
+					break;
+				}
+			}
 
 			// Attach metadata to each instruction
 			llvm::MDNode * metadataNode = llvm::MDNode::get(arg.getContext(), llvm::MDString::get(arg.getContext(), "quantized"));
