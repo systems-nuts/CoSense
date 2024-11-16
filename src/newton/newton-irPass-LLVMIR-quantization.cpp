@@ -8,7 +8,7 @@ using namespace llvm;
 unsigned int FRAC_Q;
 #define FRAC_BASE (1 << FRAC_Q)
 
-#define BIT_WIDTH 32
+#define BIT_WIDTH 16
 
 llvm::Value *
 performFixedPointMul(llvm::IRBuilder<> &Builder, llvm::Value *lhs, llvm::Value *rhs, unsigned FRAC_Q)
@@ -181,9 +181,9 @@ createFixMul(Module * irModule, Type * quantizedType, std::vector<llvm::Function
 	return func;
 }
 
-// TODO  Original version of fixrsqrt
+
 llvm::Function *
-createFixRsqrt(llvm::Module * irModule, Type * quantizedType, std::vector<llvm::Function *> & functionsToInsert)
+createFixRsqrt(llvm::Module *irModule, llvm::Type *quantizedType, std::vector<llvm::Function *> &functionsToInsert)
 {
 	llvm::errs() << "Entering createFixRsqrt\n";
 
@@ -195,7 +195,7 @@ createFixRsqrt(llvm::Module * irModule, Type * quantizedType, std::vector<llvm::
 	}
 
 	std::string fixrsqrtFuncName = "fixrsqrt";
-	for (auto & function : *irModule)
+	for (auto &function : *irModule)
 	{
 		if (function.getName() == fixrsqrtFuncName)
 		{
@@ -204,84 +204,93 @@ createFixRsqrt(llvm::Module * irModule, Type * quantizedType, std::vector<llvm::
 		}
 	}
 
-	// Define the function type for fixrsqrt: int32_t fixrsqrt(int32_t x)
-	llvm::FunctionType * funcType = llvm::FunctionType::get(quantizedType, {quantizedType}, false);
-	// Create the function and insert it into the module
-	llvm::Function * func = llvm::Function::Create(funcType, llvm::Function::PrivateLinkage, "fixrsqrt", irModule);
+	// Define the function type: int16_t/int32_t fixrsqrt(int16_t/int32_t x)
+	llvm::FunctionType *funcType = llvm::FunctionType::get(quantizedType, {quantizedType}, false);
+	llvm::Function *func = llvm::Function::Create(funcType, llvm::Function::PrivateLinkage, fixrsqrtFuncName, irModule);
 
-	llvm::BasicBlock * entryBB = llvm::BasicBlock::Create(irModule->getContext(), "entry", func);
-	llvm::IRBuilder<>  builder(entryBB);
+	llvm::BasicBlock *entryBB = llvm::BasicBlock::Create(irModule->getContext(), "", func);
+	llvm::IRBuilder<> builder(entryBB);
 
 	// Get the function argument (x)
 	llvm::Function::arg_iterator args = func->arg_begin();
-	llvm::Value *		     x	  = &*args++;
+	llvm::Value *x = &*args++;
 
-	// Create the fixed-point multiplication function
-	//llvm::Function * fixMulFunc = createFixMul(irModule, quantizedType, functionsToInsert);
+	llvm::Value *fpX = nullptr, *scaledFpX = nullptr, *approx = nullptr, *intApprox = nullptr, *shiftedX = nullptr, *result = nullptr;
 
+	// Switch based on BIT_WIDTH
+	switch (BIT_WIDTH)
+	{
+		case 16:
+		{
+			// Step 1: Shift x to compute %1 (x >> 1)
+			shiftedX = builder.CreateLShr(x, llvm::ConstantInt::get(quantizedType, 1));
 
-	// Step 1: int_halfx = mulfix(0.5 * FRAC_BASE, x);
-	llvm::Value * halfBase = builder.CreateLShr(x, ConstantInt::get(quantizedType, 1));
+			// Step 2: Convert x to float and scale
+			llvm::Value *sextX = builder.CreateSExt(x, llvm::Type::getInt32Ty(irModule->getContext()));
+			fpX = builder.CreateSIToFP(sextX, llvm::Type::getFloatTy(irModule->getContext()));
+			scaledFpX = builder.CreateFMul(fpX, llvm::ConstantFP::get(llvm::Type::getFloatTy(irModule->getContext()), 1.0f / FRAC_BASE));
 
-	// Step 2: Convert x to floating-point and perform the initial approximation
-	llvm::Value * fp_y = builder.CreateSIToFP(x, llvm::Type::getFloatTy(irModule->getContext()));
+			// Step 3: Approximation using magic number
+			llvm::Value *bitcastFpX = builder.CreateBitCast(scaledFpX, llvm::Type::getInt32Ty(irModule->getContext()));
+			llvm::Value *shiftedFpX = builder.CreateLShr(bitcastFpX, 1);
+			llvm::Value *magicNumber = llvm::ConstantInt::get(llvm::Type::getInt32Ty(irModule->getContext()), 0x5f3759df);
+			approx = builder.CreateSub(magicNumber, shiftedFpX);
+			llvm::Value *approxFp = builder.CreateBitCast(approx, llvm::Type::getFloatTy(irModule->getContext()));
+			llvm::Value *scaledApprox = builder.CreateFMul(approxFp, llvm::ConstantFP::get(llvm::Type::getFloatTy(irModule->getContext()), FRAC_BASE));
+			intApprox = builder.CreateFPToSI(scaledApprox, llvm::Type::getInt32Ty(irModule->getContext()));
 
-	// Added step: fp_y = fp_y / FRAC_BASE.0;
+			// Step 4: Newton-Raphson refinement
+			llvm::Value *sextShiftedX = builder.CreateSExt(shiftedX, llvm::Type::getInt32Ty(irModule->getContext()));
+			llvm::Value *mul1 = builder.CreateMul(sextShiftedX, intApprox);
+			llvm::Value *mul1Shifted = builder.CreateLShr(mul1, FRAC_Q);
 
-	fp_y = builder.CreateFMul(fp_y, ConstantFP::get(llvm::Type::getFloatTy(irModule->getContext()), 1.0f / FRAC_BASE));
-	//performFixedPointMul
+			llvm::Value *mul2 = builder.CreateMul(mul1Shifted, intApprox);
+			llvm::Value *mul2Shifted = builder.CreateLShr(mul2, FRAC_Q);
 
-	//llvm::Value *i = nullptr;
-//	switch (BIT_WIDTH)
-//	{
-//		case 16:
-//		{
-//			// Cast fp_y to 16-bit integer
-//			i = builder.CreateFPToSI(fp_y, llvm::Type::getInt16Ty(irModule->getContext()));
-//			// Perform adjustment for 16-bit
-//			i = builder.CreateNSWSub(
-//			    llvm::ConstantInt::get(llvm::Type::getInt16Ty(irModule->getContext()), 0x5f3759df),  // 16-bit equivalent
-//			    builder.CreateLShr(i, 1));
-//			fp_y = builder.CreateSIToFP(i, llvm::Type::getFloatTy(irModule->getContext()));
-//			break;
-//		}
-//		default:
-//		{
-//			// Cast fp_y to 32-bit integer
-//			i = builder.CreateBitCast(fp_y, llvm::Type::getInt32Ty(irModule->getContext()));
-//			// Perform adjustment for 32-bit
-//			i = builder.CreateNSWSub(
-//			    llvm::ConstantInt::get(llvm::Type::getInt32Ty(irModule->getContext()), 0x5f3759df),	 // 32-bit equivalent
-//			    builder.CreateLShr(i, 1));
-//			fp_y = builder.CreateBitCast(i, llvm::Type::getFloatTy(irModule->getContext()));
-//			break;
-//		}
-//	}
+			int correctionValue = static_cast<int>(1.5f * FRAC_BASE);
+			llvm::Value *correction = builder.CreateSub(
+				 llvm::ConstantInt::get(llvm::Type::getInt32Ty(irModule->getContext()), correctionValue),
+				 mul2Shifted);
+			llvm::Value *finalMul = builder.CreateMul(intApprox, correction);
+			llvm::Value *finalShifted = builder.CreateLShr(finalMul, FRAC_Q);
 
+			// Step 5: Truncate the result back to i16
+			result = builder.CreateTrunc(finalShifted, quantizedType);
+			break;
+		}
+		case 32:
+		default:
+		{
+			// Step 1: Shift x to compute %1 (x >> 1)
+			llvm::Value *halfBase = builder.CreateLShr(x, llvm::ConstantInt::get(quantizedType, 1));
 
-	llvm::Value * i = builder.CreateBitCast(fp_y, llvm::Type::getInt32Ty(irModule->getContext()));
-	i		= builder.CreateNSWSub(ConstantInt::get(llvm::Type::getInt32Ty(irModule->getContext()), 0x5f3759df), builder.CreateLShr(i, 1));
-	fp_y = builder.CreateBitCast(i, llvm::Type::getFloatTy(irModule->getContext()));
+			// Step 2: Convert x to floating-point and perform the initial approximation
+			fpX = builder.CreateSIToFP(x, llvm::Type::getFloatTy(irModule->getContext()));
+			fpX = builder.CreateFMul(fpX, llvm::ConstantFP::get(llvm::Type::getFloatTy(irModule->getContext()), 1.0f / FRAC_BASE));
 
-	// Step 3: int_y = fp_y * FRAC_BASE;
-	llvm::Value * int_y = builder.CreateFPToSI(builder.CreateFMul(fp_y, ConstantFP::get(llvm::Type::getFloatTy(irModule->getContext()), FRAC_BASE)), quantizedType);
+			llvm::Value *i = builder.CreateBitCast(fpX, llvm::Type::getInt32Ty(irModule->getContext()));
+			i = builder.CreateNSWSub(llvm::ConstantInt::get(llvm::Type::getInt32Ty(irModule->getContext()), 0x5f3759df), builder.CreateLShr(i, 1));
+			fpX = builder.CreateBitCast(i, llvm::Type::getFloatTy(irModule->getContext()));
 
-	// Step 4: int_y = mulfix(int_y, ((int32_t)(1.5f * FRAC_BASE) - (mulfix(mulfix(int_halfx, int_y), int_y))));
-	//llvm::Value * mulfix1	 = builder.CreateCall(fixMulFunc, {halfBase, int_y});
-	//performFixedPointMul
-	llvm::Value * mulfix1	 = performFixedPointMul(builder, halfBase, int_y, FRAC_Q);
-	//llvm::Value * mulfix2	 = builder.CreateCall(fixMulFunc, {mulfix1, int_y});
-	llvm::Value * mulfix2	 = performFixedPointMul(builder, mulfix1, int_y, FRAC_Q);
-	llvm::Value * correction = builder.CreateSub(ConstantInt::get(quantizedType, static_cast<int>(1.5f * FRAC_BASE)), mulfix2);
-	//llvm::Value * final_y	 = builder.CreateCall(fixMulFunc, {int_y, correction});
-	llvm::Value * final_y	 = performFixedPointMul(builder, int_y, correction, FRAC_Q);
+			llvm::Value *int_y = builder.CreateFPToSI(builder.CreateFMul(fpX, llvm::ConstantFP::get(llvm::Type::getFloatTy(irModule->getContext()), FRAC_BASE)), quantizedType);
+			llvm::Value *mulfix1 = performFixedPointMul(builder, halfBase, int_y, FRAC_Q);
+			llvm::Value *mulfix2 = performFixedPointMul(builder, mulfix1, int_y, FRAC_Q);
+			llvm::Value *correction = builder.CreateSub(llvm::ConstantInt::get(quantizedType, static_cast<int>(1.5f * FRAC_BASE)), mulfix2);
+			llvm::Value *final_y = performFixedPointMul(builder, int_y, correction, FRAC_Q);
 
-	// Return the final fixed-point result
-	builder.CreateRet(final_y);
+			result = final_y;
+			break;
+		}
+	}
+
+	// Return the result
+	builder.CreateRet(result);
 	functionsToInsert.emplace_back(func);
 
 	return func;
 }
+
+
 
 // A list of global variables to erase after processing
 std::vector<GlobalVariable *> globalsToErase;
