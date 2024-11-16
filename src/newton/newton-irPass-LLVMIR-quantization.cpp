@@ -8,7 +8,7 @@ using namespace llvm;
 unsigned int FRAC_Q;
 #define FRAC_BASE (1 << FRAC_Q)
 
-#define BIT_WIDTH 16
+#define BIT_WIDTH 32
 
 llvm::Value *
 performFixedPointMul(llvm::IRBuilder<> &Builder, llvm::Value *lhs, llvm::Value *rhs, unsigned FRAC_Q)
@@ -1324,8 +1324,24 @@ quantizeFunctionArguments(llvm::Function & func, llvm::IRBuilder<> & builder)
 			}
 
 			// Create multiplication and rounding instructions
-			llvm::Instruction * scaled    = cast<llvm::Instruction>(builder.CreateFMul(&arg, llvm::ConstantFP::get(arg.getContext(), llvm::APFloat((float)FRAC_BASE)), arg.getName() + ".scaled"));
-			llvm::Instruction * rounded   = cast<llvm::Instruction>(builder.CreateFAdd(scaled, llvm::ConstantFP::get(arg.getContext(), llvm::APFloat(0.5f)), arg.getName() + ".rounded"));
+//			llvm::Instruction * scaled    = cast<llvm::Instruction>(builder.CreateFMul(&arg, llvm::ConstantFP::get(arg.getContext(), llvm::APFloat((float)FRAC_BASE)), arg.getName() + ".scaled"));
+//			llvm::Instruction * rounded   = cast<llvm::Instruction>(builder.CreateFAdd(scaled, llvm::ConstantFP::get(arg.getContext(), llvm::APFloat(0.5f)), arg.getName() + ".rounded"));
+
+
+			//TODO FAST MATH
+			llvm::FastMathFlags FMF;
+			FMF.setFast(); // 启用所有 Fast-Math 优化
+				       // 创建乘法指令并应用 Fast-Math
+			llvm::Instruction *scaled = cast<llvm::Instruction>(
+			    builder.CreateFMul(&arg, llvm::ConstantFP::get(arg.getContext(), llvm::APFloat((float)FRAC_BASE)), arg.getName() + ".scaled"));
+			scaled->setFastMathFlags(FMF); // 设置 Fast-Math 标志
+
+			// 创建加法指令并应用 Fast-Math
+			llvm::Instruction *rounded = cast<llvm::Instruction>(
+			    builder.CreateFAdd(scaled, llvm::ConstantFP::get(arg.getContext(), llvm::APFloat(0.5f)), arg.getName() + ".rounded"));
+			rounded->setFastMathFlags(FMF); // 设置 Fast-Math 标志
+
+
 			//llvm::Instruction * quantized = cast<llvm::Instruction>(builder.CreateFPToSI(rounded, llvm::Type::getInt32Ty(arg.getContext()), arg.getName() + ".changed"));
 			llvm::Instruction *quantized = nullptr;
 

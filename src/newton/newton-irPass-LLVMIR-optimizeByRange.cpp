@@ -114,7 +114,19 @@ if (pointerOperand->getType()->getPointerElementType()->isIntegerTy(32))
 	Value * convertedFloat = Builder.CreateSIToFP(loadInst, Type::getFloatTy(F.getContext()));
 	double  fracBase       = pow(2.0, maxPrecisionBits);
 	//Value * dividedValue   = Builder.CreateFDiv(convertedFloat, ConstantFP::get(Type::getFloatTy(F.getContext()), fracBase));
-	Value * dividedValue = Builder.CreateFMul(convertedFloat, ConstantFP::get(Type::getFloatTy(F.getContext()), 1.0 / fracBase));
+	//Value * dividedValue = Builder.CreateFMul(convertedFloat, ConstantFP::get(Type::getFloatTy(F.getContext()), 1.0 / fracBase));
+
+	// 创建 Fast-Math 标志
+	llvm::FastMathFlags FMF;
+	FMF.setFast(); // 启用所有 Fast-Math 优化
+	Value *dividedValue = Builder.CreateFMul(
+	    convertedFloat,
+	    ConstantFP::get(Type::getFloatTy(F.getContext()), 1.0 / fracBase),
+	    "dividedValue");
+	// 创建 FMul 指令并设置 Fast-Math
+	if (llvm::Instruction *instr = llvm::dyn_cast<llvm::Instruction>(dividedValue)) {
+		instr->setFastMathFlags(FMF); // 设置 Fast-Math 标志
+	}
 
 	if (auto * bitcastInst = dyn_cast<BitCastInst>(pointerOperand))
 	{
