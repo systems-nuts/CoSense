@@ -18,8 +18,10 @@
 #include <time.h>
 
 #if defined(INT_DATA_TYPE)
-extern volatile int32_t q0, q1, q2, q3;
+//extern volatile int32_t q0, q1, q2, q3;
+extern volatile float q0, q1, q2, q3;
 // #include "c-files/MadgwickAHRSfix.h"
+#include "c-files/MadgwickAHRS.h"
 #elif defined(FP_DATA_TYPE)
 extern volatile float q0, q1, q2, q3;
 #if defined(SOFT_FLOAT_LIB)
@@ -33,7 +35,7 @@ extern volatile float q0, q1, q2, q3;
 #endif
 
 #define DATA_SIZE 1000
-#define FRAC_Q 14
+#define FRAC_Q 16
 #define FRAC_BASE (1 << FRAC_Q)
 #define ITERATION 10
 
@@ -135,19 +137,20 @@ main()
 
 	double time[DATA_SIZE];
 #if defined(INT_DATA_TYPE)
-	int32_t q0[DATA_SIZE], q1[DATA_SIZE], q2[DATA_SIZE], q3[DATA_SIZE];
+	float q0[DATA_SIZE], q1[DATA_SIZE], q2[DATA_SIZE], q3[DATA_SIZE];
 	// quaternion of sensor frame relative to auxiliary frame
 	for (int i = 0; i < DATA_SIZE; i++)
 	{
-		q0[i] = (0.64306622f * FRAC_BASE);
-		q1[i] = (0.02828862f * FRAC_BASE);
-		q2[i] = (-0.00567953f * FRAC_BASE);
-		q3[i] = (-0.76526684f * FRAC_BASE);
+		q0[i] = 0.64306622f;
+		q1[i] = 0.02828862f;
+		q2[i] = -0.00567953f;
+		q3[i] = -0.76526684f;
 	}
 
-	int32_t mag_x[DATA_SIZE], mag_y[DATA_SIZE], mag_z[DATA_SIZE],
+	float mag_x[DATA_SIZE], mag_y[DATA_SIZE], mag_z[DATA_SIZE],
 	    gyr_x[DATA_SIZE], gyr_y[DATA_SIZE], gyr_z[DATA_SIZE],
 	    acc_x[DATA_SIZE], acc_y[DATA_SIZE], acc_z[DATA_SIZE];
+
 #elif defined(FP_DATA_TYPE)
 	float q0[DATA_SIZE], q1[DATA_SIZE], q2[DATA_SIZE], q3[DATA_SIZE];
 	// quaternion of sensor frame relative to auxiliary frame
@@ -187,63 +190,72 @@ main()
 					break;
 				case 1:
 #if defined(INT_DATA_TYPE)
-					mag_x[row - 2] = round(atof(value) * FRAC_BASE);
+
+					mag_x[row - 2] = atof(value);
 #elif defined(FP_DATA_TYPE)
 					mag_x[row - 2] = atof(value);
 #endif
 					break;
 				case 2:
 #if defined(INT_DATA_TYPE)
-					mag_y[row - 2] = round(atof(value) * FRAC_BASE);
+
+					mag_y[row - 2] = atof(value);
 #elif defined(FP_DATA_TYPE)
 					mag_y[row - 2] = atof(value);
 #endif
 					break;
 				case 3:
 #if defined(INT_DATA_TYPE)
-					mag_z[row - 2] = round(atof(value) * FRAC_BASE);
+
+					mag_z[row - 2] = atof(value);
 #elif defined(FP_DATA_TYPE)
 					mag_z[row - 2] = atof(value);
 #endif
 					break;
 				case 4:
 #if defined(INT_DATA_TYPE)
-					gyr_x[row - 2] = round(atof(value) * FRAC_BASE) * 61;
+					//gyr_x[row - 2] = round(atof(value) * FRAC_BASE) * 61;
+					gyr_x[row - 2] = atof(value) * 61;
 #elif defined(FP_DATA_TYPE)
 					gyr_x[row - 2] = atof(value) * 61;
 #endif
 					break;
 				case 5:
 #if defined(INT_DATA_TYPE)
-					gyr_y[row - 2] = round(atof(value) * FRAC_BASE) * 61;
+					//gyr_y[row - 2] = round(atof(value) * FRAC_BASE) * 61;
+					gyr_y[row - 2] = atof(value) * 61;
 #elif defined(FP_DATA_TYPE)
 					gyr_y[row - 2] = atof(value) * 61;
 #endif
 					break;
 				case 6:
 #if defined(INT_DATA_TYPE)
-					gyr_z[row - 2] = round(atof(value) * FRAC_BASE) * 61;
+					//gyr_z[row - 2] = round(atof(value) * FRAC_BASE) * 61;
+					gyr_z[row - 2] = atof(value) * 61;
 #elif defined(FP_DATA_TYPE)
 					gyr_z[row - 2] = atof(value) * 61;
 #endif
 					break;
 				case 7:
 #if defined(INT_DATA_TYPE)
-					acc_x[row - 2] = round(atof(value) * FRAC_BASE) * 2;
+					//acc_x[row - 2] = round(atof(value) * FRAC_BASE) * 2;
+					acc_x[row - 2] = atof(value) * 2;
 #elif defined(FP_DATA_TYPE)
 					acc_x[row - 2] = atof(value) * 2;
 #endif
 					break;
 				case 8:
 #if defined(INT_DATA_TYPE)
-					acc_y[row - 2] = round(atof(value) * FRAC_BASE) * 2;
+					//acc_y[row - 2] = round(atof(value) * FRAC_BASE) * 2;
+					acc_y[row - 2] = atof(value) * 2;
 #elif defined(FP_DATA_TYPE)
 					acc_y[row - 2] = atof(value) * 2;
 #endif
 					break;
 				case 9:
 #if defined(INT_DATA_TYPE)
-					acc_z[row - 2] = round(atof(value) * FRAC_BASE) * 2;
+					//acc_z[row - 2] = round(atof(value) * FRAC_BASE) * 2;
+					acc_z[row - 2] = atof(value) * 2;
 #elif defined(FP_DATA_TYPE)
 					acc_z[row - 2] = atof(value) * 2;
 #endif
@@ -284,9 +296,6 @@ main()
 					   mag_x[ts], mag_y[ts], mag_z[ts],
 					   &q0[ts], &q1[ts], &q2[ts], &q3[ts]);
 
-			//	    MadgwickAHRSupdate(gyr_x[ts], gyr_y[ts], gyr_z[ts],
-			//			       acc_x[ts], acc_y[ts], acc_z[ts],
-			//			       mag_x[ts], mag_y[ts], mag_z[ts]);
 		}
 
 		//	end[0] = end[0] - start[0] - overhead;
@@ -307,8 +316,6 @@ main()
 	FILE * fptr = fopen("fp_result.txt", "w");
 	for (size_t ts = 0; ts < DATA_SIZE; ts++)
 	{
-		//        printf("Original: q0[%d]=%f, q1[%d]=%f, q2[%d]=%f, q3[%d]=%f\n",
-		//               ts, q0[ts], ts, q1[ts], ts, q2[ts], ts, q3[ts]);
 		fprintf(fptr, "Original: q0[%d]=%f, q1[%d]=%f, q2[%d]=%f, q3[%d]=%f\n",
 			ts, q0[ts], ts, q1[ts], ts, q2[ts], ts, q3[ts]);
 	}
@@ -317,52 +324,23 @@ main()
 	FILE * fptr = fopen("int_result.txt", "w");
 	for (size_t ts = 0; ts < DATA_SIZE; ts++)
 	{
-		//        printf("FIX: q0[%d]=%f, q1[%d]=%f, q2[%d]=%f, q3[%d]=%f\n",
-		//               ts, (double)q0[ts]/FRAC_BASE,
-		//               ts, (double)q1[ts]/FRAC_BASE,
-		//               ts, (double)q2[ts]/FRAC_BASE,
-		//               ts, (double)q3[ts]/FRAC_BASE);
-		//        fprintf(fptr, "FIX: q0[%d]=%f, q1[%d]=%f, q2[%d]=%f, q3[%d]=%f\n",
-		//               ts, (double)q0[ts]/FRAC_BASE,
-		//               ts, (double)q1[ts]/FRAC_BASE,
-		//               ts, (double)q2[ts]/FRAC_BASE,
-		//               ts, (double)q3[ts]/FRAC_BASE);
 
-		//		fprintf(fptr, "FIX: q0[%d]=%f, q1[%d]=%f, q2[%d]=%f, q3[%d]=%f\n",
-		//			ts, (float)q0[ts] / FRAC_BASE,
-		//			ts, (float)q1[ts] / FRAC_BASE,
-		//			ts, (float)q2[ts] / FRAC_BASE,
-		//			ts, (float)q3[ts] / FRAC_BASE);
 
-		// 分离整数部分和小数部分
-		int   q0_int_part  = q0[ts] >> FRAC_Q;		    // 整数部分
-		int   q0_frac_part = q0[ts] & ((1 << FRAC_Q) - 1);  // 小数部分
-		float q0_value	   = (float)q0_int_part + (float)q0_frac_part / FRAC_BASE;
-		//float q0_value = (float)q0_int_part + (float)(q0_frac_part >> FRAC_Q);
+		fprintf(fptr, "FIX: q0[%d]=%f, q1[%d]=%f, q2[%d]=%f, q3[%d]=%f\n",
+			ts, q0[ts], ts, q1[ts], ts, q2[ts], ts, q3[ts]);
+	}
+	fclose(fptr);
 
-		int   q1_int_part  = q1[ts] >> FRAC_Q;
-		int   q1_frac_part = q1[ts] & ((1 << FRAC_Q) - 1);
-		float q1_value	   = (float)q1_int_part + (float)q1_frac_part / FRAC_BASE;
 
-		int   q2_int_part  = q2[ts] >> FRAC_Q;
-		int   q2_frac_part = q2[ts] & ((1 << FRAC_Q) - 1);
-		float q2_value	   = (float)q2_int_part + (float)q2_frac_part / FRAC_BASE;
+//		void Mahony::computeAngles()
+//		{
+//			roll = atan2f(q0*q1 + q2*q3, 0.5f - q1*q1 - q2*q2);
+//			pitch = asinf(-2.0f * (q1*q3 - q0*q2));
+//			yaw = atan2f(q1*q2 + q0*q3, 0.5f - q2*q2 - q3*q3);
+//			anglesComputed = 1;
+//		}
 
-		int   q3_int_part  = q3[ts] >> FRAC_Q;
-		int   q3_frac_part = q3[ts] & ((1 << FRAC_Q) - 1);
-		float q3_value	   = (float)q3_int_part + (float)q3_frac_part / FRAC_BASE;
 
-		// 使用定点数计算的结果来写入文件
-		fprintf(fptr, "FIX: q0[%zu]=%f, q1[%zu]=%f, q2[%zu]=%f, q3[%zu]=%f\n",
-			ts, q0_value, ts, q1_value, ts, q2_value, ts, q3_value);
-
-}
-fclose(fptr);
-//    printf("FIX: q0 = %d.%04d, q1 = %d.%04d, q2 = %d.%04d, q3 = %d.%04d\n",
-//           DISPLAY_INT(q0), DISPLAY_FRAC(q0),
-//           DISPLAY_INT(q1), DISPLAY_FRAC(q1),
-//           DISPLAY_INT(q2), DISPLAY_FRAC(q2),
-//           DISPLAY_INT(q3), DISPLAY_FRAC(q3));
 #endif
 	return 0;
 }
