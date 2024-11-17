@@ -76,7 +76,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "llvm/IR/Function.h"
 
 using namespace llvm;
-#define BIT_WIDTH 16
+
 
 std::set<std::string> whitelist = {
     "MadgwickAHRSupdate",
@@ -87,7 +87,7 @@ std::set<std::string> whitelist = {
 std::vector<StoreInst *> toRemove;
 
 void
-dequantizeResults(StoreInst *storeInst, Function &F, int maxPrecisionBits)
+dequantizeResults(StoreInst *storeInst, Function &F, int maxPrecisionBits, int bitWidth)
 {
 	// IRBuilder<> Builder(storeInst);
 	IRBuilder<> Builder(storeInst->getNextNode());
@@ -101,7 +101,9 @@ dequantizeResults(StoreInst *storeInst, Function &F, int maxPrecisionBits)
 	}
 
 	Type *targetType = nullptr;
-	switch (BIT_WIDTH)
+	//BIT_WIDTH = bitWidth;
+
+	switch (bitWidth)
 	{
 		case 16:
 			targetType = Type::getInt16Ty(F.getContext());
@@ -112,7 +114,7 @@ dequantizeResults(StoreInst *storeInst, Function &F, int maxPrecisionBits)
 			break;
 	}
 
-	if (pointerOperand->getType()->getPointerElementType()->isIntegerTy(BIT_WIDTH))
+	if (pointerOperand->getType()->getPointerElementType()->isIntegerTy(bitWidth))
 	{
 		auto *loadInst = Builder.CreateLoad(pointerOperand->getType()->getPointerElementType(), pointerOperand);
 
@@ -132,7 +134,7 @@ dequantizeResults(StoreInst *storeInst, Function &F, int maxPrecisionBits)
 			bool isValidSource = false;
 
 			// Determine the final store pointer based on BIT_WIDTH
-			switch (BIT_WIDTH)
+			switch (bitWidth)
 			{
 				case 16:
 					// Check if the source type is i32 and find the original float*
@@ -160,7 +162,7 @@ dequantizeResults(StoreInst *storeInst, Function &F, int maxPrecisionBits)
 					break;
 
 				default:
-					llvm::errs() << "Unsupported BIT_WIDTH: " << BIT_WIDTH << "\n";
+					llvm::errs() << "Unsupported BIT_WIDTH: " << bitWidth << "\n";
 					return;
 			}
 
@@ -179,7 +181,7 @@ dequantizeResults(StoreInst *storeInst, Function &F, int maxPrecisionBits)
 
 // Process functions that are whitelisted for dequantization
 void
-processWhitelistedFunctions(Module & module, const std::set<std::string> & whitelist, int maxPrecisionBits)
+processWhitelistedFunctions(Module & module, const std::set<std::string> & whitelist, int maxPrecisionBits, int bitWidth)
 {
 	for (auto & F : module)
 	{
@@ -195,7 +197,7 @@ processWhitelistedFunctions(Module & module, const std::set<std::string> & white
 					if (auto * storeInst = dyn_cast<StoreInst>(&I))
 					{
 						llvm::errs() << "Found valid StoreInst.\n";
-						dequantizeResults(storeInst, F, maxPrecisionBits);
+						dequantizeResults(storeInst, F, maxPrecisionBits,bitWidth);
 					}
 				}
 			}
@@ -450,6 +452,10 @@ irPassLLVMIROptimizeByRange(State * N, bool enableQuantization, bool enableOverl
 
 	flexprint(N->Fe, N->Fm, N->Fpinfo, "maxPrecisionBits: %d\n", maxPrecisionBits);
 
+	/**
+	 * Config
+	 */
+	int bitWidth = 32;
 	maxPrecisionBits = 10;
 
 	/*
@@ -534,7 +540,7 @@ irPassLLVMIROptimizeByRange(State * N, bool enableQuantization, bool enableOverl
 		for (auto & mi : *Mod)
 		{
 			llvm::errs() << "Quantizing function: " << mi.getName() << "\n";
-			irPassLLVMIRAutoQuantization(N, mi, functionsToInsert, maxPrecisionBits);
+			irPassLLVMIRAutoQuantization(N, mi, functionsToInsert, maxPrecisionBits, bitWidth);
 		}
 		for (auto mi : functionsToInsert)
 		{
@@ -698,7 +704,7 @@ irPassLLVMIROptimizeByRange(State * N, bool enableQuantization, bool enableOverl
 
 	// eraseOldInstructions();
 
-	processWhitelistedFunctions(*Mod, whitelist, maxPrecisionBits);
+	processWhitelistedFunctions(*Mod, whitelist, maxPrecisionBits, bitWidth);
 
 	const char * homeDir = getenv("HOME");
 	if (!homeDir)
