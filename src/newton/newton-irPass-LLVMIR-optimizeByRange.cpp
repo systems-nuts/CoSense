@@ -76,217 +76,255 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "llvm/IR/Function.h"
 
 using namespace llvm;
+#define BIT_WIDTH 16
 
 std::set<std::string> whitelist = {
     "MadgwickAHRSupdate",
-    "MahonyAHRSupdate"
-};
+    "MahonyAHRSupdate"};
 
 // Define the dequantizeResult method
 
 std::vector<StoreInst *> toRemove;
+
 void
-dequantizeResults(StoreInst * storeInst, Function & F,int maxPrecisionBits)
+dequantizeResults(StoreInst *storeInst, Function &F, int maxPrecisionBits)
 {
-// IRBuilder<> Builder(storeInst);
-IRBuilder<> Builder(storeInst->getNextNode());
-auto *	    pointerOperand = storeInst->getPointerOperand();
-llvm::errs() << "Processing StoreInst in function: " << F.getName() << " | Store instruction: " << *storeInst << "\n";
+	// IRBuilder<> Builder(storeInst);
+	IRBuilder<> Builder(storeInst->getNextNode());
+	auto *pointerOperand = storeInst->getPointerOperand();
+	llvm::errs() << "Processing StoreInst in function: " << F.getName() << " | Store instruction: " << *storeInst << "\n";
 
-// 检查指针操作数和加载的值是否涉及全局变量
-if (isa<GlobalVariable>(pointerOperand))
-{
-	llvm::errs() << "Skipping StoreInst due to global variable in pointer operand.\n";
-	return; // 如果pointerOperand涉及全局变量，直接返回
-}
-
-if (pointerOperand->getType()->getPointerElementType()->isIntegerTy(32))
-{
-	auto *	loadInst       = Builder.CreateLoad(pointerOperand->getType()->getPointerElementType(), pointerOperand);
-	// 检查加载的值是否涉及全局变量
-	if (isa<GlobalVariable>(loadInst->getPointerOperand()))
+	if (isa<GlobalVariable>(pointerOperand))
 	{
-		llvm::errs() << "Skipping StoreInst due to global variable in load operand.\n";
-		return; // 如果加载的值涉及全局变量，直接返回
+		llvm::errs() << "Skipping StoreInst due to global variable in pointer operand.\n";
+		return;
 	}
 
-
-	Value * convertedFloat = Builder.CreateSIToFP(loadInst, Type::getFloatTy(F.getContext()));
-	double  fracBase       = pow(2.0, maxPrecisionBits);
-	//Value * dividedValue   = Builder.CreateFDiv(convertedFloat, ConstantFP::get(Type::getFloatTy(F.getContext()), fracBase));
-	//Value * dividedValue = Builder.CreateFMul(convertedFloat, ConstantFP::get(Type::getFloatTy(F.getContext()), 1.0 / fracBase));
-
-	// 创建 Fast-Math 标志
-	llvm::FastMathFlags FMF;
-	FMF.setFast(); // 启用所有 Fast-Math 优化
-	Value *dividedValue = Builder.CreateFMul(
-	    convertedFloat,
-	    ConstantFP::get(Type::getFloatTy(F.getContext()), 1.0 / fracBase),
-	    "dividedValue");
-	// 创建 FMul 指令并设置 Fast-Math
-	if (llvm::Instruction *instr = llvm::dyn_cast<llvm::Instruction>(dividedValue)) {
-		instr->setFastMathFlags(FMF); // 设置 Fast-Math 标志
+	Type *targetType = nullptr;
+	switch (BIT_WIDTH)
+	{
+		case 16:
+			targetType = Type::getInt16Ty(F.getContext());
+			break;
+		case 32:
+		default:
+			targetType = Type::getInt32Ty(F.getContext());
+			break;
 	}
 
-	if (auto * bitcastInst = dyn_cast<BitCastInst>(pointerOperand))
+	if (pointerOperand->getType()->getPointerElementType()->isIntegerTy(BIT_WIDTH))
 	{
-		if (bitcastInst->getSrcTy()->getPointerElementType()->isFloatTy())
+		auto *loadInst = Builder.CreateLoad(pointerOperand->getType()->getPointerElementType(), pointerOperand);
+
+		if (isa<GlobalVariable>(loadInst->getPointerOperand()))
 		{
-			auto * originalFloatPtr = bitcastInst->getOperand(0);
-			Builder.CreateStore(dividedValue, originalFloatPtr);
+			llvm::errs() << "Skipping StoreInst due to global variable in load operand.\n";
+			return;
 		}
-	}
-}
-}
 
-// Process functions that are whitelisted for dequantization
-void
-processWhitelistedFunctions(Module & module, const std::set<std::string> & whitelist,int maxPrecisionBits)
-{
-for (auto & F : module)
-{
-	if (whitelist.find(F.getName().str()) != whitelist.end())
-	{
-		llvm::errs() << "Found whitelisted function: " << F.getName() << "\n";
+		Value *convertedFloat = Builder.CreateSIToFP(loadInst, Type::getFloatTy(F.getContext()));
+		double fracBase = pow(2.0, maxPrecisionBits);
+		Value *dividedValue = Builder.CreateFMul(convertedFloat, ConstantFP::get(Type::getFloatTy(F.getContext()), 1.0 / fracBase));
 
-		for (auto & B : F)
+		if (auto *bitcastInst = dyn_cast<BitCastInst>(pointerOperand))
 		{
-			for (auto & I : B)
+			Value *finalStorePtr = nullptr;
+			bool isValidSource = false;
+
+			// Determine the final store pointer based on BIT_WIDTH
+			switch (BIT_WIDTH)
 			{
-				llvm::errs() << "Processing instruction: " << I << "\n";
-				if (auto * storeInst = dyn_cast<StoreInst>(&I))
-				{
-					llvm::errs() << "Found valid StoreInst.\n";
-					dequantizeResults(storeInst, F,maxPrecisionBits);
-				}
+				case 16:
+					// Check if the source type is i32 and find the original float*
+					if (bitcastInst->getSrcTy()->getPointerElementType()->isIntegerTy(32))
+					{
+						auto *i32Ptr = bitcastInst->getOperand(0);
+						if (auto *floatBitcast = dyn_cast<BitCastInst>(i32Ptr))
+						{
+							if (floatBitcast->getSrcTy()->getPointerElementType()->isFloatTy())
+							{
+								finalStorePtr = floatBitcast->getOperand(0); // Original float*
+								isValidSource = true;
+							}
+						}
+					}
+					break;
+
+				case 32:
+					// Check if the source type is float*
+					if (bitcastInst->getSrcTy()->getPointerElementType()->isFloatTy())
+					{
+						finalStorePtr = bitcastInst->getOperand(0); // Original float*
+						isValidSource = true;
+					}
+					break;
+
+				default:
+					llvm::errs() << "Unsupported BIT_WIDTH: " << BIT_WIDTH << "\n";
+					return;
+			}
+
+			if (isValidSource && finalStorePtr)
+			{
+				Builder.CreateStore(dividedValue, finalStorePtr);
+			}
+			else
+			{
+				llvm::errs() << "Invalid source for StoreInst: " << *storeInst << "\n";
 			}
 		}
 	}
 }
+
+
+// Process functions that are whitelisted for dequantization
+void
+processWhitelistedFunctions(Module & module, const std::set<std::string> & whitelist, int maxPrecisionBits)
+{
+	for (auto & F : module)
+	{
+		if (whitelist.find(F.getName().str()) != whitelist.end())
+		{
+			llvm::errs() << "Found whitelisted function: " << F.getName() << "\n";
+
+			for (auto & B : F)
+			{
+				for (auto & I : B)
+				{
+					llvm::errs() << "Processing instruction: " << I << "\n";
+					if (auto * storeInst = dyn_cast<StoreInst>(&I))
+					{
+						llvm::errs() << "Found valid StoreInst.\n";
+						dequantizeResults(storeInst, F, maxPrecisionBits);
+					}
+				}
+			}
+		}
+	}
 }
 
 // Function to save the IR of a module to a file
 void
 saveModuleIR(llvm::Module & M, const std::string & fileName)
 {
-std::error_code	     EC;
-llvm::raw_fd_ostream file(fileName, EC, llvm::sys::fs::OF_Text);
-if (EC)
-{
-	llvm::errs() << "Error opening file " << fileName << " for writing: " << EC.message() << "\n";
-	return;
-}
-M.print(file, nullptr);
-llvm::errs() << "IR saved to " << fileName << "\n";
-file.close();
+	std::error_code	     EC;
+	llvm::raw_fd_ostream file(fileName, EC, llvm::sys::fs::OF_Text);
+	if (EC)
+	{
+		llvm::errs() << "Error opening file " << fileName << " for writing: " << EC.message() << "\n";
+		return;
+	}
+	M.print(file, nullptr);
+	llvm::errs() << "IR saved to " << fileName << "\n";
+	file.close();
 }
 
 void
 removeQuantizedSuffixInModule(llvm::Module & M)
 {
-for (auto & F : M)
-{
-	if (F.hasName())
+	for (auto & F : M)
 	{
-		std::string FuncName = F.getName().str();
-		size_t	    pos	     = FuncName.find("_quantized");
-		if (pos != std::string::npos)
+		if (F.hasName())
 		{
-			FuncName.erase(pos, 10);
-			F.setName(FuncName);
+			std::string FuncName = F.getName().str();
+			size_t	    pos	     = FuncName.find("_quantized");
+			if (pos != std::string::npos)
+			{
+				FuncName.erase(pos, 10);
+				F.setName(FuncName);
+			}
 		}
 	}
-}
 
-// Remove suffix from global variables
-for (auto & G : M.globals())
-{
-	if (G.hasName())
+	// Remove suffix from global variables
+	for (auto & G : M.globals())
 	{
-		std::string GlobalName = G.getName().str();
-		size_t	    pos	       = GlobalName.find("_quantized");
-		if (pos != std::string::npos)
+		if (G.hasName())
 		{
-			GlobalName.erase(pos, 10);  // Remove "_quantized"
-			G.setName(GlobalName);
+			std::string GlobalName = G.getName().str();
+			size_t	    pos	       = GlobalName.find("_quantized");
+			if (pos != std::string::npos)
+			{
+				GlobalName.erase(pos, 10);  // Remove "_quantized"
+				G.setName(GlobalName);
+			}
 		}
 	}
-}
 }
 
 void
 dumpIR(State * N, std::string fileSuffix, const std::unique_ptr<Module> & Mod)
 {
-StringRef   filePath(N->llvmIR);
-std::string dirPath	= std::string(sys::path::parent_path(filePath)) + "/";
-std::string fileName	= std::string(sys::path::stem(filePath)) + "_" + fileSuffix + ".bc";
-std::string filePathStr = dirPath + fileName;
-filePath		= StringRef(filePathStr);
+	StringRef   filePath(N->llvmIR);
+	std::string dirPath	= std::string(sys::path::parent_path(filePath)) + "/";
+	std::string fileName	= std::string(sys::path::stem(filePath)) + "_" + fileSuffix + ".bc";
+	std::string filePathStr = dirPath + fileName;
+	filePath		= StringRef(filePathStr);
 
-flexprint(N->Fe, N->Fm, N->Fpinfo, "Dump IR of: %s\n", filePath.str().c_str());
-std::error_code errorCode(errno, std::generic_category());
-raw_fd_ostream	dumpedFile(filePath, errorCode);
-WriteBitcodeToFile(*Mod, dumpedFile);
-dumpedFile.close();
+	flexprint(N->Fe, N->Fm, N->Fpinfo, "Dump IR of: %s\n", filePath.str().c_str());
+	std::error_code errorCode(errno, std::generic_category());
+	raw_fd_ostream	dumpedFile(filePath, errorCode);
+	WriteBitcodeToFile(*Mod, dumpedFile);
+	dumpedFile.close();
 }
 
 void
 mergeBoundInfo(BoundInfo * dst, const BoundInfo * src)
 {
-dst->virtualRegisterRange.insert(src->virtualRegisterRange.begin(),
-				 src->virtualRegisterRange.end());
-return;
+	dst->virtualRegisterRange.insert(src->virtualRegisterRange.begin(),
+					 src->virtualRegisterRange.end());
+	return;
 }
 
 void
 collectCalleeInfo(std::vector<std::string> &	       calleeNames,
-	  std::map<std::string, BoundInfo *> & funcBoundInfo,
-	  const BoundInfo *		       boundInfo)
+		  std::map<std::string, BoundInfo *> & funcBoundInfo,
+		  const BoundInfo *		       boundInfo)
 {
-for (auto & calleeInfo : boundInfo->calleeBound)
-{
-	calleeNames.emplace_back(calleeInfo.first);
-	funcBoundInfo.emplace(calleeInfo.first, calleeInfo.second);
-	collectCalleeInfo(calleeNames, funcBoundInfo, calleeInfo.second);
-}
-return;
+	for (auto & calleeInfo : boundInfo->calleeBound)
+	{
+		calleeNames.emplace_back(calleeInfo.first);
+		funcBoundInfo.emplace(calleeInfo.first, calleeInfo.second);
+		collectCalleeInfo(calleeNames, funcBoundInfo, calleeInfo.second);
+	}
+	return;
 }
 
 class FunctionNode {
-mutable AssertingVH<Function>	 F;
-FunctionComparator::FunctionHash Hash;
+	mutable AssertingVH<Function>	 F;
+	FunctionComparator::FunctionHash Hash;
 
-public:
-// Note the hash is recalculated potentially multiple times, but it is cheap.
-FunctionNode(Function * F)
-    : F(F), Hash(FunctionComparator::functionHash(*F)) {}
+	public:
+	// Note the hash is recalculated potentially multiple times, but it is cheap.
+	FunctionNode(Function * F)
+	    : F(F), Hash(FunctionComparator::functionHash(*F)) {}
 
-Function *
-getFunc() const
-{
-	return F;
-}
+	Function *
+	getFunc() const
+	{
+		return F;
+	}
 
-FunctionComparator::FunctionHash
-getHash() const
-{
-	return Hash;
-}
+	FunctionComparator::FunctionHash
+	getHash() const
+	{
+		return Hash;
+	}
 };
 
 GlobalNumberState GlobalNumbers;
 
 class FunctionNodeCmp {
-public:
-bool
-operator()(const FunctionNode & LHS, const FunctionNode & RHS) const
-{
-	// Order first by hashes, then full function comparison.
-	if (LHS.getHash() != RHS.getHash())
-		return LHS.getHash() < RHS.getHash();
-	FunctionComparator FCmp(LHS.getFunc(), RHS.getFunc(), &GlobalNumbers);
-	return FCmp.compare() == -1;
-}
+	public:
+	bool
+	operator()(const FunctionNode & LHS, const FunctionNode & RHS) const
+	{
+		// Order first by hashes, then full function comparison.
+		if (LHS.getHash() != RHS.getHash())
+			return LHS.getHash() < RHS.getHash();
+		FunctionComparator FCmp(LHS.getFunc(), RHS.getFunc(), &GlobalNumbers);
+		return FCmp.compare() == -1;
+	}
 };
 
 using hashFuncSet = std::set<FunctionNode, FunctionNodeCmp>;
@@ -294,393 +332,392 @@ using hashFuncSet = std::set<FunctionNode, FunctionNodeCmp>;
 void
 cleanFunctionMap(const std::unique_ptr<Module> & Mod, std::map<std::string, CallInst *> & callerMap)
 {
-for (auto itFunc = callerMap.begin(); itFunc != callerMap.end();)
-{
-	if (nullptr == Mod->getFunction(itFunc->first))
-		itFunc = callerMap.erase(itFunc);
-	else
-		++itFunc;
-}
+	for (auto itFunc = callerMap.begin(); itFunc != callerMap.end();)
+	{
+		if (nullptr == Mod->getFunction(itFunc->first))
+			itFunc = callerMap.erase(itFunc);
+		else
+			++itFunc;
+	}
 }
 
 void
 overloadFunc(std::unique_ptr<Module> & Mod, std::map<std::string, CallInst *> & callerMap)
 {
-/*
- * compare the functions and remove the redundant one
- * */
-hashFuncSet baseFuncs;
-auto	    baseFuncNum = baseFuncs.size();
-for (auto itFunc = Mod->getFunctionList().rbegin(); itFunc != Mod->getFunctionList().rend(); itFunc++)
-{
-	if (!itFunc->hasName() || itFunc->getName().empty())
-		continue;
-	if (itFunc->getName().startswith("llvm.dbg.value") ||
-	    itFunc->getName().startswith("llvm.dbg.declare"))
-		continue;
-	if (itFunc->isDeclaration())
-		continue;
-	baseFuncs.emplace(FunctionNode(&(*itFunc)));
 	/*
-	 * find the function with the same implementation and change the callInst
+	 * compare the functions and remove the redundant one
 	 * */
-	if (baseFuncNum == baseFuncs.size())
+	hashFuncSet baseFuncs;
+	auto	    baseFuncNum = baseFuncs.size();
+	for (auto itFunc = Mod->getFunctionList().rbegin(); itFunc != Mod->getFunctionList().rend(); itFunc++)
 	{
-		auto callerIt = callerMap.find(itFunc->getName().str());
-		assert(callerIt != callerMap.end());
-		auto		  currentCallerInst = callerIt->second;
-		auto		  currentFuncNode   = FunctionNode(&(*itFunc));
-		GlobalNumberState cmpGlobalNumbers;
-		auto		  sameImplIt = std::find_if(baseFuncs.begin(), baseFuncs.end(),
-							    [currentFuncNode, &cmpGlobalNumbers](const FunctionNode & func) {
-							    FunctionComparator FCmp(func.getFunc(), currentFuncNode.getFunc(), &cmpGlobalNumbers);
-							    return func.getHash() == currentFuncNode.getHash() && FCmp.compare() == 0;
-						    });
-		assert(sameImplIt != baseFuncs.end());
-		currentCallerInst->setCalledFunction(sameImplIt->getFunc());
+		if (!itFunc->hasName() || itFunc->getName().empty())
+			continue;
+		if (itFunc->getName().startswith("llvm.dbg.value") ||
+		    itFunc->getName().startswith("llvm.dbg.declare"))
+			continue;
+		if (itFunc->isDeclaration())
+			continue;
+		baseFuncs.emplace(FunctionNode(&(*itFunc)));
+		/*
+		 * find the function with the same implementation and change the callInst
+		 * */
+		if (baseFuncNum == baseFuncs.size())
+		{
+			auto callerIt = callerMap.find(itFunc->getName().str());
+			assert(callerIt != callerMap.end());
+			auto		  currentCallerInst = callerIt->second;
+			auto		  currentFuncNode   = FunctionNode(&(*itFunc));
+			GlobalNumberState cmpGlobalNumbers;
+			auto		  sameImplIt = std::find_if(baseFuncs.begin(), baseFuncs.end(),
+								    [currentFuncNode, &cmpGlobalNumbers](const FunctionNode & func) {
+								    FunctionComparator FCmp(func.getFunc(), currentFuncNode.getFunc(), &cmpGlobalNumbers);
+								    return func.getHash() == currentFuncNode.getHash() && FCmp.compare() == 0;
+							    });
+			assert(sameImplIt != baseFuncs.end());
+			currentCallerInst->setCalledFunction(sameImplIt->getFunc());
+		}
+		else
+			baseFuncNum = baseFuncs.size();
 	}
-	else
-		baseFuncNum = baseFuncs.size();
-}
 
-legacy::PassManager passManager;
-passManager.add(createGlobalDCEPass());
-passManager.run(*Mod);
+	legacy::PassManager passManager;
+	passManager.add(createGlobalDCEPass());
+	passManager.run(*Mod);
 }
 
 void
 irPassLLVMIROptimizeByRange(State * N, bool enableQuantization, bool enableOverload, bool enableBuiltinAssume)
 {
-llvm::errs() << "Entering irPassLLVMIROptimizeByRange\n";
-if (N->llvmIR == nullptr)
-{
-	flexprint(N->Fe, N->Fm, N->Fperr, "Please specify the LLVM IR input file\n");
-	llvm::errs() << "Error: llvmIR is nullptr\n";
-	fatal(N, Esanity);
-}
-
-SMDiagnostic		Err;
-LLVMContext		Context;
-std::unique_ptr<Module> Mod(parseIRFile(N->llvmIR, Err, Context));
-if (!Mod)
-{
-	flexprint(N->Fe, N->Fm, N->Fperr, "Error: Couldn't parse IR file.");
-	llvm::errs() << "Error: Couldn't parse IR file: " << N->llvmIR << "\n";
-	fatal(N, Esanity);
-}
-llvm::errs() << "Module successfully parsed: " << N->llvmIR << "\n";
-auto				   globalBoundInfo = new BoundInfo();
-std::map<std::string, BoundInfo *> funcBoundInfo;
-
-/*
- * get sensor info, we only concern the id and range here
- * */
-std::map<std::string, std::pair<double, double>> typeRange;
-if (N->sensorList != NULL)
-{
-	for (Modality * currentModality = N->sensorList->modalityList; currentModality != NULL; currentModality = currentModality->next)
+	llvm::errs() << "Entering irPassLLVMIROptimizeByRange\n";
+	if (N->llvmIR == nullptr)
 	{
-		flexprint(N->Fe, N->Fm, N->Fpinfo, "\tModality: %s\n", currentModality->identifier);
-		flexprint(N->Fe, N->Fm, N->Fpinfo, "\t\trangeLowerBound: %f\n", currentModality->rangeLowerBound);
-		flexprint(N->Fe, N->Fm, N->Fpinfo, "\t\trangeUpperBound: %f\n", currentModality->rangeUpperBound);
-		typeRange.emplace(currentModality->identifier, std::make_pair(currentModality->rangeLowerBound, currentModality->rangeUpperBound));
+		flexprint(N->Fe, N->Fm, N->Fperr, "Please specify the LLVM IR input file\n");
+		llvm::errs() << "Error: llvmIR is nullptr\n";
+		fatal(N, Esanity);
 	}
-}
 
-/*
- *TODO  get sensor info, we only concern the id and precisionBits here
- * */
-std::map<std::string, int> typePrecisionBits;
-if (N->sensorList != NULL)
-{
-	for (Modality * currentModality = N->sensorList->modalityList; currentModality != NULL; currentModality = currentModality->next)
+	SMDiagnostic		Err;
+	LLVMContext		Context;
+	std::unique_ptr<Module> Mod(parseIRFile(N->llvmIR, Err, Context));
+	if (!Mod)
 	{
-		flexprint(N->Fe, N->Fm, N->Fpinfo, "\tModality: %s\n", currentModality->identifier);
-		flexprint(N->Fe, N->Fm, N->Fpinfo, "\t\tprecisionBits: %d\n", currentModality->precisionBits);
-		typePrecisionBits.emplace(currentModality->identifier, currentModality->precisionBits);
+		flexprint(N->Fe, N->Fm, N->Fperr, "Error: Couldn't parse IR file.");
+		llvm::errs() << "Error: Couldn't parse IR file: " << N->llvmIR << "\n";
+		fatal(N, Esanity);
 	}
-}
+	llvm::errs() << "Module successfully parsed: " << N->llvmIR << "\n";
+	auto				   globalBoundInfo = new BoundInfo();
+	std::map<std::string, BoundInfo *> funcBoundInfo;
 
-int maxPrecisionBits = 0;
-for (auto & typePrecisionBit : typePrecisionBits)
-{
-	if (typePrecisionBit.second > maxPrecisionBits)
+	/*
+	 * get sensor info, we only concern the id and range here
+	 * */
+	std::map<std::string, std::pair<double, double>> typeRange;
+	if (N->sensorList != NULL)
 	{
-		maxPrecisionBits = typePrecisionBit.second;
-	}
-}
-
-flexprint(N->Fe, N->Fm, N->Fpinfo, "maxPrecisionBits: %d\n", maxPrecisionBits);
-
-maxPrecisionBits = 16;
-
-/*
- * get const global variables
- * */
-std::map<llvm::Value *, std::vector<std::pair<double, double>>> virtualRegisterVectorRange;
-for (auto & globalVar : Mod->getGlobalList())
-{
-	if (!globalVar.hasInitializer())
-	{
-		llvm::errs() << "Global variable " << globalVar.getName() << " has no initializer\n";
-		continue;
-	}
-	llvm::errs() << "Processing global variable: " << globalVar.getName() << "\n";
-	auto constValue = globalVar.getInitializer();
-	if (ConstantFP * constFp = llvm::dyn_cast<llvm::ConstantFP>(constValue))
-	{
-		if (constValue->getType()->isFloatTy())
+		for (Modality * currentModality = N->sensorList->modalityList; currentModality != NULL; currentModality = currentModality->next)
 		{
-			float constValue = constFp->getValueAPF().convertToFloat();
-			globalBoundInfo->virtualRegisterRange.emplace(&globalVar, std::make_pair(constValue, constValue));
-		}
-		else if (constValue->getType()->isDoubleTy())
-		{
-			double constValue = constFp->getValueAPF().convertToDouble();
-			globalBoundInfo->virtualRegisterRange.emplace(&globalVar, std::make_pair(constValue, constValue));
+			flexprint(N->Fe, N->Fm, N->Fpinfo, "\tModality: %s\n", currentModality->identifier);
+			flexprint(N->Fe, N->Fm, N->Fpinfo, "\t\trangeLowerBound: %f\n", currentModality->rangeLowerBound);
+			flexprint(N->Fe, N->Fm, N->Fpinfo, "\t\trangeUpperBound: %f\n", currentModality->rangeUpperBound);
+			typeRange.emplace(currentModality->identifier, std::make_pair(currentModality->rangeLowerBound, currentModality->rangeUpperBound));
 		}
 	}
-	else if (ConstantInt * constInt = llvm::dyn_cast<llvm::ConstantInt>(constValue))
+
+	/*
+	 *TODO  get sensor info, we only concern the id and precisionBits here
+	 * */
+	std::map<std::string, int> typePrecisionBits;
+	if (N->sensorList != NULL)
 	{
-		auto constValue = constInt->getSExtValue();
-		globalBoundInfo->virtualRegisterRange.emplace(&globalVar, std::make_pair(static_cast<double>(constValue),
-											 static_cast<double>(constValue)));
-	}
-	else if (ConstantDataArray * constArr = llvm::dyn_cast<llvm::ConstantDataArray>(constValue))
-	{
-		auto arrType = constArr->getElementType();
-		if (arrType->isDoubleTy())
+		for (Modality * currentModality = N->sensorList->modalityList; currentModality != NULL; currentModality = currentModality->next)
 		{
-			for (size_t idx = 0; idx < constArr->getNumElements(); idx++)
+			flexprint(N->Fe, N->Fm, N->Fpinfo, "\tModality: %s\n", currentModality->identifier);
+			flexprint(N->Fe, N->Fm, N->Fpinfo, "\t\tprecisionBits: %d\n", currentModality->precisionBits);
+			typePrecisionBits.emplace(currentModality->identifier, currentModality->precisionBits);
+		}
+	}
+
+	int maxPrecisionBits = 0;
+	for (auto & typePrecisionBit : typePrecisionBits)
+	{
+		if (typePrecisionBit.second > maxPrecisionBits)
+		{
+			maxPrecisionBits = typePrecisionBit.second;
+		}
+	}
+
+	flexprint(N->Fe, N->Fm, N->Fpinfo, "maxPrecisionBits: %d\n", maxPrecisionBits);
+
+	maxPrecisionBits = 10;
+
+	/*
+	 * get const global variables
+	 * */
+	std::map<llvm::Value *, std::vector<std::pair<double, double>>> virtualRegisterVectorRange;
+	for (auto & globalVar : Mod->getGlobalList())
+	{
+		if (!globalVar.hasInitializer())
+		{
+			llvm::errs() << "Global variable " << globalVar.getName() << " has no initializer\n";
+			continue;
+		}
+		llvm::errs() << "Processing global variable: " << globalVar.getName() << "\n";
+		auto constValue = globalVar.getInitializer();
+		if (ConstantFP * constFp = llvm::dyn_cast<llvm::ConstantFP>(constValue))
+		{
+			if (constValue->getType()->isFloatTy())
 			{
-				double dbValue = constArr->getElementAsDouble(idx);
-				virtualRegisterVectorRange[&globalVar].emplace_back(std::make_pair(dbValue, dbValue));
+				float constValue = constFp->getValueAPF().convertToFloat();
+				globalBoundInfo->virtualRegisterRange.emplace(&globalVar, std::make_pair(constValue, constValue));
+			}
+			else if (constValue->getType()->isDoubleTy())
+			{
+				double constValue = constFp->getValueAPF().convertToDouble();
+				globalBoundInfo->virtualRegisterRange.emplace(&globalVar, std::make_pair(constValue, constValue));
 			}
 		}
-		else if (arrType->isFloatTy())
+		else if (ConstantInt * constInt = llvm::dyn_cast<llvm::ConstantInt>(constValue))
 		{
-			for (size_t idx = 0; idx < constArr->getNumElements(); idx++)
-			{
-				double ftValue = constArr->getElementAsFloat(idx);
-				virtualRegisterVectorRange[&globalVar].emplace_back(std::make_pair(ftValue, ftValue));
-			}
+			auto constValue = constInt->getSExtValue();
+			globalBoundInfo->virtualRegisterRange.emplace(&globalVar, std::make_pair(static_cast<double>(constValue),
+												 static_cast<double>(constValue)));
 		}
-		else if (arrType->isIntegerTy())
+		else if (ConstantDataArray * constArr = llvm::dyn_cast<llvm::ConstantDataArray>(constValue))
 		{
-			for (size_t idx = 0; idx < constArr->getNumElements(); idx++)
+			auto arrType = constArr->getElementType();
+			if (arrType->isDoubleTy())
 			{
-				uint64_t intValue = constArr->getElementAsInteger(idx);
-				virtualRegisterVectorRange[&globalVar].emplace_back(std::make_pair(intValue, intValue));
+				for (size_t idx = 0; idx < constArr->getNumElements(); idx++)
+				{
+					double dbValue = constArr->getElementAsDouble(idx);
+					virtualRegisterVectorRange[&globalVar].emplace_back(std::make_pair(dbValue, dbValue));
+				}
 			}
-		}
-		else if (arrType->isPointerTy())
-		{
-			flexprint(N->Fe, N->Fm, N->Fperr, "\t\tTODO: Didn't support const pointer!\n");
+			else if (arrType->isFloatTy())
+			{
+				for (size_t idx = 0; idx < constArr->getNumElements(); idx++)
+				{
+					double ftValue = constArr->getElementAsFloat(idx);
+					virtualRegisterVectorRange[&globalVar].emplace_back(std::make_pair(ftValue, ftValue));
+				}
+			}
+			else if (arrType->isIntegerTy())
+			{
+				for (size_t idx = 0; idx < constArr->getNumElements(); idx++)
+				{
+					uint64_t intValue = constArr->getElementAsInteger(idx);
+					virtualRegisterVectorRange[&globalVar].emplace_back(std::make_pair(intValue, intValue));
+				}
+			}
+			else if (arrType->isPointerTy())
+			{
+				flexprint(N->Fe, N->Fm, N->Fperr, "\t\tTODO: Didn't support const pointer!\n");
+			}
+			else
+			{
+				flexprint(N->Fe, N->Fm, N->Fperr, "\t\tUnknown constant type!\n");
+			}
 		}
 		else
 		{
-			flexprint(N->Fe, N->Fm, N->Fperr, "\t\tUnknown constant type!\n");
+			flexprint(N->Fe, N->Fm, N->Fperr, "\t\tUnknown type!\n");
 		}
 	}
-	else
+
+	if (enableQuantization)
 	{
-		flexprint(N->Fe, N->Fm, N->Fperr, "\t\tUnknown type!\n");
+		flexprint(N->Fe, N->Fm, N->Fpinfo, "auto quantization\n");
+		llvm::errs() << "Auto quantization enabled\n";
+		std::vector<llvm::Function *> functionsToInsert;
+		for (auto & mi : *Mod)
+		{
+			llvm::errs() << "Quantizing function: " << mi.getName() << "\n";
+			irPassLLVMIRAutoQuantization(N, mi, functionsToInsert, maxPrecisionBits);
+		}
+		for (auto mi : functionsToInsert)
+		{
+			Mod->getFunctionList().remove(mi);
+			Mod->getFunctionList().push_front(mi);
+		}
 	}
-}
 
-if (enableQuantization)
-{
-	flexprint(N->Fe, N->Fm, N->Fpinfo, "auto quantization\n");
-	llvm::errs() << "Auto quantization enabled\n";
-	std::vector<llvm::Function *> functionsToInsert;
-	for (auto & mi : *Mod)
+	// Range Analysis
+
+	//	for (auto & mi : *Mod)
+	//	{
+	//		rangeAnalysis(mi);
+	//
+	//	}
+
+	//	/*
+	//	 * analyze the range of all local variables in each function
+	//	 * */
+	//	flexprint(N->Fe, N->Fm, N->Fpinfo, "infer bound\n");
+	//	std::map<std::string, CallInst *> callerMap;
+	//	callerMap.clear();
+	//	funcBoundInfo.clear();
+	//	bool useOverLoad = false;
+	//	for (auto & mi : *Mod)
+	//	{
+	//		auto boundInfo = new BoundInfo();
+	//		mergeBoundInfo(boundInfo, globalBoundInfo);
+	//		rangeAnalysis(N, mi, boundInfo, callerMap, typeRange, virtualRegisterVectorRange, useOverLoad);
+	//		funcBoundInfo.emplace(mi.getName().str(), boundInfo);
+	//		std::vector<std::string> calleeNames;
+	//		collectCalleeInfo(calleeNames, funcBoundInfo, boundInfo);
+	//	}
+	//
+	//	flexprint(N->Fe, N->Fm, N->Fpinfo, "shrink data type by range\n");
+	//	for (auto & mi : *Mod)
+	//	{
+	//		auto boundInfoIt = funcBoundInfo.find(mi.getName().str());
+	//		if (boundInfoIt != funcBoundInfo.end())
+	//		{
+	//			shrinkType(N, boundInfoIt->second, mi);
+	//		}
+	//		//            else
+	//		//            {
+	//		//	            assert(false);
+	//		//	        }
+	//	}
+	//
+	//	flexprint(N->Fe, N->Fm, N->Fpinfo, "memory alignment\n");
+	//	for (auto & mi : *Mod)
+	//	{
+	//		auto boundInfoIt = funcBoundInfo.find(mi.getName().str());
+	//		if (boundInfoIt != funcBoundInfo.end())
+	//		{
+	//			memoryAlignment(N, boundInfoIt->second, mi);
+	//		}
+	//		//        else
+	//		//        {
+	//		//            assert(false);
+	//		//        }
+	//	}
+	//
+	//	/*
+	//	 * remove the functions that are optimized by passes.
+	//	 * */
+	//	if (useOverLoad)
+	//		cleanFunctionMap(Mod, callerMap);
+	//
+	//	if (useOverLoad)
+	//		overloadFunc(Mod, callerMap);
+	//
+	//	callerMap.clear();
+	//	funcBoundInfo.clear();
+	//	useOverLoad = true;
+	//	for (auto & mi : *Mod)
+	//	{
+	//		auto boundInfo = new BoundInfo();
+	//		mergeBoundInfo(boundInfo, globalBoundInfo);
+	//		rangeAnalysis(N, mi, boundInfo, callerMap, typeRange, virtualRegisterVectorRange, useOverLoad);
+	//		funcBoundInfo.emplace(mi.getName().str(), boundInfo);
+	//		std::vector<std::string> calleeNames;
+	//		collectCalleeInfo(calleeNames, funcBoundInfo, boundInfo);
+	//	}
+	//
+	/*
+	 * simplify the condition of each branch
+	 * */
+	//	flexprint(N->Fe, N->Fm, N->Fpinfo, "simplify control flow by range\n");
+	//	for (auto & mi : *Mod)
+	//	{
+	//		auto boundInfoIt = funcBoundInfo.find(mi.getName().str());
+	//		if (boundInfoIt != funcBoundInfo.end())
+	//		{
+	//			simplifyControlFlow(N, boundInfoIt->second, mi);
+	//		}
+	//		//		else
+	//		//		{
+	//		//			assert(false);
+	//		//		}
+	//	}
+	//
+	//	legacy::PassManager passManager;
+	//	passManager.add(createCFGSimplificationPass());
+	//	passManager.add(createInstSimplifyLegacyPass());
+	//	passManager.add(createGlobalDCEPass());
+	//	passManager.run(*Mod);
+	//
+	//	/*
+	//	 * remove the functions that are optimized by passes.
+	//	 * */
+	//	if (useOverLoad)
+	//		cleanFunctionMap(Mod, callerMap);
+	//
+	//	if (useOverLoad)
+	//		overloadFunc(Mod, callerMap);
+	//
+	//	flexprint(N->Fe, N->Fm, N->Fpinfo, "infer bound\n");
+	//	callerMap.clear();
+	//	funcBoundInfo.clear();
+	//	useOverLoad = false;
+	//	for (auto & mi : *Mod)
+	//	{
+	//		auto boundInfo = new BoundInfo();
+	//		mergeBoundInfo(boundInfo, globalBoundInfo);
+	//		rangeAnalysis(N, mi, boundInfo, callerMap, typeRange, virtualRegisterVectorRange, useOverLoad);
+	//		funcBoundInfo.emplace(mi.getName().str(), boundInfo);
+	//		std::vector<std::string> calleeNames;
+	//		collectCalleeInfo(calleeNames, funcBoundInfo, boundInfo);
+	//	}
+	//
+	//	flexprint(N->Fe, N->Fm, N->Fpinfo, "constant substitution\n");
+	//	for (auto & mi : *Mod)
+	//	{
+	//		auto boundInfoIt = funcBoundInfo.find(mi.getName().str());
+	//		if (boundInfoIt != funcBoundInfo.end())
+	//		{
+	//			constantSubstitution(N, boundInfoIt->second, mi);
+	//		}
+	//		//		else
+	//		//		{
+	//		//			assert(false);
+	//		//		}
+	//	}
+	//
+	//	/*
+	//	 * remove the functions that are optimized by passes.
+	//	 * */
+	//	if (useOverLoad)
+	//		cleanFunctionMap(Mod, callerMap);
+	//
+	//	if (useOverLoad)
+	//		overloadFunc(Mod, callerMap);
+
+	// Finally, erase old functions
+	eraseOldFunctions();
+
+	eraseOldGlobals();
+
+	// Perform text replacement to remove "_quantized" suffixes
+	removeQuantizedSuffixInModule(*Mod);
+
+	// eraseOldInstructions();
+
+	processWhitelistedFunctions(*Mod, whitelist, maxPrecisionBits);
+
+	const char * homeDir = getenv("HOME");
+	if (!homeDir)
 	{
-		llvm::errs() << "Quantizing function: " << mi.getName() << "\n";
-		irPassLLVMIRAutoQuantization(N, mi, functionsToInsert, maxPrecisionBits);
+		llvm::errs() << "Error: HOME environment variable not set.\n";
+		return;
 	}
-	for (auto mi : functionsToInsert)
-	{
-		Mod->getFunctionList().remove(mi);
-		Mod->getFunctionList().push_front(mi);
-	}
-}
+	// Save the optimized IR to a file
+	// std::string fileName = std::string(homeDir) + "/CoSense/applications/newton/llvm-ir/MadgwickAHRS_output.ll";
+	// saveModuleIR(*Mod, fileName);
+	// Save the optimized IR to a file
+	saveModuleIR(*Mod, "/home/xyf/CoSense/applications/newton/llvm-ir/MadgwickAHRS_output.ll");
+	saveModuleIR(*Mod, "/home/xyf/CoSense/applications/newton/llvm-ir/MahonyAHRS_output.ll");
+	// saveModuleIR(*Mod, "/home/xyf/CoSense/applications/newton/llvm-ir/floating_point_operations_output.ll");
 
-// Range Analysis
 
-//	for (auto & mi : *Mod)
-//	{
-//		rangeAnalysis(mi);
-//
-//	}
-
-//	/*
-//	 * analyze the range of all local variables in each function
-//	 * */
-//	flexprint(N->Fe, N->Fm, N->Fpinfo, "infer bound\n");
-//	std::map<std::string, CallInst *> callerMap;
-//	callerMap.clear();
-//	funcBoundInfo.clear();
-//	bool useOverLoad = false;
-//	for (auto & mi : *Mod)
-//	{
-//		auto boundInfo = new BoundInfo();
-//		mergeBoundInfo(boundInfo, globalBoundInfo);
-//		rangeAnalysis(N, mi, boundInfo, callerMap, typeRange, virtualRegisterVectorRange, useOverLoad);
-//		funcBoundInfo.emplace(mi.getName().str(), boundInfo);
-//		std::vector<std::string> calleeNames;
-//		collectCalleeInfo(calleeNames, funcBoundInfo, boundInfo);
-//	}
-//
-//	flexprint(N->Fe, N->Fm, N->Fpinfo, "shrink data type by range\n");
-//	for (auto & mi : *Mod)
-//	{
-//		auto boundInfoIt = funcBoundInfo.find(mi.getName().str());
-//		if (boundInfoIt != funcBoundInfo.end())
-//		{
-//			shrinkType(N, boundInfoIt->second, mi);
-//		}
-//		//            else
-//		//            {
-//		//	            assert(false);
-//		//	        }
-//	}
-//
-//	flexprint(N->Fe, N->Fm, N->Fpinfo, "memory alignment\n");
-//	for (auto & mi : *Mod)
-//	{
-//		auto boundInfoIt = funcBoundInfo.find(mi.getName().str());
-//		if (boundInfoIt != funcBoundInfo.end())
-//		{
-//			memoryAlignment(N, boundInfoIt->second, mi);
-//		}
-//		//        else
-//		//        {
-//		//            assert(false);
-//		//        }
-//	}
-//
-//	/*
-//	 * remove the functions that are optimized by passes.
-//	 * */
-//	if (useOverLoad)
-//		cleanFunctionMap(Mod, callerMap);
-//
-//	if (useOverLoad)
-//		overloadFunc(Mod, callerMap);
-//
-//	callerMap.clear();
-//	funcBoundInfo.clear();
-//	useOverLoad = true;
-//	for (auto & mi : *Mod)
-//	{
-//		auto boundInfo = new BoundInfo();
-//		mergeBoundInfo(boundInfo, globalBoundInfo);
-//		rangeAnalysis(N, mi, boundInfo, callerMap, typeRange, virtualRegisterVectorRange, useOverLoad);
-//		funcBoundInfo.emplace(mi.getName().str(), boundInfo);
-//		std::vector<std::string> calleeNames;
-//		collectCalleeInfo(calleeNames, funcBoundInfo, boundInfo);
-//	}
-//
-/*
- * simplify the condition of each branch
- * */
-//	flexprint(N->Fe, N->Fm, N->Fpinfo, "simplify control flow by range\n");
-//	for (auto & mi : *Mod)
-//	{
-//		auto boundInfoIt = funcBoundInfo.find(mi.getName().str());
-//		if (boundInfoIt != funcBoundInfo.end())
-//		{
-//			simplifyControlFlow(N, boundInfoIt->second, mi);
-//		}
-//		//		else
-//		//		{
-//		//			assert(false);
-//		//		}
-//	}
-//
-//	legacy::PassManager passManager;
-//	passManager.add(createCFGSimplificationPass());
-//	passManager.add(createInstSimplifyLegacyPass());
-//	passManager.add(createGlobalDCEPass());
-//	passManager.run(*Mod);
-//
-//	/*
-//	 * remove the functions that are optimized by passes.
-//	 * */
-//	if (useOverLoad)
-//		cleanFunctionMap(Mod, callerMap);
-//
-//	if (useOverLoad)
-//		overloadFunc(Mod, callerMap);
-//
-//	flexprint(N->Fe, N->Fm, N->Fpinfo, "infer bound\n");
-//	callerMap.clear();
-//	funcBoundInfo.clear();
-//	useOverLoad = false;
-//	for (auto & mi : *Mod)
-//	{
-//		auto boundInfo = new BoundInfo();
-//		mergeBoundInfo(boundInfo, globalBoundInfo);
-//		rangeAnalysis(N, mi, boundInfo, callerMap, typeRange, virtualRegisterVectorRange, useOverLoad);
-//		funcBoundInfo.emplace(mi.getName().str(), boundInfo);
-//		std::vector<std::string> calleeNames;
-//		collectCalleeInfo(calleeNames, funcBoundInfo, boundInfo);
-//	}
-//
-//	flexprint(N->Fe, N->Fm, N->Fpinfo, "constant substitution\n");
-//	for (auto & mi : *Mod)
-//	{
-//		auto boundInfoIt = funcBoundInfo.find(mi.getName().str());
-//		if (boundInfoIt != funcBoundInfo.end())
-//		{
-//			constantSubstitution(N, boundInfoIt->second, mi);
-//		}
-//		//		else
-//		//		{
-//		//			assert(false);
-//		//		}
-//	}
-//
-//	/*
-//	 * remove the functions that are optimized by passes.
-//	 * */
-//	if (useOverLoad)
-//		cleanFunctionMap(Mod, callerMap);
-//
-//	if (useOverLoad)
-//		overloadFunc(Mod, callerMap);
-
-// Finally, erase old functions
-eraseOldFunctions();
-
-eraseOldGlobals();
-
-// Perform text replacement to remove "_quantized" suffixes
-removeQuantizedSuffixInModule(*Mod);
-
-//eraseOldInstructions();
-
-processWhitelistedFunctions(*Mod, whitelist, maxPrecisionBits);
-
-const char * homeDir = getenv("HOME");
-if (!homeDir)
-{
-	llvm::errs() << "Error: HOME environment variable not set.\n";
-	return;
-}
-// Save the optimized IR to a file
-//std::string fileName = std::string(homeDir) + "/CoSense/applications/newton/llvm-ir/MadgwickAHRS_output.ll";
-//saveModuleIR(*Mod, fileName);
-// Save the optimized IR to a file
-saveModuleIR(*Mod, "/home/xyf/CoSense/applications/newton/llvm-ir/MadgwickAHRS_output.ll");
-saveModuleIR(*Mod, "/home/xyf/CoSense/applications/newton/llvm-ir/MahonyAHRS_output.ll");
-// saveModuleIR(*Mod, "/home/xyf/CoSense/applications/newton/llvm-ir/floating_point_operations_output.ll");
-
-// 替换为$HOMR
-
-/*
- * Dump BC file to a file.
- * */
-dumpIR(N, "output", Mod);
-llvm::errs() << "Exiting irPassLLVMIROptimizeByRange\n";
+	/*
+	 * Dump BC file to a file.
+	 * */
+	dumpIR(N, "output", Mod);
+	llvm::errs() << "Exiting irPassLLVMIROptimizeByRange\n";
 }

@@ -8,10 +8,10 @@ using namespace llvm;
 unsigned int FRAC_Q;
 #define FRAC_BASE (1 << FRAC_Q)
 
-#define BIT_WIDTH 32
+#define BIT_WIDTH 16
 
 llvm::Value *
-performFixedPointMul(llvm::IRBuilder<> &Builder, llvm::Value *lhs, llvm::Value *rhs, unsigned FRAC_Q)
+performFixedPointMul(llvm::IRBuilder<> &Builder, llvm::Value *lhs, llvm::Value *rhs, unsigned int FRAC_Q)
 {
 	llvm::Value *result = nullptr;
 
@@ -49,7 +49,7 @@ performFixedPointMul(llvm::IRBuilder<> &Builder, llvm::Value *lhs, llvm::Value *
 			result = Builder.CreateTrunc(divResult64, llvm::Type::getInt32Ty(Builder.getContext()));
 			break;
 		}
-		default: // 处理不支持的位宽
+		default:
 		{
 			llvm::errs() << "Unsupported BIT_WIDTH: " << BIT_WIDTH << "\n";
 			break;
@@ -375,7 +375,19 @@ updateGlobalVariables(Module * module, Type * quantizedType)
 				    globalVar.getLinkage(),
 				    globalVar.getInitializer(),
 				    quantizedName);
-				newGlobalVar->setAlignment(llvm::MaybeAlign(4));
+				//newGlobalVar->setAlignment(llvm::MaybeAlign(4));
+				switch (BIT_WIDTH)
+				{
+					case 16:
+						newGlobalVar->setAlignment(llvm::MaybeAlign(2));
+						break;
+					case 32:
+						newGlobalVar->setAlignment(llvm::MaybeAlign(4));
+						break;
+					default:
+						llvm::errs() << "Unsupported bit width: " << BIT_WIDTH << "\n";
+						break;
+				}
 				newGlobalVar->setDSOLocal(true);
 
 				// Replace all uses of the old global variable with the new one
@@ -998,17 +1010,6 @@ handleStore(Instruction * llvmIrInstruction, Type * quantizedType)
 		auto valueType = llvmIrStoreInstruction->getValueOperand()->getType();
 		auto pointerType = pointerOperand->getType()->getPointerElementType();
 
-		// 如果左边是 i16，右边是 i32*，扩展 i16 为 i32
-//		if (valueType->isIntegerTy(16) && pointerType->isIntegerTy(32))
-//		{
-//			llvm::errs() << "Expanding i16 value to i32 for store\n";
-//
-//			// 扩展 i16 到 i32
-//			auto extendedValue = Builder.CreateSExt(valueOperand, Type::getInt32Ty(llvmIrInstruction->getContext()));
-//
-//			// 更新 Store 指令的值操作数
-//			llvmIrStoreInstruction->setOperand(0, extendedValue);
-//		}
 
 		if (valueType->isFloatTy() || valueType->isDoubleTy())
 		{
@@ -1033,74 +1034,100 @@ handleStore(Instruction * llvmIrInstruction, Type * quantizedType)
 	}
 }
 bool isTargetFunction(Function &func);
-void
-bitcastFloatPtrArgs(Function & F, IRBuilder<> & Builder)
+
+void bitcastFloatPtrArgs(Function &F, IRBuilder<> &Builder)
 {
 	// Check if the function is the specific one to be skipped
-	//if is target function,skip
-	if (isTargetFunction(F)){
+	if (isTargetFunction(F))
+	{
 		llvm::errs() << "Skipping bitcast for function: " << F.getName() << "\n";
-		return;	 // Early exit if it's the function to skip
+		return; // Early exit if it's the function to skip
 	}
 
 	SmallVector<std::pair<Argument *, Value *>, 4> argReplacements;
+
 	// Iterate over all function arguments
-	for (Argument & Arg : F.args())
+	for (Argument &Arg : F.args())
 	{
 		// Check if the argument is a pointer to float
 		if (Arg.getType()->isPointerTy() && Arg.getType()->getPointerElementType()->isFloatTy())
 		{
-			llvm::PointerType * i32PtrType = llvm::Type::getInt32PtrTy(F.getContext());
-			// Create a bitcast instruction at the beginning of the function
+			// Create a bitcast to i32* at the beginning of the function
+			llvm::PointerType *i32PtrType = llvm::Type::getInt32PtrTy(F.getContext());
 			Builder.SetInsertPoint(&*F.getEntryBlock().getFirstInsertionPt());
-			Value * newArg = Builder.CreateBitCast(&Arg, i32PtrType, Arg.getName() + ".to_i32_ptr");
-			// llvm::Value *newArg = Builder.CreateBitCast(&Arg, i32PtrType, Arg.getName() + ".toI32Ptr");
+			Value *i32Arg = Builder.CreateBitCast(&Arg, i32PtrType, Arg.getName() + ".to_i32_ptr");
 
-			// Second bitcast: i32* -> i16*, if BIT_WIDTH == 16
-//			if (BIT_WIDTH == 16)
-//			{
-//				llvm::Type *i16Type = llvm::Type::getInt16Ty(F.getContext());
-//				Value *truncArg = Builder.CreateBitCast(newArg, i16Type->getPointerTo(), Arg.getName() + ".to_i16_ptr");
-//				newArg = truncArg; // Update newArg to the truncated value
-//			}
+			// Additional bitcast to i16* if BIT_WIDTH == 16
+			Value *newArg = nullptr;
+			switch (BIT_WIDTH)
+			{
+				case 16:
+				{
+					llvm::PointerType *i16PtrType = llvm::Type::getInt16PtrTy(F.getContext());
+					newArg = Builder.CreateBitCast(i32Arg, i16PtrType, Arg.getName() + ".to_i16_ptr");
+					break;
+				}
+				case 32:
+				default:
+					newArg = i32Arg; // Use i32* as the new argument
+					break;
+			}
 
-			// Store the original argument and the bitcast result
+			// Store the original argument and the final bitcast result
 			argReplacements.push_back({&Arg, newArg});
 		}
 	}
-	llvm::errs() << "Starting use replacement\n";  // Log added
+
+	llvm::errs() << "Starting use replacement\n"; // Log added
 
 	// Iterate over the function to replace uses of the original arguments
-	for (auto & replacement : argReplacements)
+	for (auto &replacement : argReplacements)
 	{
-		Argument * oldArg = replacement.first;
-		Value *	   newArg = replacement.second;
+		Argument *oldArg = replacement.first;
+		Value *newArg = replacement.second;
 
-			// 替换前，移除 bitcast 指令自身的使用
-			SmallVector<Use *, 8> usesToReplace;
-			for (auto & U : oldArg->uses())
+		// Collect all uses of the old argument for replacement
+		SmallVector<Use *, 8> usesToReplace;
+		for (auto &U : oldArg->uses())
+		{
+			User *user = U.getUser();
+
+			// Skip if the use is a Load instruction
+			if (isa<LoadInst>(user))
 			{
-				User * user = U.getUser();
+				llvm::errs() << "Skipping load instruction: " << *user << "\n";
+				continue; // Skip Load instructions
+			}
 
-				// Skip if the use is a Load instruction
-				if (isa<LoadInst>(user))
+			// Skip uses where the original float* argument is directly bitcasted
+			if (auto *bitcastInst = dyn_cast<BitCastInst>(user))
+			{
+				if (bitcastInst->getSrcTy() == oldArg->getType())
 				{
-					llvm::errs() << "Skipping load instruction: " << *user << "\n";
-					continue;  // 跳过 Load 指令
-				}
-				// Skip if the user is the newArg itself
-				if (user != newArg)
-				{
-					usesToReplace.push_back(&U);
+					llvm::errs() << "Skipping original bitcast: " << *bitcastInst << "\n";
+					continue;
 				}
 			}
-			// Perform the replacements
-			for (auto * use : usesToReplace)
+
+			// Skip if the user is the newArg itself
+			if (user == newArg)
 			{
-				use->set(newArg);
+				continue;
 			}
+
+			usesToReplace.push_back(&U);
+		}
+
+		// Perform the replacements
+		for (auto *use : usesToReplace)
+		{
+			use->set(newArg);
 		}
 	}
+}
+
+
+
 
 
 void
@@ -1324,24 +1351,8 @@ quantizeFunctionArguments(llvm::Function & func, llvm::IRBuilder<> & builder)
 			}
 
 			// Create multiplication and rounding instructions
-//			llvm::Instruction * scaled    = cast<llvm::Instruction>(builder.CreateFMul(&arg, llvm::ConstantFP::get(arg.getContext(), llvm::APFloat((float)FRAC_BASE)), arg.getName() + ".scaled"));
-//			llvm::Instruction * rounded   = cast<llvm::Instruction>(builder.CreateFAdd(scaled, llvm::ConstantFP::get(arg.getContext(), llvm::APFloat(0.5f)), arg.getName() + ".rounded"));
-
-
-			//TODO FAST MATH
-			llvm::FastMathFlags FMF;
-			FMF.setFast(); // 启用所有 Fast-Math 优化
-				       // 创建乘法指令并应用 Fast-Math
-			llvm::Instruction *scaled = cast<llvm::Instruction>(
-			    builder.CreateFMul(&arg, llvm::ConstantFP::get(arg.getContext(), llvm::APFloat((float)FRAC_BASE)), arg.getName() + ".scaled"));
-			scaled->setFastMathFlags(FMF); // 设置 Fast-Math 标志
-
-			// 创建加法指令并应用 Fast-Math
-			llvm::Instruction *rounded = cast<llvm::Instruction>(
-			    builder.CreateFAdd(scaled, llvm::ConstantFP::get(arg.getContext(), llvm::APFloat(0.5f)), arg.getName() + ".rounded"));
-			rounded->setFastMathFlags(FMF); // 设置 Fast-Math 标志
-
-
+			llvm::Instruction * scaled    = cast<llvm::Instruction>(builder.CreateFMul(&arg, llvm::ConstantFP::get(arg.getContext(), llvm::APFloat((float)FRAC_BASE)), arg.getName() + ".scaled"));
+			llvm::Instruction * rounded   = cast<llvm::Instruction>(builder.CreateFAdd(scaled, llvm::ConstantFP::get(arg.getContext(), llvm::APFloat(0.5f)), arg.getName() + ".rounded"));
 			//llvm::Instruction * quantized = cast<llvm::Instruction>(builder.CreateFPToSI(rounded, llvm::Type::getInt32Ty(arg.getContext()), arg.getName() + ".changed"));
 			llvm::Instruction *quantized = nullptr;
 
