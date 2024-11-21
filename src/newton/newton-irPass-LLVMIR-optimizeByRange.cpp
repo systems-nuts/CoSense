@@ -455,8 +455,9 @@ irPassLLVMIROptimizeByRange(State * N, bool enableQuantization, bool enableOverl
 	/**
 	 * Config
 	 */
-	int bitWidth = 32;
-	maxPrecisionBits = 10;
+	int bitWidth = 16;
+	maxPrecisionBits = 11;
+	bool enableVectorization = true;
 
 	/*
 	 * get const global variables
@@ -540,7 +541,8 @@ irPassLLVMIROptimizeByRange(State * N, bool enableQuantization, bool enableOverl
 		for (auto & mi : *Mod)
 		{
 			llvm::errs() << "Quantizing function: " << mi.getName() << "\n";
-			irPassLLVMIRAutoQuantization(N, mi, functionsToInsert, maxPrecisionBits, bitWidth);
+			//irPassLLVMIRAutoQuantization(N, mi, functionsToInsert, maxPrecisionBits, bitWidth);
+			irPassLLVMIRAutoQuantization(N, mi, functionsToInsert, maxPrecisionBits, bitWidth, enableVectorization);
 		}
 		for (auto mi : functionsToInsert)
 		{
@@ -548,7 +550,6 @@ irPassLLVMIROptimizeByRange(State * N, bool enableQuantization, bool enableOverl
 			Mod->getFunctionList().push_front(mi);
 		}
 	}
-
 	// Range Analysis
 
 	//	for (auto & mi : *Mod)

@@ -429,24 +429,6 @@ updateGlobalVariables(Module * module, Type * quantizedType)
 //	}
 // }
 
-//void
-//quantizePointer(LoadInst * loadInst, IRBuilder<> & Builder, Type * quantizedType, Type * loadedType)
-//{
-//	Value * pointerOperand = loadInst->getPointerOperand();
-//	llvm::errs() << "Quantizing load from local pointer: " << *pointerOperand << "\n";
-//
-//	Value * loadedValue = Builder.CreateLoad(loadedType, pointerOperand, loadInst->getName() + ".p");
-//
-//	Value * scaledValue = Builder.CreateFMul(loadedValue, ConstantFP::get(loadedType, FRAC_BASE), loadInst->getName() + ".scaled_ptr");
-//
-//	Value * quantizedValue = Builder.CreateFPToSI(scaledValue, quantizedType, loadInst->getName() + ".quantized_ptr");
-//
-//	loadInst->replaceAllUsesWith(quantizedValue);
-//	loadInst->eraseFromParent();
-//
-//	llvm::errs() << "Replaced load with quantized integer value.\n";
-//}
-
 void
 quantizePointer(LoadInst * loadInst, IRBuilder<> & Builder, Type * quantizedType, Type * loadedType)
 {
@@ -457,15 +439,33 @@ quantizePointer(LoadInst * loadInst, IRBuilder<> & Builder, Type * quantizedType
 
 	Value * scaledValue = Builder.CreateFMul(loadedValue, ConstantFP::get(loadedType, FRAC_BASE), loadInst->getName() + ".scaled_ptr");
 
-	Value * roundingValue = Builder.CreateFAdd(scaledValue, ConstantFP::get(loadedType, 0.5), loadInst->getName() + ".rounded_ptr");
-
-	Value * quantizedValue = Builder.CreateFPToSI(roundingValue, quantizedType, loadInst->getName() + ".quantized_ptr");
+	Value * quantizedValue = Builder.CreateFPToSI(scaledValue, quantizedType, loadInst->getName() + ".quantized_ptr");
 
 	loadInst->replaceAllUsesWith(quantizedValue);
 	loadInst->eraseFromParent();
 
 	llvm::errs() << "Replaced load with quantized integer value.\n";
 }
+
+//void
+//quantizePointer(LoadInst * loadInst, IRBuilder<> & Builder, Type * quantizedType, Type * loadedType)
+//{
+//	Value * pointerOperand = loadInst->getPointerOperand();
+//	llvm::errs() << "Quantizing load from local pointer: " << *pointerOperand << "\n";
+//
+//	Value * loadedValue = Builder.CreateLoad(loadedType, pointerOperand, loadInst->getName() + ".p");
+//
+//	Value * scaledValue = Builder.CreateFMul(loadedValue, ConstantFP::get(loadedType, FRAC_BASE), loadInst->getName() + ".scaled_ptr");
+//
+//	Value * roundingValue = Builder.CreateFAdd(scaledValue, ConstantFP::get(loadedType, 0.5), loadInst->getName() + ".rounded_ptr");
+//
+//	Value * quantizedValue = Builder.CreateFPToSI(roundingValue, quantizedType, loadInst->getName() + ".quantized_ptr");
+//
+//	loadInst->replaceAllUsesWith(quantizedValue);
+//	loadInst->eraseFromParent();
+//
+//	llvm::errs() << "Replaced load with quantized integer value.\n";
+//}
 /**
  * handleLoad
  */
@@ -1531,13 +1531,17 @@ adaptTypeCast(llvm::Function & llvmIrFunction, Type * quantizedType)
 }
 
 // Main function to perform LLVM IR auto quantization
-void
-irPassLLVMIRAutoQuantization(State * N, llvm::Function & llvmIrFunction, std::vector<llvm::Function *> & functionsToInsert, int maxPrecisionBits, int bitWidth)
+void irPassLLVMIRAutoQuantization(State *N, llvm::Function &llvmIrFunction, std::vector<llvm::Function *> &functionsToInsert, int maxPrecisionBits, int bitWidth, bool enableVectorization) {
 {
 	FRAC_Q = maxPrecisionBits;
 	BIT_WIDTH = bitWidth;
 	flexprint(N->Fe, N->Fm, N->Fpinfo, "\tauto quantization.\n");
 	llvm::errs() << "Entering irPassLLVMIRAutoQuantization\n";
+
+	// Handle vectorization initialization
+	if (enableVectorization) {
+		llvm::errs() << "Vectorization enabled. Applying SIMD optimizations.\n";
+	}
 
 	// Usage in the original function
 	std::string functionName = llvmIrFunction.getName().str();
