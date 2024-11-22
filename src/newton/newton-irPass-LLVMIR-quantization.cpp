@@ -347,7 +347,7 @@ updateGlobalVariables(Module * module, Type * quantizedType)
 				if (llvm::ConstantFP * constFp = llvm::dyn_cast<llvm::ConstantFP>(init))
 				{
 					double	value	       = constFp->getValueAPF().convertToDouble();
-					int64_t quantizedValue = static_cast<int64_t>(round(value * FRAC_BASE));
+                    int64_t quantizedValue = static_cast<int64_t>(round((value * FRAC_BASE) + 0.5));
 					globalVar.setInitializer(llvm::ConstantInt::get(quantizedType, quantizedValue));
 				}
 			}
