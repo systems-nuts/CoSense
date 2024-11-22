@@ -1556,8 +1556,15 @@ adaptTypeCast(llvm::Function & llvmIrFunction, Type * quantizedType)
 }
 
 // Main function to perform LLVM IR auto quantization
+//void
+//irPassLLVMIRAutoQuantization(State * N, llvm::Function & llvmIrFunction, std::vector<llvm::Function *> & functionsToInsert, int maxPrecisionBits, int bitWidth, std::vector<std::pair<double, double>>> &virtualRegisterVectorRange,bool enableVectorization,bool enableRangeAnalysis)
+//void irPassLLVMIRAutoQuantization(State *N, Function &F, std::vector<Function *> &functionsToInsert,
+//                                  int maxPrecisionBits, std::map<Value *, std::vector<std::pair<double, double>>> &virtualRegisterVectorRange,
+//                                  int bitWidth, bool enableVectorization, bool enableRangeAnalysis)
 void
-irPassLLVMIRAutoQuantization(State * N, llvm::Function & llvmIrFunction, std::vector<llvm::Function *> & functionsToInsert, int maxPrecisionBits, int bitWidth, bool enableVectorization)
+irPassLLVMIRAutoQuantization(State *N, llvm::Function &llvmIrFunction, std::vector<llvm::Function *> &functionsToInsert,
+                             std::map<llvm::Value *, std::vector<std::pair<double, double>>> &virtualRegisterVectorRange,
+                             int maxPrecisionBits, int bitWidth,  bool enableVectorization,bool enableRangeAnalysis)
 {
 	{
 		FRAC_Q	  = maxPrecisionBits;
@@ -1570,6 +1577,11 @@ irPassLLVMIRAutoQuantization(State * N, llvm::Function & llvmIrFunction, std::ve
 		{
 			llvm::errs() << "Vectorization enabled. Applying SIMD optimizations.\n";
 		}
+
+        if (enableRangeAnalysis)
+        {
+            llvm::errs() << "Range analysis enabled. Applying range analysis.\n";
+        }
 
 		// Usage in the original function
 		std::string functionName = llvmIrFunction.getName().str();
