@@ -347,7 +347,7 @@ updateGlobalVariables(Module * module, Type * quantizedType)
 				if (llvm::ConstantFP * constFp = llvm::dyn_cast<llvm::ConstantFP>(init))
 				{
 					double	value	       = constFp->getValueAPF().convertToDouble();
-                    int64_t quantizedValue = static_cast<int64_t>(round((value * FRAC_BASE) + 0.5));
+					int64_t quantizedValue = static_cast<int64_t>(round((value * FRAC_BASE) + 0.5));
 					globalVar.setInitializer(llvm::ConstantInt::get(quantizedType, quantizedValue));
 				}
 			}
@@ -1218,26 +1218,26 @@ performFixedPointSqrt(IRBuilder<> & builder, Module * irModule, Value * fixedPoi
 	return finalRes;
 }
 
-// void
-// handleSqrtCall(CallInst * llvmIrCallInstruction, Type * quantizedType)
-//{
-//	IRBuilder<> Builder(llvmIrCallInstruction);
-//	auto	    operand = llvmIrCallInstruction->getOperand(0);
-//
-//	// Convert the operand to fixed-point format if necessary
-//	if (operand->getType()->isFloatingPointTy())
-//	{
-//		operand = Builder.CreateFPToSI(operand, quantizedType);
-//	}
-//
-//	// Create call to the fixed-point sqrt function
-//	//llvm::Value * sqrtResult = Builder.CreateCall(fixsqrt, {operand});
-//	//手动写减少call overhead
-//	llvm::Value * sqrtResult = performFixedPointSqrt(Builder, llvmIrCallInstruction->getModule(), operand, quantizedType, FRAC_Q, llvmIrCallInstruction->getContext());
-//	// No need to apply shl and compensation if it's already done in createFixSqrt
-//	llvmIrCallInstruction->replaceAllUsesWith(sqrtResult);
-//	llvmIrCallInstruction->eraseFromParent();
-// }
+ void
+ handleSqrtCall(CallInst * llvmIrCallInstruction, Type * quantizedType)
+{
+	IRBuilder<> Builder(llvmIrCallInstruction);
+	auto	    operand = llvmIrCallInstruction->getOperand(0);
+
+	// Convert the operand to fixed-point format if necessary
+	if (operand->getType()->isFloatingPointTy())
+	{
+		operand = Builder.CreateFPToSI(operand, quantizedType);
+	}
+
+	// Create call to the fixed-point sqrt function
+	//llvm::Value * sqrtResult = Builder.CreateCall(fixsqrt, {operand});
+	//手动写减少call overhead
+	llvm::Value * sqrtResult = performFixedPointSqrt(Builder, llvmIrCallInstruction->getModule(), operand, quantizedType, FRAC_Q, llvmIrCallInstruction->getContext());
+	// No need to apply shl and compensation if it's already done in createFixSqrt
+	llvmIrCallInstruction->replaceAllUsesWith(sqrtResult);
+	llvmIrCallInstruction->eraseFromParent();
+ }
 
 void
 handleSinCosCall(CallInst * llvmIrCallInstruction, Type * quantizedType, const std::string & mathFunc)
@@ -1266,30 +1266,30 @@ handleSinCosCall(CallInst * llvmIrCallInstruction, Type * quantizedType, const s
 	llvmIrCallInstruction->eraseFromParent();
 }
 
-void
-handleSqrtCall(CallInst * llvmIrCallInstruction, Type * quantizedType, Function * fixsqrt)
-{
-	IRBuilder<> Builder(llvmIrCallInstruction);
-	auto	    operand = llvmIrCallInstruction->getOperand(0);
-
-	// Ensure operand is in the correct type
-	if (operand->getType()->isFloatingPointTy())
-	{
-		operand = Builder.CreateFPToSI(operand, quantizedType);
-	}
-
-	// Create call to the fixed-point sqrt function
-	llvm::Value * sqrtResult = Builder.CreateCall(fixsqrt, {operand});
-
-	// Replace the original instruction with the new fixed-point sqrt result
-	llvmIrCallInstruction->replaceAllUsesWith(sqrtResult);
-	llvmIrCallInstruction->eraseFromParent();
-}
+//void
+//handleSqrtCall(CallInst * llvmIrCallInstruction, Type * quantizedType, Function * fixsqrt)
+//{
+//	IRBuilder<> Builder(llvmIrCallInstruction);
+//	auto	    operand = llvmIrCallInstruction->getOperand(0);
+//
+//	// Ensure operand is in the correct type
+//	if (operand->getType()->isFloatingPointTy())
+//	{
+//		operand = Builder.CreateFPToSI(operand, quantizedType);
+//	}
+//
+//	// Create call to the fixed-point sqrt function
+//	llvm::Value * sqrtResult = Builder.CreateCall(fixsqrt, {operand});
+//
+//	// Replace the original instruction with the new fixed-point sqrt result
+//	llvmIrCallInstruction->replaceAllUsesWith(sqrtResult);
+//	llvmIrCallInstruction->eraseFromParent();
+//}
 
 void
 
 // handleCall(CallInst * llvmIrCallInstruction, Type * quantizedType, std::vector<llvm::Function *> & functionsToInsert,  llvm::Function * fixrsqrt)
-handleCall(CallInst * llvmIrCallInstruction, Type * quantizedType, std::vector<llvm::Function *> & functionsToInsert, llvm::Function * fixsqrt, llvm::Function * fixrsqrt)
+handleCall(CallInst * llvmIrCallInstruction, Type * quantizedType, std::vector<llvm::Function *> & functionsToInsert, llvm::Function * fixrsqrt)
 {
 	llvm::errs() << "Handling Call\n";
 	Function * calledFunction = llvmIrCallInstruction->getCalledFunction();
@@ -1330,8 +1330,8 @@ handleCall(CallInst * llvmIrCallInstruction, Type * quantizedType, std::vector<l
 			if (funcName == "sqrt" || funcName == "sqrtf")
 			{
 				// For sqrt
-				// handleSqrtCall(llvmIrCallInstruction, quantizedType);
-				handleSqrtCall(llvmIrCallInstruction, quantizedType, fixsqrt);
+				handleSqrtCall(llvmIrCallInstruction, quantizedType);
+				//handleSqrtCall(llvmIrCallInstruction, quantizedType, fixsqrt);
 				if (calledFunction->use_empty())
 				{
 					functionsToErase.push_back(calledFunction);
@@ -1563,8 +1563,8 @@ adaptTypeCast(llvm::Function & llvmIrFunction, Type * quantizedType)
 //                                  int bitWidth, bool enableVectorization, bool enableRangeAnalysis)
 void
 irPassLLVMIRAutoQuantization(State *N, llvm::Function &llvmIrFunction, std::vector<llvm::Function *> &functionsToInsert,
-                             std::map<llvm::Value *, std::vector<std::pair<double, double>>> &virtualRegisterVectorRange,
-                             int maxPrecisionBits, int bitWidth,  bool enableVectorization,bool enableRangeAnalysis)
+			     std::map<llvm::Value *, std::vector<std::pair<double, double>>> &virtualRegisterVectorRange,
+			     int maxPrecisionBits, int bitWidth,  bool enableVectorization,bool enableRangeAnalysis)
 {
 	{
 		FRAC_Q	  = maxPrecisionBits;
@@ -1578,10 +1578,10 @@ irPassLLVMIRAutoQuantization(State *N, llvm::Function &llvmIrFunction, std::vect
 			llvm::errs() << "Vectorization enabled. Applying SIMD optimizations.\n";
 		}
 
-        if (enableRangeAnalysis)
-        {
-            llvm::errs() << "Range analysis enabled. Applying range analysis.\n";
-        }
+		if (enableRangeAnalysis)
+		{
+			llvm::errs() << "Range analysis enabled. Applying range analysis.\n";
+		}
 
 		// Usage in the original function
 		std::string functionName = llvmIrFunction.getName().str();
@@ -1634,7 +1634,7 @@ irPassLLVMIRAutoQuantization(State *N, llvm::Function &llvmIrFunction, std::vect
 		 * generate hardcode function
 		 * */
 		// llvm::Function * fixmul	  = createFixMul(module, quantizedType, functionsToInsert);
-		llvm::Function * fixsqrt  = createFixSqrt(module, quantizedType, functionsToInsert);
+		//llvm::Function * fixsqrt  = createFixSqrt(module, quantizedType, functionsToInsert);
 		llvm::Function * fixrsqrt = createFixRsqrt(module, quantizedType, functionsToInsert);
 
 		for (BasicBlock & llvmIrBasicBlock : llvmIrFunction)
@@ -1657,7 +1657,7 @@ irPassLLVMIRAutoQuantization(State *N, llvm::Function &llvmIrFunction, std::vect
 						break;
 					case Instruction::Call:
 						// handleCall(cast<CallInst>(llvmIrInstruction), quantizedType, functionsToInsert,  fixrsqrt);
-						handleCall(cast<CallInst>(llvmIrInstruction), quantizedType, functionsToInsert, fixsqrt, fixrsqrt);
+						handleCall(cast<CallInst>(llvmIrInstruction), quantizedType, functionsToInsert, fixrsqrt);
 						break;
 					case Instruction::GetElementPtr:
 					case Instruction::Load:
