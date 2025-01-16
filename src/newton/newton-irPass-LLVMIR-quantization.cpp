@@ -119,64 +119,68 @@ createFixSqrt(llvm::Module * irModule, Type * quantizedType, std::vector<llvm::F
 }
 
 // TODO 64 bit version of fixmul
-llvm::Function *
-createFixMul(Module * irModule, Type * quantizedType, std::vector<llvm::Function *> & functionsToInsert)
-{
-	llvm::errs() << "Entering createFixMul\n";
 
-	// Check if irModule is valid
-	if (!irModule)
-	{
-		llvm::errs() << "Error: irModule is nullptr\n";
-		return nullptr;
-	}
 
-	std::string fixmulFuncName = "fixmul";
-	for (auto & function : *irModule)
-	{
-		if (function.getName() == fixmulFuncName)
-		{
-			llvm::errs() << "fixmul already exists\n";
-			return &function;
-		}
-	}
 
-	llvm::FunctionType * funcType = llvm::FunctionType::get(quantizedType, {quantizedType, quantizedType}, false);
-	llvm::Function *     func     = llvm::Function::Create(funcType, llvm::Function::PrivateLinkage, fixmulFuncName, irModule);
-
-	llvm::BasicBlock * entryBB = llvm::BasicBlock::Create(irModule->getContext(), "entry", func);
-	llvm::IRBuilder<>  builder(entryBB);
-	builder.SetInsertPoint(entryBB);
-
-	// Create fixed-point multiplication instruction
-	Type * higherQuantizedType;
-	switch (BIT_WIDTH)
-	{
-		case 8:
-			higherQuantizedType = Type::getInt16Ty(irModule->getContext());
-			break;
-		case 16:
-			higherQuantizedType = Type::getInt32Ty(irModule->getContext());
-			break;
-		default:
-			higherQuantizedType = Type::getInt64Ty(irModule->getContext());
-			break;
-	}
-
-	llvm::Function::arg_iterator arg1    = &*(func->arg_begin());
-	llvm::Value *		     sext1   = builder.CreateSExt(arg1, higherQuantizedType);
-	llvm::Function::arg_iterator arg2    = &*(++arg1);
-	llvm::Value *		     sext2   = builder.CreateSExt(arg2, higherQuantizedType);
-	llvm::Value *		     mulInst = builder.CreateNSWMul(sext1, sext2);
-	// llvm::Value * mulInst	= builder.CreateMul(sext1, sext2);
-	llvm::Value * ashrInst	= builder.CreateLShr(mulInst, ConstantInt::get(higherQuantizedType, FRAC_Q));
-	llvm::Value * truncInst = builder.CreateTrunc(ashrInst, quantizedType);
-	builder.CreateRet(truncInst);
-
-	functionsToInsert.emplace_back(func);
-	llvm::errs() << "Created fixmul function: " << func->getName() << "\n";
-	return func;
-}
+//llvm::Function *
+//createFixMul(Module * irModule, Type * quantizedType, std::vector<llvm::Function *> & functionsToInsert)
+//{
+//	llvm::errs() << "Entering createFixMul\n";
+//
+//	// Check if irModule is valid
+//	if (!irModule)
+//	{
+//		llvm::errs() << "Error: irModule is nullptr\n";
+//		return nullptr;
+//	}
+//
+//	std::string fixmulFuncName = "fixmul";
+//	for (auto & function : *irModule)
+//	{
+//		if (function.getName() == fixmulFuncName)
+//		{
+//			llvm::errs() << "fixmul already exists\n";
+//			return &function;
+//		}
+//	}
+//
+//	llvm::FunctionType * funcType = llvm::FunctionType::get(quantizedType, {quantizedType, quantizedType}, false);
+//	llvm::Function *     func     = llvm::Function::Create(funcType, llvm::Function::PrivateLinkage, fixmulFuncName, irModule);
+//
+//	llvm::BasicBlock * entryBB = llvm::BasicBlock::Create(irModule->getContext(), "entry", func);
+//	llvm::IRBuilder<>  builder(entryBB);
+//	builder.SetInsertPoint(entryBB);
+//
+//	// Create fixed-point multiplication instruction
+//	Type * higherQuantizedType;
+//	switch (BIT_WIDTH)
+//	{
+//		case 8:
+//			higherQuantizedType = Type::getInt16Ty(irModule->getContext());
+//			break;
+//		case 16:
+//			higherQuantizedType = Type::getInt32Ty(irModule->getContext());
+//			break;
+//		default:
+//			higherQuantizedType = Type::getInt64Ty(irModule->getContext());
+//			break;
+//	}
+//
+//	llvm::Function::arg_iterator arg1    = &*(func->arg_begin());
+//	llvm::Value *		     sext1   = builder.CreateSExt(arg1, higherQuantizedType);
+//	llvm::Function::arg_iterator arg2    = &*(++arg1);
+//	llvm::Value *		     sext2   = builder.CreateSExt(arg2, higherQuantizedType);
+//	llvm::Value *		     mulInst = builder.CreateNSWMul(sext1, sext2);
+//	// llvm::Value * mulInst	= builder.CreateMul(sext1, sext2);
+//	llvm::Value * ashrInst	= builder.CreateLShr(mulInst, ConstantInt::get(higherQuantizedType, FRAC_Q));
+//	llvm::Value * truncInst = builder.CreateTrunc(ashrInst, quantizedType);
+//	builder.CreateRet(truncInst);
+//
+//	functionsToInsert.emplace_back(func);
+//	llvm::errs() << "Created fixmul function: " << func->getName() << "\n";
+//	return func;
+//}
+//
 
 llvm::Function *
 createFixRsqrt(llvm::Module * irModule, llvm::Type * quantizedType, std::vector<llvm::Function *> & functionsToInsert)
@@ -219,7 +223,7 @@ createFixRsqrt(llvm::Module * irModule, llvm::Type * quantizedType, std::vector<
 		case 16:
 		{
 			// Step 1: Shift x to compute %1 (x >> 1)
-			shiftedX = builder.CreateLShr(x, llvm::ConstantInt::get(quantizedType, 1));
+			shiftedX = builder.CreateAShr(x, llvm::ConstantInt::get(quantizedType, 1));
 
 			// Step 2: Convert x to float and scale
 			llvm::Value * sextX = builder.CreateSExt(x, llvm::Type::getInt32Ty(irModule->getContext()));
@@ -324,75 +328,121 @@ eraseOldFunctions()
 	llvm::errs() << "Exiting eraseOldFunctions\n";
 }
 
-void
-updateGlobalVariables(Module * module, Type * quantizedType)
-{
-	llvm::errs() << "Updating global variables\n";
+bool isWhitelistedGlobal(const std::string &globalName) {
+	// Define the whitelist of global variables
+	static const std::set<std::string> whitelist = {"beta", "qw", "qx", "qy", "qz"};
+	return whitelist.find(globalName) != whitelist.end();
+}
 
-	for (GlobalVariable & globalVar : module->globals())
-	{
-		if (globalVar.getType()->getElementType()->isFloatTy() || globalVar.getType()->getElementType()->isDoubleTy())
-		{
-			llvm::errs() << "Quantizing global variable: " << globalVar.getName() << "\n";
+bool shouldProcessFunction(Function &F) {
+	// List of function names to process
+	static const std::set<std::string> targetFunctions = {
+	    "sensfusion6UpdateQImpl",
+	    "MadgwickAHRSupdate",
+	    "MadgwickAHRSupdateIMU"
+	};
 
-			// Ensure the new global is dso_local by specifying correct linkage
-			GlobalValue::LinkageTypes linkage = GlobalValue::InternalLinkage;
+	// Check if the function name is in the set
+	return targetFunctions.find(F.getName().str()) != targetFunctions.end();
+}
 
-			// Create the new integer type pointer
-			Type * newType = quantizedType->getPointerTo();
+// Helper to create or retrieve the quantized global variable
+GlobalVariable *getOrCreateQuantizedGlobal(Module *module, GlobalVariable &globalVar, Type *quantizedType) {
+	std::string quantizedName = globalVar.getName().str() + "_quantized";
 
-			// Update the initializer of the global variable
-			if (llvm::Constant * init = globalVar.getInitializer())
-			{
-				if (llvm::ConstantFP * constFp = llvm::dyn_cast<llvm::ConstantFP>(init))
-				{
-					double	value	       = constFp->getValueAPF().convertToDouble();
-					int64_t quantizedValue = static_cast<int64_t>(round((value * FRAC_BASE) + 0.5));
-					globalVar.setInitializer(llvm::ConstantInt::get(quantizedType, quantizedValue));
-				}
+	// Check if the quantized version already exists
+	if (GlobalVariable *existingGlobal = module->getNamedGlobal(quantizedName)) {
+		llvm::errs() << "Quantized global already exists: " << quantizedName << "\n";
+		return existingGlobal;
+	}
+
+	// Calculate initializer for the quantized global
+	llvm::Constant *initializer = nullptr;
+	if (llvm::Constant *init = globalVar.getInitializer()) {
+		if (llvm::ConstantFP *constFp = llvm::dyn_cast<llvm::ConstantFP>(init)) {
+			double value = constFp->getValueAPF().convertToDouble();
+			int64_t quantizedValue = static_cast<int64_t>(round((value * FRAC_BASE) + 0.5));
+			initializer = llvm::ConstantInt::get(quantizedType, quantizedValue);
+		}
+	}
+
+	// Create the quantized global variable
+	GlobalVariable *newGlobalVar = new GlobalVariable(
+	    *module,
+	    quantizedType,
+	    globalVar.isConstant(),
+	    globalVar.getLinkage(),
+	    initializer,
+	    quantizedName);
+
+	// Set alignment based on bit width
+	switch (BIT_WIDTH) {
+		case 16:
+			newGlobalVar->setAlignment(llvm::MaybeAlign(2));
+			break;
+		case 32:
+			newGlobalVar->setAlignment(llvm::MaybeAlign(4));
+			break;
+		default:
+			llvm::errs() << "Unsupported bit width: " << BIT_WIDTH << "\n";
+			break;
+	}
+
+	newGlobalVar->setDSOLocal(true);
+	llvm::errs() << "Created quantized global: " << quantizedName << "\n";
+	return newGlobalVar;
+}
+
+// Helper to replace uses of the original global in whitelisted functions
+void replaceUsesInWhitelistedFunctions(GlobalVariable &originalGlobal, GlobalVariable &quantizedGlobal) {
+	for (auto it = originalGlobal.use_begin(), end = originalGlobal.use_end(); it != end;) {
+		Use &use = *it++;
+		if (Instruction *inst = dyn_cast<Instruction>(use.getUser())) {
+			Function *parentFunc = inst->getFunction();
+			if (parentFunc && shouldProcessFunction(*parentFunc)) {
+				llvm::errs() << "Replacing use of " << originalGlobal.getName()
+					     << " in function: " << parentFunc->getName() << "\n";
+				use.set(&quantizedGlobal);
 			}
-
-			// Check if a quantized version of the global variable already exists
-			std::string quantizedName = globalVar.getName().str() + "_quantized";
-			if (GlobalVariable * existingGlobalVar = module->getNamedGlobal(quantizedName))
-			{
-				// Replace all uses of the old global variable with the existing quantized one
-				globalVar.replaceAllUsesWith(existingGlobalVar);
-			}
-			else
-			{
-				// Create a new global variable with the updated type and initializer
-				GlobalVariable * newGlobalVar = new GlobalVariable(
-				    *module,
-				    quantizedType,
-				    globalVar.isConstant(),
-				    globalVar.getLinkage(),
-				    globalVar.getInitializer(),
-				    quantizedName);
-				// newGlobalVar->setAlignment(llvm::MaybeAlign(4));
-				switch (BIT_WIDTH)
-				{
-					case 16:
-						newGlobalVar->setAlignment(llvm::MaybeAlign(2));
-						break;
-					case 32:
-						newGlobalVar->setAlignment(llvm::MaybeAlign(4));
-						break;
-					default:
-						llvm::errs() << "Unsupported bit width: " << BIT_WIDTH << "\n";
-						break;
-				}
-				newGlobalVar->setDSOLocal(true);
-
-				// Replace all uses of the old global variable with the new one
-				globalVar.replaceAllUsesWith(newGlobalVar);
-			}
-
-			// Add the old global variable to the list of globals to erase
-			globalsToErase.push_back(&globalVar);
 		}
 	}
 }
+void updateGlobalVariables(Module *module, Type *quantizedType) {
+	llvm::errs() << "Updating global variables\n";
+
+	for (GlobalVariable &globalVar : module->globals()) {
+		std::string globalName = globalVar.getName().str();
+
+		// Skip non-whitelisted globals
+		if (!isWhitelistedGlobal(globalName)) {
+			llvm::errs() << "Skipping global variable not in whitelist: " << globalName << "\n";
+			continue;
+		}
+
+		// Process only float or double global variables
+		if (!globalVar.getType()->getElementType()->isFloatTy() &&
+		    !globalVar.getType()->getElementType()->isDoubleTy()) {
+			llvm::errs() << "Skipping non-float global variable: " << globalName << "\n";
+			continue;
+		}
+
+		llvm::errs() << "Quantizing global variable: " << globalName << "\n";
+
+		// Create or retrieve the quantized version of the global variable
+		GlobalVariable *quantizedGlobal = getOrCreateQuantizedGlobal(module, globalVar, quantizedType);
+
+		// Replace uses of the original global in whitelisted functions
+		replaceUsesInWhitelistedFunctions(globalVar, *quantizedGlobal);
+
+		// The original global variable remains untouched
+		llvm::errs() << "Original global variable preserved: " << globalName << "\n";
+	}
+}
+
+
+
+
+
 
 // void
 // handleLoad(Instruction * llvmIrInstruction, Type * quantizedType)
@@ -1555,6 +1605,10 @@ adaptTypeCast(llvm::Function & llvmIrFunction, Type * quantizedType)
 	}
 }
 
+
+
+
+
 // Main function to perform LLVM IR auto quantization
 //void
 //irPassLLVMIRAutoQuantization(State * N, llvm::Function & llvmIrFunction, std::vector<llvm::Function *> & functionsToInsert, int maxPrecisionBits, int bitWidth, std::vector<std::pair<double, double>>> &virtualRegisterVectorRange,bool enableVectorization,bool enableRangeAnalysis)
@@ -1564,7 +1618,7 @@ adaptTypeCast(llvm::Function & llvmIrFunction, Type * quantizedType)
 void
 irPassLLVMIRAutoQuantization(State *N, llvm::Function &llvmIrFunction, std::vector<llvm::Function *> &functionsToInsert,
 			     std::map<llvm::Value *, std::vector<std::pair<double, double>>> &virtualRegisterVectorRange,
-			     int maxPrecisionBits, int bitWidth,  bool enableVectorization,bool enableRangeAnalysis)
+			     int maxPrecisionBits, int bitWidth,  bool enableVectorization,bool enableRangeAnalysis,bool isPointer)
 {
 	{
 		FRAC_Q	  = maxPrecisionBits;
@@ -1587,6 +1641,11 @@ irPassLLVMIRAutoQuantization(State *N, llvm::Function &llvmIrFunction, std::vect
 		std::string functionName = llvmIrFunction.getName().str();
 		if (shouldSkipFunction(functionName))
 		{
+			return;
+		}
+
+		if (!shouldProcessFunction(llvmIrFunction)) {
+			llvm::errs() << "Skipping function: " << llvmIrFunction.getName() << "\n";
 			return;
 		}
 
@@ -1624,8 +1683,16 @@ irPassLLVMIRAutoQuantization(State *N, llvm::Function &llvmIrFunction, std::vect
 		quantizeFunctionArguments(llvmIrFunction, builder);
 		quantizeArguments(llvmIrFunction, quantizedType);
 
-		// Perform bitcasting of float poiter arguments to i32*
-		bitcastFloatPtrArgs(llvmIrFunction, builder);
+//		// Perform bitcasting of float poiter arguments to i32*
+//		bitcastFloatPtrArgs(llvmIrFunction, builder);
+
+		// 根据 isPointer 参数决定是否执行 bitcastFloatPtrArgs
+		if (isPointer) {
+			llvm::errs() << "Performing bitcasting for float pointer arguments.\n";
+			bitcastFloatPtrArgs(llvmIrFunction, builder);
+		} else {
+			llvm::errs() << "Skipping bitcasting for float pointer arguments.\n";
+		}
 
 		// Update global variables to integer type
 		updateGlobalVariables(module, quantizedType);
