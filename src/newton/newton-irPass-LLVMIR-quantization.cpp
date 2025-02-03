@@ -3,10 +3,11 @@
 #include "llvm/Support/raw_ostream.h"
 #include <unordered_map>
 #include "llvm/IR/Metadata.h"
+#include "config.h"
 using namespace llvm;
 
 unsigned int FRAC_Q;
-unsigned int BIT_WIDTH;
+//unsigned int BIT_WIDTH;
 #define FRAC_BASE (1 << FRAC_Q)
 
 llvm::Value *
@@ -339,7 +340,9 @@ bool shouldProcessFunction(Function &F) {
 	static const std::set<std::string> targetFunctions = {
 	    "sensfusion6UpdateQImpl",
 	    "MadgwickAHRSupdate",
-	    "MadgwickAHRSupdateIMU"
+	    "MadgwickAHRSupdateIMU",
+	    "__kernel_sin",
+	    "__kernel_cos",
 	};
 
 	// Check if the function name is in the set
@@ -356,15 +359,25 @@ GlobalVariable *getOrCreateQuantizedGlobal(Module *module, GlobalVariable &globa
 		return existingGlobal;
 	}
 
+//	// Calculate initializer for the quantized global
+//	llvm::Constant *initializer = nullptr;
+//	if (llvm::Constant *init = globalVar.getInitializer()) {
+//		if (llvm::ConstantFP *constFp = llvm::dyn_cast<llvm::ConstantFP>(init)) {
+//			double value = constFp->getValueAPF().convertToDouble();
+//			int64_t quantizedValue = static_cast<int64_t>(round((value * FRAC_BASE) + 0.5));
+//			initializer = llvm::ConstantInt::get(quantizedType, quantizedValue);
+//		}
+	//	}
+
 	// Calculate initializer for the quantized global
-	llvm::Constant *initializer = nullptr;
-	if (llvm::Constant *init = globalVar.getInitializer()) {
-		if (llvm::ConstantFP *constFp = llvm::dyn_cast<llvm::ConstantFP>(init)) {
-			double value = constFp->getValueAPF().convertToDouble();
-			int64_t quantizedValue = static_cast<int64_t>(round((value * FRAC_BASE) + 0.5));
-			initializer = llvm::ConstantInt::get(quantizedType, quantizedValue);
+		llvm::Constant *initializer = nullptr;
+		if (llvm::Constant *init = globalVar.getInitializer()) {
+			if (llvm::ConstantFP *constFp = llvm::dyn_cast<llvm::ConstantFP>(init)) {
+				double value = constFp->getValueAPF().convertToDouble();
+				int64_t quantizedValue = static_cast<int64_t>(round((value * FRAC_BASE)));
+				initializer = llvm::ConstantInt::get(quantizedType, quantizedValue);
+			}
 		}
-	}
 
 	// Create the quantized global variable
 	GlobalVariable *newGlobalVar = new GlobalVariable(
@@ -1617,25 +1630,25 @@ adaptTypeCast(llvm::Function & llvmIrFunction, Type * quantizedType)
 //                                  int bitWidth, bool enableVectorization, bool enableRangeAnalysis)
 void
 irPassLLVMIRAutoQuantization(State *N, llvm::Function &llvmIrFunction, std::vector<llvm::Function *> &functionsToInsert,
-			     std::map<llvm::Value *, std::vector<std::pair<double, double>>> &virtualRegisterVectorRange,
-			     int maxPrecisionBits, int bitWidth,  bool enableVectorization,bool enableRangeAnalysis,bool isPointer)
+
+			     int maxPrecisionBits)
 {
 	{
-		FRAC_Q	  = maxPrecisionBits;
-		BIT_WIDTH = bitWidth;
+		FRAC_Q = maxPrecisionBits;
+		// BIT_WIDTH = bitWidth;
 		flexprint(N->Fe, N->Fm, N->Fpinfo, "\tauto quantization.\n");
 		llvm::errs() << "Entering irPassLLVMIRAutoQuantization\n";
 
-		// Handle vectorization initialization
-		if (enableVectorization)
-		{
-			llvm::errs() << "Vectorization enabled. Applying SIMD optimizations.\n";
-		}
-
-		if (enableRangeAnalysis)
-		{
-			llvm::errs() << "Range analysis enabled. Applying range analysis.\n";
-		}
+//		// Handle vectorization initialization
+//		if (enableVectorization)
+//		{
+//			llvm::errs() << "Vectorization enabled. Applying SIMD optimizations.\n";
+//		}
+//
+//		if (enableRangeAnalysis)
+//		{
+//			llvm::errs() << "Range analysis enabled. Applying range analysis.\n";
+//		}
 
 		// Usage in the original function
 		std::string functionName = llvmIrFunction.getName().str();
@@ -1644,7 +1657,8 @@ irPassLLVMIRAutoQuantization(State *N, llvm::Function &llvmIrFunction, std::vect
 			return;
 		}
 
-		if (!shouldProcessFunction(llvmIrFunction)) {
+		if (!shouldProcessFunction(llvmIrFunction))
+		{
 			llvm::errs() << "Skipping function: " << llvmIrFunction.getName() << "\n";
 			return;
 		}
@@ -1683,16 +1697,25 @@ irPassLLVMIRAutoQuantization(State *N, llvm::Function &llvmIrFunction, std::vect
 		quantizeFunctionArguments(llvmIrFunction, builder);
 		quantizeArguments(llvmIrFunction, quantizedType);
 
-//		// Perform bitcasting of float poiter arguments to i32*
-//		bitcastFloatPtrArgs(llvmIrFunction, builder);
+		//		// Perform bitcasting of float poiter arguments to i32*
+		//		bitcastFloatPtrArgs(llvmIrFunction, builder);
 
 		// 根据 isPointer 参数决定是否执行 bitcastFloatPtrArgs
-		if (isPointer) {
-			llvm::errs() << "Performing bitcasting for float pointer arguments.\n";
-			bitcastFloatPtrArgs(llvmIrFunction, builder);
-		} else {
-			llvm::errs() << "Skipping bitcasting for float pointer arguments.\n";
-		}
+		//		if (isPointer) {
+		//			llvm::errs() << "Performing bitcasting for float pointer arguments.\n";
+		//			bitcastFloatPtrArgs(llvmIrFunction, builder);
+		//		} else {
+		//			llvm::errs() << "Skipping bitcasting for float pointer arguments.\n";
+		//		}
+#ifdef IS_POINTER
+		llvm::errs() << "Performing bitcasting for float pointer arguments.\n";
+		bitcastFloatPtrArgs(llvmIrFunction, builder);
+#else
+		llvm::errs() << "Skipping bitcasting for float pointer arguments.\n";
+#endif
+
+
+
 
 		// Update global variables to integer type
 		updateGlobalVariables(module, quantizedType);

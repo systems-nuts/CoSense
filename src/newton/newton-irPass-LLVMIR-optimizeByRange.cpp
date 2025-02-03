@@ -75,6 +75,8 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "llvm/Support/FileSystem.h"
 #include "llvm/IR/Function.h"
 
+#include "config.h"
+
 #include <unordered_map>
 #include <set>
 
@@ -216,31 +218,24 @@ handlePointerStore(StoreInst *storeInst, IRBuilder<> &Builder, int maxPrecisionB
 	}
 }
 
-
-
-
 void
-dequantizeResults(StoreInst *storeInst, Function &F, int maxPrecisionBits, int bitWidth, bool isPointer)
+dequantizeResults(StoreInst *storeInst, Function &F, int maxPrecisionBits, int bitWidth)
 {
 	IRBuilder<> Builder(storeInst->getNextNode());
 	llvm::errs() << "Processing StoreInst in function: " << F.getName() << " | Store instruction: " << *storeInst << "\n";
 
-	if (isPointer)
-	{
-		handlePointerStore(storeInst, Builder, maxPrecisionBits, bitWidth);
-	}
-	else
-	{
-		handleGlobalStore(storeInst, Builder, maxPrecisionBits);
-
-	}
+#ifdef IS_POINTER
+	handlePointerStore(storeInst, Builder, maxPrecisionBits, bitWidth);
+#else
+	handleGlobalStore(storeInst, Builder, maxPrecisionBits);
+#endif
 }
 
 
 
 // Process functions that are whitelisted for dequantization
 void
-processWhitelistedFunctions(Module & module, const std::set<std::string> & whitelist, int maxPrecisionBits, int bitWidth, bool isPointer)
+processWhitelistedFunctions(Module & module, const std::set<std::string> & whitelist, int maxPrecisionBits, int bitWidth)
 {
 	for (auto & F : module)
 	{
@@ -256,7 +251,7 @@ processWhitelistedFunctions(Module & module, const std::set<std::string> & white
 					if (auto * storeInst = dyn_cast<StoreInst>(&I))
 					{
 						llvm::errs() << "Found valid StoreInst.\n";
-						dequantizeResults(storeInst, F, maxPrecisionBits,bitWidth,isPointer);
+						dequantizeResults(storeInst, F, maxPrecisionBits,bitWidth);
 					}
 				}
 			}
@@ -516,12 +511,13 @@ irPassLLVMIROptimizeByRange(State * N, bool enableQuantization, bool enableOverl
 	 * Config
 	 */
 //	int bitWidth = 32;
-	int bitWidth = 16;
+	int bitWidth = BIT_WIDTH;
 //	maxPrecisionBits = 16;
-	maxPrecisionBits = 10;
+	maxPrecisionBits = 16;
 	bool enableVectorization = true;
     	bool enableRangeAnalysis = true;
-	bool isPointer = false;
+	bool isMatrix = IS_MATRIX;
+	//bool isPointer = IS_POINTER;
 
 	/*
 	 * get const global variables
@@ -605,10 +601,11 @@ irPassLLVMIROptimizeByRange(State * N, bool enableQuantization, bool enableOverl
 		for (auto & mi : *Mod)
 		{
 			llvm::errs() << "Quantizing function: " << mi.getName() << "\n";
-			//irPassLLVMIRAutoQuantization(N, mi, functionsToInsert, maxPrecisionBits, bitWidth);
+			irPassLLVMIRAutoQuantization(N, mi, functionsToInsert, maxPrecisionBits);
 			//irPassLLVMIRAutoQuantization(N, mi, functionsToInsert, maxPrecisionBits, bitWidth, enableVectorization);
             //irPassLLVMIRAutoQuantization(N, mi, functionsToInsert, maxPrecisionBits, virtualRegisterVectorRange, bitWidth, enableVectorization, enableRangeAnalysis);
-            irPassLLVMIRAutoQuantization(N, mi, functionsToInsert, virtualRegisterVectorRange, maxPrecisionBits, bitWidth, enableVectorization, enableRangeAnalysis, isPointer);
+            //irPassLLVMIRAutoQuantization(N, mi, functionsToInsert, virtualRegisterVectorRange, maxPrecisionBits, bitWidth, enableVectorization, enableRangeAnalysis, isPointer);
+//			irPassLLVMIRAutoQuantization(N, mi, functionsToInsert, virtualRegisterVectorRange, maxPrecisionBits, bitWidth, enableVectorization, enableRangeAnalysis, isPointer);
 
 
 		}
@@ -773,7 +770,7 @@ irPassLLVMIROptimizeByRange(State * N, bool enableQuantization, bool enableOverl
 
 	// eraseOldInstructions();
 
-	processWhitelistedFunctions(*Mod, whitelist, maxPrecisionBits, bitWidth, isPointer);
+	processWhitelistedFunctions(*Mod, whitelist, maxPrecisionBits, bitWidth);
 
 	const char * homeDir = getenv("HOME");
 	if (!homeDir)

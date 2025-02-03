@@ -38,10 +38,14 @@ extern "C"
 extern std::vector<llvm::Function*> functionsToErase;
 extern std::vector<llvm::GlobalVariable*> globalsToErase;
 //extern std::vector<llvm::Instruction*> instructionsToErase;
+
 void
-irPassLLVMIRAutoQuantization(State *N, llvm::Function &llvmIrFunction, std::vector<llvm::Function *> &functionsToInsert,
-                             std::map<llvm::Value *, std::vector<std::pair<double, double>>> &virtualRegisterVectorRange,
-                             int maxPrecisionBits, int bitWidth,  bool enableVectorization,bool enableRangeAnalysis,bool isPointer);
+irPassLLVMIRAutoQuantization(State * N, llvm::Function & llvmIrFunction,  std::vector<llvm::Function*>& functionsToInsert,int maxPrecisionBits);
+
+//void
+//irPassLLVMIRAutoQuantization(State *N, llvm::Function &llvmIrFunction, std::vector<llvm::Function *> &functionsToInsert,
+//                             std::map<llvm::Value *, std::vector<std::pair<double, double>>> &virtualRegisterVectorRange,
+//                             int maxPrecisionBits);
 
 //void irPassLLVMIRAutoQuantization(State *N, Function &F, std::vector<Function *> &functionsToInsert,
 //                                  int maxPrecisionBits, std::map<Value *, std::vector<std::pair<double, double>>> &virtualRegisterVectorRange,
