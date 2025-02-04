@@ -1,4 +1,9 @@
 #include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/Module.h"
+#include "llvm/IR/Constant.h"
+#include "llvm/IR/GlobalVariable.h"
+#include <vector>
+#include <cmath>
 #include "newton-irPass-LLVMIR-quantization.h"
 #include "llvm/Support/raw_ostream.h"
 #include <unordered_map>
@@ -409,6 +414,68 @@ GlobalVariable *getOrCreateQuantizedGlobal(Module *module, GlobalVariable &globa
 	return newGlobalVar;
 }
 
+
+// Helper to create or retrieve the quantized internal constant
+GlobalVariable *getOrCreateQuantizedConstant(Module *module, GlobalVariable &origConst, Type *quantizedType) {
+	std::string quantizedName = origConst.getName().str() + "_quantized";
+
+	// Check if the quantized version already exists
+	if (GlobalVariable *existingConst = module->getNamedGlobal(quantizedName)) {
+		errs() << "Quantized internal constant already exists: " << quantizedName << "\n";
+		return existingConst;
+	}
+
+	// Ensure the original constant has an initializer
+	if (!origConst.hasInitializer()) {
+		errs() << "Skipping quantization: constant has no initializer: " << origConst.getName() << "\n";
+		return nullptr;
+	}
+
+	llvm::Constant *init = origConst.getInitializer();
+	ArrayType *origArrayType = dyn_cast<ArrayType>(origConst.getType()->getElementType());
+
+	// Ensure the global variable is an array of floating-point values
+	if (!origArrayType || (!origArrayType->getArrayElementType()->isFloatTy() &&
+			       !origArrayType->getArrayElementType()->isDoubleTy())) {
+		errs() << "Skipping non-float internal constant: " << origConst.getName() << "\n";
+		return nullptr;
+	}
+
+	errs() << "Quantizing internal constant: " << origConst.getName() << "\n";
+
+	std::vector<llvm::Constant *> quantizedValues;
+	Type *intType = Type::getInt32Ty(module->getContext()); // Use int32 for quantized values
+
+	// Iterate over array elements and quantize each floating-point value
+	for (unsigned i = 0; i < origArrayType->getNumElements(); ++i) {
+		llvm::ConstantFP *fpVal = dyn_cast<llvm::ConstantFP>(init->getAggregateElement(i));
+		if (!fpVal) continue;
+
+		double floatValue = fpVal->getValueAPF().convertToDouble();
+		int quantizedValue = static_cast<int>(round(floatValue * FRAC_BASE));
+
+		quantizedValues.push_back(llvm::ConstantInt::get(intType, quantizedValue));
+	}
+
+	// Create a new quantized array type
+	ArrayType *quantizedArrayType = ArrayType::get(intType, quantizedValues.size());
+	llvm::Constant *newInit = llvm::ConstantArray::get(quantizedArrayType, quantizedValues);
+
+	// Create the new quantized GlobalVariable
+	GlobalVariable *quantizedConst = new GlobalVariable(
+	    *module, quantizedArrayType, true, origConst.getLinkage(),
+	    newInit, quantizedName);
+
+	// Set appropriate alignment based on bit width
+	quantizedConst->setAlignment(llvm::MaybeAlign(4)); // Align to 4 bytes for int32
+
+	quantizedConst->setDSOLocal(true);
+	errs() << "Created quantized internal constant: " << quantizedName << "\n";
+
+	return quantizedConst;
+}
+
+
 // Helper to replace uses of the original global in whitelisted functions
 void replaceUsesInWhitelistedFunctions(GlobalVariable &originalGlobal, GlobalVariable &quantizedGlobal) {
 	for (auto it = originalGlobal.use_begin(), end = originalGlobal.use_end(); it != end;) {
@@ -455,6 +522,35 @@ void updateGlobalVariables(Module *module, Type *quantizedType) {
 	}
 }
 
+void updateInternalConstants(Module *module, Type *quantizedType) {
+	llvm::errs() << "Updating internal constants\n";
+
+	for (GlobalVariable &globalVar : module->globals()) {
+		std::string globalName = globalVar.getName().str();
+
+		if (!globalVar.isConstant() || !globalVar.hasInitializer()) {
+			llvm::errs() << "Skipping non-constant or uninitialized global: " << globalName << "\n";
+			continue;
+		}
+
+		Type *elementType = globalVar.getType()->getElementType();
+		if (!elementType->isArrayTy() ||
+		    (!elementType->getArrayElementType()->isFloatTy() &&
+		     !elementType->getArrayElementType()->isDoubleTy())) {
+			llvm::errs() << "Skipping non-float internal constant: " << globalName << "\n";
+			continue;
+		}
+
+		llvm::errs() << "Quantizing internal constant: " << globalName << "\n";
+
+		GlobalVariable *quantizedConst = getOrCreateQuantizedConstant(module, globalVar, quantizedType);
+
+
+		replaceUsesInWhitelistedFunctions(globalVar, *quantizedConst);
+
+		llvm::errs() << "Original internal constant preserved: " << globalName << "\n";
+	}
+}
 
 
 
@@ -1772,6 +1868,8 @@ irPassLLVMIRAutoQuantization(State *N, llvm::Function &llvmIrFunction, std::vect
 
 		// Update global variables to integer type
 		updateGlobalVariables(module, quantizedType);
+
+		updateInternalConstants(module, quantizedType);
 
 		/*
 		 * generate hardcode function
