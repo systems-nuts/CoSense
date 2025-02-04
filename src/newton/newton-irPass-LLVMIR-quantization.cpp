@@ -343,6 +343,9 @@ bool shouldProcessFunction(Function &F) {
 	    "MadgwickAHRSupdateIMU",
 	    "__kernel_sin",
 	    "__kernel_cos",
+	    "matrixMul",
+	    "matrixAdd",
+	    "matrixSub",
 	};
 
 	// Check if the function name is in the set
@@ -502,6 +505,30 @@ quantizePointer(LoadInst * loadInst, IRBuilder<> & Builder, Type * quantizedType
 
 	llvm::errs() << "Replaced load with quantized integer value.\n";
 }
+void quantizeMatrixFloat(LoadInst *loadInst, IRBuilder<> &Builder, Type *quantizedType, Type *loadedType)
+{
+	// Get the pointer operand of the load instruction
+	Value *pointerOperand = loadInst->getPointerOperand();
+	Type *pointerElementType = pointerOperand->getType()->getPointerElementType();
+
+	if (pointerElementType->isFloatingPointTy())
+	{
+		llvm::errs() << "Quantizing load from local float pointer: " << *pointerOperand << "\n";
+
+		Value *loadedValue = Builder.CreateLoad(loadedType, pointerOperand, loadInst->getName() + ".p");
+		Value *scaledValue = Builder.CreateFMul(loadedValue, ConstantFP::get(loadedType, FRAC_BASE), loadInst->getName() + ".scaled");
+		Value *quantizedValue = Builder.CreateFPToSI(scaledValue, quantizedType, loadInst->getName() + ".quantized");
+		loadInst->replaceAllUsesWith(quantizedValue);
+		loadInst->eraseFromParent();
+
+		llvm::errs() << "Replaced load with quantized integer value.\n";
+	}
+	else
+	{
+		llvm::errs() << "Skipping quantization for load: " << *loadInst << " (Not a float load)\n";
+	}
+}
+
 
 // void
 // quantizePointer(LoadInst * loadInst, IRBuilder<> & Builder, Type * quantizedType, Type * loadedType)
@@ -549,10 +576,17 @@ handleLoad(Instruction * llvmIrInstruction, Type * quantizedType)
 			}
 
 			// Quantize local pointers
+#ifndef IS_MATRIX
 			else if (!isa<GlobalVariable>(pointerOperand))
 			{
 				quantizePointer(loadInst, Builder, quantizedType, loadedType);
 			}
+#else
+			else if (!isa<GlobalVariable>(pointerOperand))
+			{
+				quantizeMatrixFloat(loadInst, Builder, quantizedType, loadedType);
+			}
+#endif
 		}
 	}
 }
@@ -1085,6 +1119,16 @@ handleStore(Instruction * llvmIrInstruction, Type * quantizedType)
 		auto	    valueType	   = llvmIrStoreInstruction->getValueOperand()->getType();
 		auto	    pointerType	   = pointerOperand->getType()->getPointerElementType();
 
+		// **Check if pointerOperand comes from GEP float***
+		if (auto gepInstruction = dyn_cast<GetElementPtrInst>(pointerOperand))
+		{
+			if (gepInstruction->getSourceElementType()->isFloatTy())
+			{
+				llvm::errs() << "Skipping store quantization for GEP(float*) case.\n";
+				return;
+			}
+		}
+
 		if (valueType->isFloatTy() || valueType->isDoubleTy())
 		{
 			llvm::errs() << "Original store value type: " << *valueType << "\n";
@@ -1434,6 +1478,27 @@ handleCall(CallInst * llvmIrCallInstruction, Type * quantizedType, std::vector<l
 	}
 }
 
+void handleGetElementPtr(GetElementPtrInst *gepInst, Type *quantizedType)
+{
+	// Get the base pointer type (the element type of the pointer being indexed)
+	Type *elementType = gepInst->getSourceElementType();
+
+	// Process only `getelementptr inbounds float, float*` (not `float**`)
+	if (elementType->isFloatingPointTy())
+	{
+		IRBuilder<> Builder(gepInst);
+
+		// Bitcast the result of GEP from `float*` to `i32*`
+		Value *bitcastPtr = Builder.CreateBitCast(gepInst, quantizedType->getPointerTo(), gepInst->getName() + "_i32");
+
+		// Replace all uses of the original GEP result with the new `i32*`
+		gepInst->replaceAllUsesWith(bitcastPtr);
+
+		llvm::errs() << "Replaced GEP(float*) with bitcast to i32*: " << *gepInst << "\n";
+	}
+}
+
+
 // Helper function to quantize floating-point parameters
 void
 quantizeFunctionArguments(llvm::Function & func, llvm::IRBuilder<> & builder)
@@ -1697,25 +1762,13 @@ irPassLLVMIRAutoQuantization(State *N, llvm::Function &llvmIrFunction, std::vect
 		quantizeFunctionArguments(llvmIrFunction, builder);
 		quantizeArguments(llvmIrFunction, quantizedType);
 
-		//		// Perform bitcasting of float poiter arguments to i32*
-		//		bitcastFloatPtrArgs(llvmIrFunction, builder);
 
-		// 根据 isPointer 参数决定是否执行 bitcastFloatPtrArgs
-		//		if (isPointer) {
-		//			llvm::errs() << "Performing bitcasting for float pointer arguments.\n";
-		//			bitcastFloatPtrArgs(llvmIrFunction, builder);
-		//		} else {
-		//			llvm::errs() << "Skipping bitcasting for float pointer arguments.\n";
-		//		}
 #ifdef IS_POINTER
 		llvm::errs() << "Performing bitcasting for float pointer arguments.\n";
 		bitcastFloatPtrArgs(llvmIrFunction, builder);
 #else
 		llvm::errs() << "Skipping bitcasting for float pointer arguments.\n";
 #endif
-
-
-
 
 		// Update global variables to integer type
 		updateGlobalVariables(module, quantizedType);
@@ -1750,6 +1803,7 @@ irPassLLVMIRAutoQuantization(State *N, llvm::Function &llvmIrFunction, std::vect
 						handleCall(cast<CallInst>(llvmIrInstruction), quantizedType, functionsToInsert, fixrsqrt);
 						break;
 					case Instruction::GetElementPtr:
+						//handleGetElementPtr(cast<GetElementPtrInst>(llvmIrInstruction), quantizedType);
 					case Instruction::Load:
 					{
 						llvm::errs() << "Handling load\n";

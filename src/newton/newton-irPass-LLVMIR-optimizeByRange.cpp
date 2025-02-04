@@ -87,7 +87,8 @@ using namespace llvm;
 std::set<std::string> whitelist = {
     "MadgwickAHRSupdate",
     "MahonyAHRSupdate",
-    "sensfusion6UpdateQImpl"
+    "sensfusion6UpdateQImpl",
+    "matrixMul"
 };
 
 
@@ -218,18 +219,59 @@ handlePointerStore(StoreInst *storeInst, IRBuilder<> &Builder, int maxPrecisionB
 	}
 }
 
-void
-dequantizeResults(StoreInst *storeInst, Function &F, int maxPrecisionBits, int bitWidth)
+
+
+void handleMatrixStore(StoreInst *storeInst, IRBuilder<> &Builder, int maxPrecisionBits) {
+	Value *valueOperand = storeInst->getValueOperand();
+	Value *pointerOperand = storeInst->getPointerOperand();
+
+	// Ensure the stored value is an integer and the destination is a float pointer
+	Type *valueType = valueOperand->getType();
+	Type *pointerElementType = pointerOperand->getType()->getPointerElementType();
+
+	if (valueType->isIntegerTy() && pointerElementType->isFloatingPointTy()) {
+		llvm::errs() << "Processing matrix store (quantized to dequantized): " << *storeInst << "\n";
+
+		// Convert integer value to floating-point (dequantization step 1)
+		llvm::errs() << "Converting integer to float: " << *valueOperand << "\n";
+		Value *convertedFloat = Builder.CreateSIToFP(valueOperand, Type::getFloatTy(storeInst->getContext()), storeInst->getName() + ".dequantized");
+
+		// Compute the fractional base: `fracBase = 2^maxPrecisionBits`
+		double fracBase = pow(2.0, maxPrecisionBits);
+
+		// Perform dequantization by multiplying by (1 / fracBase)
+		Value *dequantizedValue = Builder.CreateFMul(
+		    convertedFloat, ConstantFP::get(Type::getFloatTy(storeInst->getContext()), 1.0 / fracBase), storeInst->getName() + ".scaled_back");
+
+		// Store the dequantized floating-point value back to the original float memory location
+		Builder.CreateStore(dequantizedValue, pointerOperand);
+
+		llvm::errs() << "Dequantized and stored float value at: " << *pointerOperand << "\n";
+
+		// Remove the original store instruction
+		storeInst->eraseFromParent();
+	} else {
+		llvm::errs() << "Skipping store: Not storing i32 into float*.\n";
+	}
+}
+
+
+
+
+void dequantizeResults(StoreInst *storeInst, Function &F, int maxPrecisionBits, int bitWidth)
 {
 	IRBuilder<> Builder(storeInst->getNextNode());
 	llvm::errs() << "Processing StoreInst in function: " << F.getName() << " | Store instruction: " << *storeInst << "\n";
 
-#ifdef IS_POINTER
+#ifdef IS_MATRIX
+	handleMatrixStore(storeInst, Builder, maxPrecisionBits);
+#elif 	IS_POINTER
 	handlePointerStore(storeInst, Builder, maxPrecisionBits, bitWidth);
 #else
 	handleGlobalStore(storeInst, Builder, maxPrecisionBits);
 #endif
 }
+
 
 
 
