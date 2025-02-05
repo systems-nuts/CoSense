@@ -1801,17 +1801,6 @@ irPassLLVMIRAutoQuantization(State *N, llvm::Function &llvmIrFunction, std::vect
 		flexprint(N->Fe, N->Fm, N->Fpinfo, "\tauto quantization.\n");
 		llvm::errs() << "Entering irPassLLVMIRAutoQuantization\n";
 
-//		// Handle vectorization initialization
-//		if (enableVectorization)
-//		{
-//			llvm::errs() << "Vectorization enabled. Applying SIMD optimizations.\n";
-//		}
-//
-//		if (enableRangeAnalysis)
-//		{
-//			llvm::errs() << "Range analysis enabled. Applying range analysis.\n";
-//		}
-
 		// Usage in the original function
 		std::string functionName = llvmIrFunction.getName().str();
 		if (shouldSkipFunction(functionName))
@@ -1875,7 +1864,6 @@ irPassLLVMIRAutoQuantization(State *N, llvm::Function &llvmIrFunction, std::vect
 		/*
 		 * generate hardcode function
 		 * */
-		// llvm::Function * fixmul	  = createFixMul(module, quantizedType, functionsToInsert);
 		//llvm::Function * fixsqrt  = createFixSqrt(module, quantizedType, functionsToInsert);
 		llvm::Function * fixrsqrt = createFixRsqrt(module, quantizedType, functionsToInsert);
 

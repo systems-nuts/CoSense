@@ -82,7 +82,7 @@ POSSIBILITY OF SUCH DAMAGE.
 
 
 using namespace llvm;
-
+#define FRAC_BASE (1 << maxPrecisionBits)
 
 std::set<std::string> whitelist = {
     "MadgwickAHRSupdate",
@@ -130,12 +130,11 @@ void handleGlobalStore(StoreInst *storeInst, IRBuilder<> &Builder, int maxPrecis
 		// Convert the integer value to a floating-point value
 		Value *convertedFloat = Builder.CreateSIToFP(loadInst, Type::getFloatTy(storeInst->getContext()));
 
-		// Compute the fractional base
-		double fracBase = pow(2.0, maxPrecisionBits);
+
 
 		// Perform dequantization
 		Value *dequantizedValue = Builder.CreateFMul(
-		    convertedFloat, ConstantFP::get(Type::getFloatTy(storeInst->getContext()), 1.0 / fracBase));
+		    convertedFloat, ConstantFP::get(Type::getFloatTy(storeInst->getContext()), 1.0 / FRAC_BASE));
 
 		// Store the dequantized floating-point value back into the original global variable
 		Builder.CreateStore(dequantizedValue, originalGlobalVar);
@@ -167,9 +166,8 @@ handlePointerStore(StoreInst *storeInst, IRBuilder<> &Builder, int maxPrecisionB
 	}
 
 	Value *convertedFloat = Builder.CreateSIToFP(loadInst, Type::getFloatTy(storeInst->getContext()));
-	double fracBase = pow(2.0, maxPrecisionBits);
 	Value *dividedValue = Builder.CreateFMul(
-	      convertedFloat, ConstantFP::get(Type::getFloatTy(storeInst->getContext()), 1.0 / fracBase));
+	      convertedFloat, ConstantFP::get(Type::getFloatTy(storeInst->getContext()), 1.0 / FRAC_BASE));
 
 	if (auto *bitcastInst = dyn_cast<BitCastInst>(pointerOperand))
 	{
@@ -236,12 +234,10 @@ void handleMatrixStore(StoreInst *storeInst, IRBuilder<> &Builder, int maxPrecis
 		llvm::errs() << "Converting integer to float: " << *valueOperand << "\n";
 		Value *convertedFloat = Builder.CreateSIToFP(valueOperand, Type::getFloatTy(storeInst->getContext()), storeInst->getName() + ".dequantized");
 
-		// Compute the fractional base: `fracBase = 2^maxPrecisionBits`
-		double fracBase = pow(2.0, maxPrecisionBits);
 
 		// Perform dequantization by multiplying by (1 / fracBase)
 		Value *dequantizedValue = Builder.CreateFMul(
-		    convertedFloat, ConstantFP::get(Type::getFloatTy(storeInst->getContext()), 1.0 / fracBase), storeInst->getName() + ".scaled_back");
+		    convertedFloat, ConstantFP::get(Type::getFloatTy(storeInst->getContext()), 1.0 / FRAC_BASE), storeInst->getName() + ".scaled_back");
 
 		// Store the dequantized floating-point value back to the original float memory location
 		Builder.CreateStore(dequantizedValue, pointerOperand);
@@ -263,10 +259,12 @@ void dequantizeResults(StoreInst *storeInst, Function &F, int maxPrecisionBits)
 	IRBuilder<> Builder(storeInst->getNextNode());
 	llvm::errs() << "Processing StoreInst in function: " << F.getName() << " | Store instruction: " << *storeInst << "\n";
 
-#ifdef IS_MATRIX
+
+#if IS_MATRIX
 	handleMatrixStore(storeInst, Builder, maxPrecisionBits);
-#elif 	IS_POINTER
-	handlePointerStore(storeInst, Builder, maxPrecisionBits, BIT_WIDTH);
+#elif IS_POINTER
+	handlePointerStore(storeInst, Builder, maxPrecisionBits);
+
 #else
 	handleGlobalStore(storeInst, Builder, maxPrecisionBits);
 #endif
