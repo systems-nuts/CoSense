@@ -12,7 +12,7 @@
 using namespace llvm;
 
 unsigned int FRAC_Q;
-//unsigned int BIT_WIDTH;
+
 #define FRAC_BASE (1 << FRAC_Q)
 
 llvm::Value *
@@ -1798,7 +1798,6 @@ irPassLLVMIRAutoQuantization(State *N, llvm::Function &llvmIrFunction, std::vect
 {
 	{
 		FRAC_Q = maxPrecisionBits;
-		// BIT_WIDTH = bitWidth;
 		flexprint(N->Fe, N->Fm, N->Fpinfo, "\tauto quantization.\n");
 		llvm::errs() << "Entering irPassLLVMIRAutoQuantization\n";
 

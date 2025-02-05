@@ -149,11 +149,11 @@ void handleGlobalStore(StoreInst *storeInst, IRBuilder<> &Builder, int maxPrecis
 
 
 void
-handlePointerStore(StoreInst *storeInst, IRBuilder<> &Builder, int maxPrecisionBits, int bitWidth)
+handlePointerStore(StoreInst *storeInst, IRBuilder<> &Builder, int maxPrecisionBits)
 {
 	auto *pointerOperand = storeInst->getPointerOperand();
 
-	if (!pointerOperand->getType()->getPointerElementType()->isIntegerTy(bitWidth))
+	if (!pointerOperand->getType()->getPointerElementType()->isIntegerTy(BIT_WIDTH))
 	{
 		llvm::errs() << "Pointer operand type is not an integer of expected bit width.\n";
 		return;
@@ -177,7 +177,7 @@ handlePointerStore(StoreInst *storeInst, IRBuilder<> &Builder, int maxPrecisionB
 		bool isValidSource = false;
 
 		// Determine the final store pointer based on bit width
-		switch (bitWidth)
+		switch (BIT_WIDTH)
 		{
 			case 16:
 				if (bitcastInst->getSrcTy()->getPointerElementType()->isIntegerTy(32))
@@ -203,7 +203,7 @@ handlePointerStore(StoreInst *storeInst, IRBuilder<> &Builder, int maxPrecisionB
 				break;
 
 			default:
-				llvm::errs() << "Unsupported BIT_WIDTH: " << bitWidth << "\n";
+				llvm::errs() << "Unsupported BIT_WIDTH: " << BIT_WIDTH << "\n";
 				return;
 		}
 
@@ -258,7 +258,7 @@ void handleMatrixStore(StoreInst *storeInst, IRBuilder<> &Builder, int maxPrecis
 
 
 
-void dequantizeResults(StoreInst *storeInst, Function &F, int maxPrecisionBits, int bitWidth)
+void dequantizeResults(StoreInst *storeInst, Function &F, int maxPrecisionBits)
 {
 	IRBuilder<> Builder(storeInst->getNextNode());
 	llvm::errs() << "Processing StoreInst in function: " << F.getName() << " | Store instruction: " << *storeInst << "\n";
@@ -266,7 +266,7 @@ void dequantizeResults(StoreInst *storeInst, Function &F, int maxPrecisionBits, 
 #ifdef IS_MATRIX
 	handleMatrixStore(storeInst, Builder, maxPrecisionBits);
 #elif 	IS_POINTER
-	handlePointerStore(storeInst, Builder, maxPrecisionBits, bitWidth);
+	handlePointerStore(storeInst, Builder, maxPrecisionBits, BIT_WIDTH);
 #else
 	handleGlobalStore(storeInst, Builder, maxPrecisionBits);
 #endif
@@ -277,7 +277,7 @@ void dequantizeResults(StoreInst *storeInst, Function &F, int maxPrecisionBits, 
 
 // Process functions that are whitelisted for dequantization
 void
-processWhitelistedFunctions(Module & module, const std::set<std::string> & whitelist, int maxPrecisionBits, int bitWidth)
+processWhitelistedFunctions(Module & module, const std::set<std::string> & whitelist, int maxPrecisionBits)
 {
 	for (auto & F : module)
 	{
@@ -293,7 +293,7 @@ processWhitelistedFunctions(Module & module, const std::set<std::string> & white
 					if (auto * storeInst = dyn_cast<StoreInst>(&I))
 					{
 						llvm::errs() << "Found valid StoreInst.\n";
-						dequantizeResults(storeInst, F, maxPrecisionBits,bitWidth);
+						dequantizeResults(storeInst, F, maxPrecisionBits);
 					}
 				}
 			}
@@ -552,13 +552,12 @@ irPassLLVMIROptimizeByRange(State * N, bool enableQuantization, bool enableOverl
 	/**
 	 * Config
 	 */
-//	int bitWidth = 32;
+//	int BIT_WIDTH = 32;
 	int bitWidth = BIT_WIDTH;
 //	maxPrecisionBits = 16;
 	maxPrecisionBits = 16;
 	bool enableVectorization = true;
     	bool enableRangeAnalysis = true;
-	bool isMatrix = IS_MATRIX;
 	//bool isPointer = IS_POINTER;
 
 	/*
@@ -635,7 +634,7 @@ irPassLLVMIROptimizeByRange(State * N, bool enableQuantization, bool enableOverl
 		}
 	}
 
-	if (enableQuantization)
+#ifdef AUTO_QUANTIZATION
 	{
 		flexprint(N->Fe, N->Fm, N->Fpinfo, "auto quantization\n");
 		llvm::errs() << "Auto quantization enabled\n";
@@ -657,13 +656,14 @@ irPassLLVMIROptimizeByRange(State * N, bool enableQuantization, bool enableOverl
 			Mod->getFunctionList().push_front(mi);
 		}
 	}
+#endif
 	// Range Analysis
 
-	//	for (auto & mi : *Mod)
-	//	{
-	//		rangeAnalysis(mi);
-	//
-	//	}
+//		for (auto & mi : *Mod)
+//		{
+//			rangeAnalysis(mi);
+//
+//		}
 
 	//	/*
 	//	 * analyze the range of all local variables in each function
@@ -812,7 +812,7 @@ irPassLLVMIROptimizeByRange(State * N, bool enableQuantization, bool enableOverl
 
 	// eraseOldInstructions();
 
-	processWhitelistedFunctions(*Mod, whitelist, maxPrecisionBits, bitWidth);
+	processWhitelistedFunctions(*Mod, whitelist, maxPrecisionBits);
 
 	const char * homeDir = getenv("HOME");
 	if (!homeDir)
