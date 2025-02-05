@@ -346,11 +346,13 @@ bool shouldProcessFunction(Function &F) {
 	    "sensfusion6UpdateQImpl",
 	    "MadgwickAHRSupdate",
 	    "MadgwickAHRSupdateIMU",
-	    "__kernel_sin",
-	    "__kernel_cos",
+//	    "__kernel_sin",
+//	    "__kernel_cos",
 	    "matrixMul",
 	    "matrixAdd",
 	    "matrixSub",
+	    "qzero"
+
 	};
 
 	// Check if the function name is in the set
