@@ -270,7 +270,66 @@ void dequantizeResults(StoreInst *storeInst, Function &F, int maxPrecisionBits)
 #endif
 }
 
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+bool enableAutoQuantization = false;
+
+void detectFloatingPointOps(Module &Mod) {
+	bool hasFloatOps = false;
+	std::map<std::string, int> floatOpCounts; // Map to store the count of floating-point operations per function
+
+	for (auto &F : Mod) {
+		int functionFloatOpCount = 0; // Counter for floating-point operations in the current function
+
+		for (auto &BB : F) {
+			for (auto &I : BB) {
+				// Check if the instruction is a floating-point operation
+				if (I.getOpcode() == Instruction::FAdd ||
+				    I.getOpcode() == Instruction::FMul ||
+				    I.getOpcode() == Instruction::FSub ||
+				    I.getOpcode() == Instruction::FDiv) {
+					hasFloatOps = true;
+					functionFloatOpCount++; // Increment the counter for this function
+//					llvm::errs() << "Detected floating-point operation in function: "
+//						     << F.getName() << " - Instruction: " << I << "\n";
+				}
+			}
+		}
+
+		// Store the count for this function
+		if (functionFloatOpCount > 0) {
+			floatOpCounts[F.getName().str()] = functionFloatOpCount;
+		}
+	}
+
+	// Output the results
+	if (hasFloatOps) {
+		llvm::errs() << "Floating-point operations detected in the module.\n";
+		for (const auto &entry : floatOpCounts) {
+			llvm::errs() << "Function: " << entry.first
+				     << " - Floating-point operations: " << entry.second << "\n";
+		}
+		llvm::errs() << "Enabling Auto-Quantization.\n";
+		enableAutoQuantization = true;
+	} else {
+		llvm::errs() << "No floating-point operations detected. Skipping Auto-Quantization.\n";
+	}
+}
+
+
+void checkFPUAvailability() {
+#if defined(__ARM_FP) || defined(__VFP_FP__)
+	llvm::errs() << "FPU is available on this platform.\n";
+#else
+	llvm::errs() << "FPU is not available on this platform. Enabling Auto-Quantization.\n";
+	enableAutoQuantization = true;
+#endif
+}
+
+
+
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 
 // Process functions that are whitelisted for dequantization
@@ -551,12 +610,8 @@ irPassLLVMIROptimizeByRange(State * N, bool enableQuantization, bool enableOverl
 	 * Config
 	 */
 //	int BIT_WIDTH = 32;
-	int bitWidth = BIT_WIDTH;
 //	maxPrecisionBits = 16;
-	maxPrecisionBits = 16;
-	bool enableVectorization = true;
-    	bool enableRangeAnalysis = true;
-	//bool isPointer = IS_POINTER;
+	maxPrecisionBits = 10;
 
 	/*
 	 * get const global variables
@@ -632,7 +687,13 @@ irPassLLVMIROptimizeByRange(State * N, bool enableQuantization, bool enableOverl
 		}
 	}
 
-#ifdef AUTO_QUANTIZATION
+	detectFloatingPointOps(*Mod);
+	checkFPUAvailability();
+
+
+
+//#ifdef AUTO_QUANTIZATION
+	if (enableQuantization)
 	{
 		flexprint(N->Fe, N->Fm, N->Fpinfo, "auto quantization\n");
 		llvm::errs() << "Auto quantization enabled\n";
@@ -654,7 +715,7 @@ irPassLLVMIROptimizeByRange(State * N, bool enableQuantization, bool enableOverl
 			Mod->getFunctionList().push_front(mi);
 		}
 	}
-#endif
+//#endif
 	// Range Analysis
 
 //		for (auto & mi : *Mod)
