@@ -281,6 +281,37 @@ void detectFloatingPointOps(Module &Mod) {
 	for (auto &F : Mod) {
 		int functionFloatOpCount = 0; // Counter for floating-point operations in the current function
 
+		// Analyze function parameters
+		int paramCount = 0;
+		int returnCount = 0;
+		std::vector<std::string> paramTypes; // To store parameter types
+		for (auto &Arg : F.args()) {
+			paramCount++;
+			if (Arg.getType()->isPointerTy()) {
+				paramTypes.push_back("pointer");
+			} else if (Arg.getType()->isFloatingPointTy()) {
+				paramTypes.push_back("floating-point");
+			} else if (Arg.getType()->isIntegerTy()) {
+				paramTypes.push_back("integer");
+			} else {
+				paramTypes.push_back("unknown");
+			}
+		}
+
+		// Analyze function return type
+		std::string returnType = "void"; // Default return type
+		if (!F.getReturnType()->isVoidTy()) {
+			if (F.getReturnType()->isPointerTy()) {
+				returnType = "pointer";
+			} else if (F.getReturnType()->isFloatingPointTy()) {
+				returnType = "floating-point";
+			} else if (F.getReturnType()->isIntegerTy()) {
+				returnType = "integer";
+			} else {
+				returnType = "unknown";
+			}
+		}
+
 		for (auto &BB : F) {
 			for (auto &I : BB) {
 				// Check if the instruction is a floating-point operation
@@ -293,6 +324,12 @@ void detectFloatingPointOps(Module &Mod) {
 //					llvm::errs() << "Detected floating-point operation in function: "
 //						     << F.getName() << " - Instruction: " << I << "\n";
 				}
+
+
+				// Check if the instruction is a return
+				if (isa<ReturnInst>(I)) {
+					returnCount++;
+				}
 			}
 		}
 
@@ -300,6 +337,17 @@ void detectFloatingPointOps(Module &Mod) {
 		if (functionFloatOpCount > 0) {
 			floatOpCounts[F.getName().str()] = functionFloatOpCount;
 		}
+
+		// Output function details
+		llvm::errs() << "Function: " << F.getName() << "\n";
+		llvm::errs() << "  Return Type: " << returnType << "\n";
+		llvm::errs() << "  Parameter Count: " << paramCount << "\n";
+		llvm::errs() << "  Parameter Types: ";
+		for (const auto &type : paramTypes) {
+			llvm::errs() << type << " ";
+		}
+		llvm::errs() << "\n";
+//f
 	}
 
 	// Output the results
@@ -317,16 +365,53 @@ void detectFloatingPointOps(Module &Mod) {
 }
 
 
-void checkFPUAvailability() {
-#if defined(__ARM_FP) || defined(__VFP_FP__)
-	llvm::errs() << "FPU is available on this platform.\n";
-#else
-	llvm::errs() << "FPU is not available on this platform. Enabling Auto-Quantization.\n";
-	enableAutoQuantization = true;
-#endif
+
+void checkFPUAvailability(Module &Mod) {
+	bool hasFPU = false;
+	std::set<std::string> detectedFeatures;
+
+	// Iterate over functions to check attributes
+	for (auto &F : Mod) {
+		if (F.hasFnAttribute("target-features")) {
+			std::string features = F.getFnAttribute("target-features").getValueAsString().str();
+			detectedFeatures.insert(features);
+
+			// Check for x86 floating-point features
+			if (features.find("+sse") != std::string::npos ||
+			    features.find("+sse2") != std::string::npos ||
+			    features.find("+avx") != std::string::npos ||
+			    features.find("+x87") != std::string::npos ||
+			    features.find("+fma") != std::string::npos) {
+				hasFPU = true;
+			}
+
+			// Check for ARM floating-point features
+			if (features.find("+vfp") != std::string::npos ||
+			    features.find("+neon") != std::string::npos ||
+			    features.find("+fp-armv8") != std::string::npos ||
+			    features.find("+fp16") != std::string::npos) {
+				hasFPU = true;
+			}
+		}
+	}
+
+	// Print detected target features (only once)
+	if (!detectedFeatures.empty()) {
+		llvm::errs() << "Target Features: ";
+		for (const auto &feature : detectedFeatures) {
+			llvm::errs() << feature << " ";
+		}
+		llvm::errs() << "\n";
+	}
+
+	// Final decision based on FPU detection
+	if (hasFPU) {
+		llvm::errs() << "FPU detected via function attributes. \n";
+	} else {
+		llvm::errs() << "No FPU detected. Enabling Auto-Quantization.\n";
+		enableAutoQuantization = true;
+	}
 }
-
-
 
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -688,7 +773,7 @@ irPassLLVMIROptimizeByRange(State * N, bool enableQuantization, bool enableOverl
 	}
 
 	detectFloatingPointOps(*Mod);
-	checkFPUAvailability();
+	checkFPUAvailability(*Mod);
 
 
 
