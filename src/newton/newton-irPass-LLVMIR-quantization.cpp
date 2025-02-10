@@ -1,6 +1,7 @@
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Constant.h"
+#include "llvm/IR/Constants.h"
 #include "llvm/IR/GlobalVariable.h"
 #include <vector>
 #include <cmath>
@@ -14,6 +15,7 @@ using namespace llvm;
 unsigned int FRAC_Q;
 
 #define FRAC_BASE (1 << FRAC_Q)
+#define BIT_WIDTH 32
 
 llvm::Value *
 performFixedPointMul(llvm::IRBuilder<> & Builder, llvm::Value * lhs, llvm::Value * rhs, unsigned int FRAC_Q)
@@ -351,6 +353,7 @@ bool shouldProcessFunction(Function &F) {
 	    "matrixMul",
 	    "matrixAdd",
 	    "matrixSub",
+	    "pzero",
 	    "qzero"
 
 	};
@@ -524,6 +527,166 @@ void updateGlobalVariables(Module *module, Type *quantizedType) {
 	}
 }
 
+// 辅助函数：对于 ConstantExpr 类型的使用，如果它是 GEP，则尝试构造新的 constant GEP 表达式
+static void handleConstantExprUse(llvm::ConstantExpr *constExpr,
+		      llvm::GlobalVariable &origConst,
+		      llvm::GlobalVariable &quantizedConst) {
+	// 如果 constant-expression 是 getelementptr，则重建一个新的 constant-expression
+	if (constExpr->getOpcode() == llvm::Instruction::GetElementPtr) {
+		llvm::SmallVector<llvm::Constant *, 4> Indices;
+		// 从操作数1开始（operand0 是指针）
+		for (unsigned i = 1, e = constExpr->getNumOperands(); i < e; ++i) {
+			if (llvm::Constant *C = llvm::dyn_cast<llvm::Constant>(constExpr->getOperand(i)))
+				Indices.push_back(C);
+		}
+		// 直接使用量化后的全局变量，不做 bitcast
+		llvm::Constant *newGEP = llvm::ConstantExpr::getGetElementPtr(
+		    quantizedConst.getType()->getPointerElementType(), &quantizedConst, Indices);
+		// 用新构造的 constant 替换所有对该 constant-expression 的使用
+		constExpr->replaceAllUsesWith(newGEP);
+		llvm::errs() << "Replaced constant GEP for " << origConst.getName() << "\n";
+	} else {
+		// 对于非 GEP 的 constant-expression，则转换为指令
+		llvm::Instruction *insertPt = nullptr;
+		for (llvm::Use &U : constExpr->uses()) {
+			if (llvm::Instruction *inst = llvm::dyn_cast<llvm::Instruction>(U.getUser())) {
+				insertPt = inst;
+				break;
+			}
+		}
+		if (insertPt) {
+			llvm::Instruction *newInst = constExpr->getAsInstruction();
+			newInst->insertBefore(insertPt);
+			constExpr->replaceAllUsesWith(newInst);
+			llvm::errs() << "Converted constant expr to instruction for " << origConst.getName() << "\n";
+		}
+	}
+}
+//static void handleConstantExprUse(llvm::ConstantExpr *constExpr,
+//		      llvm::GlobalVariable &origConst,
+//		      llvm::GlobalVariable &quantizedConst) {
+//	// 如果 constant-expression 是 getelementptr，则重建一个新的 constant-expression
+//	if (constExpr->getOpcode() == llvm::Instruction::GetElementPtr) {
+//		llvm::SmallVector<llvm::Constant *, 4> Indices;
+//		// 从操作数1开始（operand0 是指针）
+//		for (unsigned i = 1, e = constExpr->getNumOperands(); i < e; ++i) {
+//			if (llvm::Constant *C = llvm::dyn_cast<llvm::Constant>(constExpr->getOperand(i)))
+//				Indices.push_back(C);
+//		}
+//		// 构造 constant bitcast，将量化后的全局变量从 [N x i32]* 转换为原全局变量的类型（例如 [N x double]*）
+//		llvm::Constant *bitcasted = llvm::ConstantExpr::getBitCast(&quantizedConst, origConst.getType());
+//		// 构造新的 constant GEP 表达式
+//		llvm::Constant *newGEP = llvm::ConstantExpr::getGetElementPtr(
+//		    origConst.getType()->getPointerElementType(), bitcasted, Indices);
+//		// 用新构造的 constant 替换所有对该 constant-expression 的使用
+//		constExpr->replaceAllUsesWith(newGEP);
+//		llvm::errs() << "Replaced constant GEP for " << origConst.getName() << "\n";
+//	} else {
+//		// 对于非 GEP 的 constant-expression，则转换为指令
+//		llvm::Instruction *insertPt = nullptr;
+//		for (llvm::Use &U : constExpr->uses()) {
+//			if (llvm::Instruction *inst = llvm::dyn_cast<llvm::Instruction>(U.getUser())) {
+//				insertPt = inst;
+//				break;
+//			}
+//		}
+//		if (insertPt) {
+//			llvm::Instruction *newInst = constExpr->getAsInstruction();
+//			newInst->insertBefore(insertPt);
+//			constExpr->replaceAllUsesWith(newInst);
+//			llvm::errs() << "Converted constant expr to instruction for " << origConst.getName() << "\n";
+//		}
+//	}
+//}
+
+
+//// 辅助函数：处理函数内部的 GEP 指令（非 constant-expression），即将计算结果转换为常量表达式等价形式
+//static void handleGEPInstruction(GetElementPtrInst *gep,
+//		     GlobalVariable &origConst,
+//		     GlobalVariable &quantizedConst) {
+//	IRBuilder<> builder(gep);
+//	// 将量化后的全局变量 bitcast 成原全局变量的类型（例如 [6 x double]*）
+//	Value *quantizedBitcast = builder.CreateBitCast(&quantizedConst, origConst.getType(),
+//							 quantizedConst.getName() + ".bitcast");
+//	// 收集 GEP 的索引（保持原有索引不变）
+//	SmallVector<Value*, 4> Indices;
+//	for (Value *idx : gep->indices())
+//		Indices.push_back(idx);
+//	// 重建 GEP：注意，这里我们希望得到的结果仍然是 double*（与原来的 GEP 相同）
+//	Value *newGEP = builder.CreateGEP(origConst.getType()->getPointerElementType(),
+//					   quantizedBitcast, Indices,
+//					   gep->getName() + ".quantized_gep");
+//	// 如果新得到的 newGEP 类型与原来的不一致，使用 bitcast 调整回来
+//	Value *castedGEP = builder.CreateBitCast(newGEP, gep->getType(),
+//						  gep->getName() + ".casted");
+//	gep->replaceAllUsesWith(castedGEP);
+//	gep->eraseFromParent();
+//	errs() << "Replaced GEP instruction for " << origConst.getName() << "\n";
+//}
+
+static void handleGEPInstruction(llvm::GetElementPtrInst *gep,
+		     llvm::GlobalVariable &origConst,
+		     llvm::GlobalVariable &quantizedConst) {
+	llvm::IRBuilder<> builder(gep);
+	// 直接使用量化后的全局变量，无需 bitcast
+	llvm::SmallVector<llvm::Value*, 4> Indices;
+	for (llvm::Value *idx : gep->indices())
+		Indices.push_back(idx);
+	// 重建 GEP：注意这里使用 quantizedConst 的类型（例如 [6 x i32]），因此 newGEP 的类型为 i32*
+	llvm::Value *newGEP = builder.CreateGEP(quantizedConst.getType()->getPointerElementType(),
+						 &quantizedConst, Indices,
+						 gep->getName() + ".quantized_gep");
+	// newGEP 应该直接就是你期望的类型，即 i32*
+	gep->replaceAllUsesWith(newGEP);
+	gep->eraseFromParent();
+	llvm::errs() << "Replaced GEP instruction for " << origConst.getName() << "\n";
+}
+
+// 主函数：遍历 origConst 的所有使用，在白名单函数中替换为量化后的全局变量
+void replaceInternalConstantUses(Module *module,
+			    GlobalVariable &origConst,
+			    GlobalVariable &quantizedConst) {
+	std::vector<Use *> usesToReplace;
+
+	for (auto it = origConst.use_begin(), end = origConst.use_end(); it != end; ) {
+		Use &use = *it++;
+		Value *user = use.getUser();
+
+		// 如果用户是 ConstantExpr
+		if (ConstantExpr *constExpr = dyn_cast<ConstantExpr>(user)) {
+			handleConstantExprUse(constExpr, origConst, quantizedConst);
+			continue;
+		}
+
+		// 如果用户是指令，且所在函数在白名单中
+		Instruction *inst = dyn_cast<Instruction>(user);
+		if (!inst || !inst->getFunction() || !shouldProcessFunction(*inst->getFunction()))
+			continue;
+
+		// 如果该指令是 GEP，并且结果类型为 double*，则进行替换
+		if (GetElementPtrInst *gep = dyn_cast<GetElementPtrInst>(inst)) {
+			if (gep->getResultElementType()->isDoubleTy()) {
+				handleGEPInstruction(gep, origConst, quantizedConst);
+				continue;  // 该 GEP 指令已经被替换，不需要再添加到 usesToReplace
+			}
+		}
+		// 其他情况，将该 use 加入待统一替换列表
+		usesToReplace.push_back(&use);
+	}
+
+	// 对剩余未处理的使用，统一替换为量化后的全局变量
+	for (Use *use : usesToReplace)
+		use->set(&quantizedConst);
+
+	errs() << "Replaced all uses of " << origConst.getName()
+	       << " with " << quantizedConst.getName()
+	       << " in whitelisted functions.\n";
+}
+
+
+
+
+
 void updateInternalConstants(Module *module, Type *quantizedType) {
 	llvm::errs() << "Updating internal constants\n";
 
@@ -547,8 +710,9 @@ void updateInternalConstants(Module *module, Type *quantizedType) {
 
 		GlobalVariable *quantizedConst = getOrCreateQuantizedConstant(module, globalVar, quantizedType);
 
-
-		replaceUsesInWhitelistedFunctions(globalVar, *quantizedConst);
+		if (quantizedConst) {
+			replaceInternalConstantUses(module, globalVar, *quantizedConst);
+		}
 
 		llvm::errs() << "Original internal constant preserved: " << globalName << "\n";
 	}
@@ -557,34 +721,6 @@ void updateInternalConstants(Module *module, Type *quantizedType) {
 
 
 
-
-// void
-// handleLoad(Instruction * llvmIrInstruction, Type * quantizedType)
-//{
-//	if (auto * loadInst = dyn_cast<LoadInst>(llvmIrInstruction))
-//	{
-//		IRBuilder<> Builder(loadInst);
-//
-//		// Check if the loaded value is of floating-point type
-//		Type * loadedType = loadInst->getType();
-//		// Type * pointerType = loadInst->getPointerOperandType();
-//
-//		if (loadedType->isFloatingPointTy())
-//		{
-//			llvm::errs() << "Handling normal load instruction\n";
-//			// Create a new load instruction with the original pointer operand
-//			LoadInst * newLoadInst = Builder.CreateLoad(quantizedType, loadInst->getPointerOperand(), loadInst->getName() + ".orig");
-//
-//			// Replace all uses of the original load instruction with the new converted value
-//			loadInst->replaceAllUsesWith(newLoadInst);
-//
-//			// Schedule the original load instruction for removal
-//			loadInst->eraseFromParent();
-//
-//			llvm::errs() << "Replaced floating-point load with quantized integer load.\n";
-//		}
-//	}
-// }
 
 void
 quantizePointer(LoadInst * loadInst, IRBuilder<> & Builder, Type * quantizedType, Type * loadedType)
@@ -627,26 +763,6 @@ void quantizeMatrixFloat(LoadInst *loadInst, IRBuilder<> &Builder, Type *quantiz
 	}
 }
 
-
-// void
-// quantizePointer(LoadInst * loadInst, IRBuilder<> & Builder, Type * quantizedType, Type * loadedType)
-//{
-//	Value * pointerOperand = loadInst->getPointerOperand();
-//	llvm::errs() << "Quantizing load from local pointer: " << *pointerOperand << "\n";
-//
-//	Value * loadedValue = Builder.CreateLoad(loadedType, pointerOperand, loadInst->getName() + ".p");
-//
-//	Value * scaledValue = Builder.CreateFMul(loadedValue, ConstantFP::get(loadedType, FRAC_BASE), loadInst->getName() + ".scaled_ptr");
-//
-//	Value * roundingValue = Builder.CreateFAdd(scaledValue, ConstantFP::get(loadedType, 0.5), loadInst->getName() + ".rounded_ptr");
-//
-//	Value * quantizedValue = Builder.CreateFPToSI(roundingValue, quantizedType, loadInst->getName() + ".quantized_ptr");
-//
-//	loadInst->replaceAllUsesWith(quantizedValue);
-//	loadInst->eraseFromParent();
-//
-//	llvm::errs() << "Replaced load with quantized integer value.\n";
-// }
 /**
  * handleLoad
  */
@@ -664,8 +780,11 @@ handleLoad(Instruction * llvmIrInstruction, Type * quantizedType)
 
 			if (isa<GlobalVariable>(pointerOperand) ||
 			    parentFunc->getName() == "MadgwickAHRSupdateIMU" ||
-			    parentFunc->getName() == "MahonyAHRSupdateIMU")
+			    parentFunc->getName() == "MahonyAHRSupdateIMU" ||
+			    parentFunc->getName() == "pzero" ||
+			    parentFunc->getName() == "qzero")
 			{
+
 				llvm::errs() << "Handling load from global variable: " << *pointerOperand << "\n";
 				LoadInst * newLoadInst = Builder.CreateLoad(quantizedType, pointerOperand, loadInst->getName() + ".global_quantized");
 				llvm::errs() << "New load instruction: " << *newLoadInst << "\n";
@@ -674,17 +793,31 @@ handleLoad(Instruction * llvmIrInstruction, Type * quantizedType)
 			}
 
 			// Quantize local pointers
-#ifndef IS_MATRIX
+//#ifndef IS_MATRIX
+//			else if (!isa<GlobalVariable>(pointerOperand))
+//			{
+//				quantizePointer(loadInst, Builder, quantizedType, loadedType);
+//			}
+//#else
+//			else if (!isa<GlobalVariable>(pointerOperand))
+//			{
+//				quantizeMatrixFloat(loadInst, Builder, quantizedType, loadedType);
+//			}
+//#endif
+
+#ifdef IS_POINTER
 			else if (!isa<GlobalVariable>(pointerOperand))
 			{
 				quantizePointer(loadInst, Builder, quantizedType, loadedType);
 			}
+
 #else
 			else if (!isa<GlobalVariable>(pointerOperand))
 			{
 				quantizeMatrixFloat(loadInst, Builder, quantizedType, loadedType);
 			}
 #endif
+
 		}
 	}
 }
@@ -697,6 +830,23 @@ handleFAdd(Instruction * inInstruction, Type * quantizedType)
 
 	Value * op0 = inInstruction->getOperand(0);
 	Value * op1 = inInstruction->getOperand(1);
+
+	// Check if one of the operands is a floating-point constant that needs to be multiplied by FRAC_BASE
+	if (ConstantFP * constFp = dyn_cast<ConstantFP>(op0))
+	{
+		// Multiply the constant by FRAC_BASE and convert to integer
+		float	constValue     = constFp->getValueAPF().convertToFloat();
+		int64_t quantizedValue = static_cast<int64_t>(round(constValue * FRAC_BASE));
+		op0		       = ConstantInt::get(quantizedType, quantizedValue);
+	}
+
+	if (ConstantFP * constFp = dyn_cast<ConstantFP>(op1))
+	{
+		// Multiply the constant by FRAC_BASE and convert to integer
+		float	constValue     = constFp->getValueAPF().convertToFloat();
+		int64_t quantizedValue = static_cast<int64_t>(round(constValue * FRAC_BASE));
+		op1		       = ConstantInt::get(quantizedType, quantizedValue);
+	}
 
 	// Check if this instruction has metadata indicating it's quantized
 	if (inInstruction->getMetadata("quantized"))
@@ -1148,6 +1298,84 @@ handleFMul(Instruction * llvmIrInstruction, Type * quantizedType)
 	llvm::errs() << "Finished handling FMul\n";
 }
 
+
+void handleFDiv(Instruction *llvmIrInstruction, Type *quantizedType) {
+	llvm::errs() << "Handling FDiv\n";
+	llvm::errs() << "Original Instruction: " << *llvmIrInstruction << "\n";
+	IRBuilder<> Builder(llvmIrInstruction);
+
+	// 如果已有 quantized 元数据，则跳过处理
+	if (llvmIrInstruction->getMetadata("quantized")) {
+		llvm::errs() << "Skipping already quantized instruction.\n";
+		return;
+	}
+
+	// 获取左右操作数
+	Value *lhs = llvmIrInstruction->getOperand(0);
+	Value *rhs = llvmIrInstruction->getOperand(1);
+
+	llvm::errs() << "LHS: " << *lhs << "\n";
+	llvm::errs() << "RHS: " << *rhs << "\n";
+
+	// 判断操作数是否为浮点型（float 或 double）
+	bool lhsIsFloat = lhs->getType()->isFloatTy() || lhs->getType()->isDoubleTy();
+	bool rhsIsFloat = rhs->getType()->isFloatTy() || rhs->getType()->isDoubleTy();
+
+	// 检查常量：如果其中一个操作数是常量FP，则尝试简化
+	if (auto rhsConst = dyn_cast<ConstantFP>(rhs)) {
+		if (checkAndSimplifyForConstant(rhsConst, lhs, llvmIrInstruction))
+			return;
+	}
+	if (auto lhsConst = dyn_cast<ConstantFP>(lhs)) {
+		if (checkAndSimplifyForConstant(lhsConst, rhs, llvmIrInstruction))
+			return;
+	}
+
+	// 如果任一操作数是浮点常量，则通过 simplifyConstant 将其转换为固定点整数
+	if (isa<ConstantFP>(lhs)) {
+		llvm::errs() << "LHS is a floating-point constant, handling it with simplifyConstant\n";
+		simplifyConstant(llvmIrInstruction, quantizedType);
+		lhs = llvmIrInstruction->getOperand(0);
+		lhsIsFloat = false;  // 更新状态，现已转换为固定点整数
+	}
+	if (isa<ConstantFP>(rhs)) {
+		llvm::errs() << "RHS is a floating-point constant, handling it with simplifyConstant\n";
+		simplifyConstant(llvmIrInstruction, quantizedType);
+		rhs = llvmIrInstruction->getOperand(1);
+		rhsIsFloat = false;
+	}
+
+	// 如果任一操作数是整数常量，则直接用整数除法
+	if (isa<ConstantInt>(lhs) || isa<ConstantInt>(rhs)) {
+		llvm::errs() << "One of the operands is an integer constant, using division directly\n";
+		Value *newInst = Builder.CreateSDiv(lhs, rhs);
+		llvmIrInstruction->replaceAllUsesWith(newInst);
+		llvmIrInstruction->eraseFromParent();
+		return;
+	}
+
+	// 如果任一操作数仍为浮点，则转换为固定点整数
+	if (lhsIsFloat) {
+		lhs = Builder.CreateFPToSI(lhs, quantizedType);
+		llvm::errs() << "Converted LHS to fixed-point: " << *lhs << "\n";
+	}
+	if (rhsIsFloat) {
+		rhs = Builder.CreateFPToSI(rhs, quantizedType);
+		llvm::errs() << "Converted RHS to fixed-point: " << *rhs << "\n";
+	}
+
+	// 此时，lhs 和 rhs 均为整数（固定点表示），根据要求：
+	// 除法过程中不需要左移（即不乘 FRAC_BASE），也不在除法后做位移
+	// 所以直接进行整数除法即可
+	llvm::Value *newInst = Builder.CreateSDiv(lhs, rhs);
+	llvmIrInstruction->replaceAllUsesWith(newInst);
+	llvmIrInstruction->eraseFromParent();
+
+	llvm::errs() << "Finished handling FDiv\n";
+}
+
+
+
 void
 setQuantizedType(Value * inValue, Type * quantizedType)
 {
@@ -1203,6 +1431,42 @@ handleAlloca(AllocaInst * llvmIrAllocaInstruction, Type * quantizedType)
 	else
 	{
 		llvm::errs() << " - No need to change type for non-floating point allocation.\n";
+	}
+}
+
+
+void handleGEPForQuantization(GetElementPtrInst *gep, Type *quantizedType) {
+	// 检查原来的元素类型是否为浮点型
+	if (gep->getResultElementType()->isFloatingPointTy()) {
+		IRBuilder<> Builder(gep);
+		llvm::errs() << "Handling GEP quantization for: " << *gep << "\n";
+
+		// 获取原指针操作数
+		Value *ptr = gep->getPointerOperand();
+		// 如果指针操作数的元素类型不是 quantizedType，则转换
+		if (ptr->getType()->getPointerElementType() != quantizedType) {
+			// 注意：如果 ptr 原本不是 quantizedType*，这里我们进行 bitcast
+			ptr = Builder.CreateBitCast(ptr, PointerType::getUnqual(quantizedType),
+						    ptr->getName() + ".casted");
+		}
+
+		// 收集原来的索引（不包括第一个操作数）
+		SmallVector<Value*, 4> Indices;
+		for (Value *idx : gep->indices()) {
+			Indices.push_back(idx);
+		}
+
+		// 创建新的 GEP 指令，元素类型直接使用 quantizedType
+		Value *newGEP = Builder.CreateGEP(quantizedType, ptr, Indices, gep->getName() + ".quantized");
+
+		// 替换所有使用，并删除原来的 GEP 指令
+		gep->replaceAllUsesWith(newGEP);
+		gep->eraseFromParent();
+
+		llvm::errs() << "Replaced GEP with quantized version: " << *newGEP << "\n";
+	} else {
+		llvm::errs() << "GEP element type is not floating-point. No quantization performed for: "
+			     << *gep << "\n";
 	}
 }
 
@@ -1576,23 +1840,34 @@ handleCall(CallInst * llvmIrCallInstruction, Type * quantizedType, std::vector<l
 	}
 }
 
-void handleGetElementPtr(GetElementPtrInst *gepInst, Type *quantizedType)
-{
-	// Get the base pointer type (the element type of the pointer being indexed)
+void handleGetElementPtr(GetElementPtrInst *gepInst, Type *quantizedType) {
+	// 获取原始指令所操作的数组的元素类型
 	Type *elementType = gepInst->getSourceElementType();
 
-	// Process only `getelementptr inbounds float, float*` (not `float**`)
-	if (elementType->isFloatingPointTy())
-	{
+	// 仅处理原来操作数为浮点类型的情况（例如 double 或 float）
+	if (elementType->isFloatingPointTy()) {
 		IRBuilder<> Builder(gepInst);
 
-		// Bitcast the result of GEP from `float*` to `i32*`
-		Value *bitcastPtr = Builder.CreateBitCast(gepInst, quantizedType->getPointerTo(), gepInst->getName() + "_i32");
+		// 获取基指针
+		Value *basePtr = gepInst->getPointerOperand();
 
-		// Replace all uses of the original GEP result with the new `i32*`
-		gepInst->replaceAllUsesWith(bitcastPtr);
+		// 收集原 GEP 指令中的所有索引
+		SmallVector<Value*, 4> Indices;
+		for (Value *Idx : gepInst->indices())
+			Indices.push_back(Idx);
 
-		llvm::errs() << "Replaced GEP(float*) with bitcast to i32*: " << *gepInst << "\n";
+		// 直接构造新的 getelementptr 指令，
+		// 指定元素类型为 quantizedType，从而生成的指针类型为 quantizedType*
+		// 使用原始指令的名称，不附加后缀
+		Value *newGEP = Builder.CreateGEP(quantizedType, basePtr, Indices, gepInst->getName());
+
+		// 替换所有对原 GEP 指令的使用，并删除原指令
+		gepInst->replaceAllUsesWith(newGEP);
+		gepInst->eraseFromParent();
+
+		llvm::errs() << "Replaced GEP with quantized version: " << *newGEP << "\n";
+	} else {
+		llvm::errs() << "GEP element type is not floating-point, no quantization applied: " << *gepInst << "\n";
 	}
 }
 
@@ -1619,9 +1894,21 @@ quantizeFunctionArguments(llvm::Function & func, llvm::IRBuilder<> & builder)
 			{
 				usesToReplace.push_back(&use);
 			}
+			//TODO Check if the argument is a float or double
+			Value * processedArg = &arg;
+			llvm::Instruction * castedFloat = nullptr;
+			if (arg.getType()->isDoubleTy()) {
+				castedFloat = cast<llvm::Instruction>(
+				    builder.CreateFPTrunc(&arg, llvm::Type::getFloatTy(arg.getContext()), arg.getName() + ".casted_float"));
+				processedArg = castedFloat;
+			}
+
+
 
 			// Create multiplication and rounding instructions
-			llvm::Instruction * scaled  = cast<llvm::Instruction>(builder.CreateFMul(&arg, llvm::ConstantFP::get(arg.getContext(), llvm::APFloat((float)FRAC_BASE)), arg.getName() + ".scaled"));
+			//llvm::Instruction * scaled  = cast<llvm::Instruction>(builder.CreateFMul(&arg, llvm::ConstantFP::get(arg.getContext(), llvm::APFloat((float)FRAC_BASE)), arg.getName() + ".scaled"));
+			llvm::Instruction * scaled = cast<llvm::Instruction>(
+			    builder.CreateFMul(processedArg, llvm::ConstantFP::get(arg.getContext(), llvm::APFloat((float)FRAC_BASE)), arg.getName() + ".scaled"));
 			llvm::Instruction * rounded = cast<llvm::Instruction>(builder.CreateFAdd(scaled, llvm::ConstantFP::get(arg.getContext(), llvm::APFloat(0.5f)), arg.getName() + ".rounded"));
 			// llvm::Instruction * quantized = cast<llvm::Instruction>(builder.CreateFPToSI(rounded, llvm::Type::getInt32Ty(arg.getContext()), arg.getName() + ".changed"));
 			llvm::Instruction * quantized = nullptr;
@@ -1873,11 +2160,7 @@ irPassLLVMIRAutoQuantization(State *N, llvm::Function &llvmIrFunction, std::vect
 			{
 				Instruction * llvmIrInstruction = &*itBB++;
 
-				//			if (llvmIrInstruction->getMetadata("quantized_changed"))
-				//			{
-				//				llvm::errs() << "quantized_changed.\n";
-				//				return;	 // Skip processing this instruction
-				//			}
+
 
 				llvm::errs() << "Processing instruction in main: " << *llvmIrInstruction << "\n";
 				switch (llvmIrInstruction->getOpcode())
@@ -1890,7 +2173,8 @@ irPassLLVMIRAutoQuantization(State *N, llvm::Function &llvmIrFunction, std::vect
 						handleCall(cast<CallInst>(llvmIrInstruction), quantizedType, functionsToInsert, fixrsqrt);
 						break;
 					case Instruction::GetElementPtr:
-						//handleGetElementPtr(cast<GetElementPtrInst>(llvmIrInstruction), quantizedType);
+						handleGetElementPtr(cast<GetElementPtrInst>(llvmIrInstruction), quantizedType);
+						break;
 					case Instruction::Load:
 					{
 						llvm::errs() << "Handling load\n";
@@ -1924,6 +2208,8 @@ irPassLLVMIRAutoQuantization(State *N, llvm::Function &llvmIrFunction, std::vect
 						 * then replace the instruction to the int version.
 						 * */
 					case Instruction::FDiv:
+						handleFDiv(llvmIrInstruction, quantizedType);
+						break;
 
 					case Instruction::FCmp:
 						handleFCmp(llvmIrInstruction, quantizedType);
