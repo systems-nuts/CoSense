@@ -40,10 +40,10 @@ endif
 
 # auto-quantization configs, FP hardware by default, for Madgwick only currently
 # AUTO_QUANT=true make ...
-ifdef AUTO_QUANT
-DATA_TYPE=INT_DATA_TYPE
-else
-DATA_TYPE=FP_DATA_TYPE
+#ifdef AUTO_QUANT
+#DATA_TYPE=INT_DATA_TYPE
+#else
+#DATA_TYPE=FP_DATA_TYPE
 
 # SOFT_FLOAT_LIB=true make ...
 ifdef SOFT_FLOAT_LIB
@@ -54,16 +54,20 @@ CC_FP_FLAG = -msoft-float
 OPT_FP_FLAG = --float-abi=soft
 endif
 
-endif
+
 
 # ENABLE_OVERLOAD=true ENABLE_BUILTIN_ASSUME=true make ...
-NEWTON_FLAG=--llvm-ir-liveness-check --llvm-ir-auto-quantization
+NEWTON_FLAG=--llvm-ir-liveness-check
 #NEWTON_FLAG=--llvm-ir-liveness-check
 ifdef ENABLE_OVERLOAD
 NEWTON_FLAG+=--llvm-ir-enable-overload
 endif
 ifdef ENABLE_BUILTIN_ASSUME
 NEWTON_FLAG+=--llvm-ir-enable-builtin-assume
+endif
+
+ifdef AUTO_QUANT
+NEWTON_FLAG+=--llvm-ir-auto-quantization
 endif
 
 max_opt_fn = opt ../$(1).ll $(OPT_FP_FLAG) -O3 -Os -S -o $(OUT_FILE)
