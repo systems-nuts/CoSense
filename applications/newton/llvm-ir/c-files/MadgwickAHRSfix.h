@@ -23,7 +23,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include <stdio.h>
 #include <stdbool.h>
 
-#define FRAC_Q			10
+#define FRAC_Q			16
 #define FRAC_BASE		(1<<FRAC_Q)
 #define DEC2FRAC(_d)		((uint8_t)(_d*FRAC_BASE))
 #define DISPLAY_INT(_x)		((_x>>FRAC_Q) + (((uint32_t)_x)>>(sizeof(int32_t)*FRAC_Q-1)))
