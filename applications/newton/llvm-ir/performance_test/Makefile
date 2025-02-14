@@ -57,7 +57,8 @@ endif
 endif
 
 # ENABLE_OVERLOAD=true ENABLE_BUILTIN_ASSUME=true make ...
-NEWTON_FLAG=--llvm-ir-liveness-check
+NEWTON_FLAG=--llvm-ir-liveness-check --llvm-ir-auto-quantization
+#NEWTON_FLAG=--llvm-ir-liveness-check
 ifdef ENABLE_OVERLOAD
 NEWTON_FLAG+=--llvm-ir-enable-overload
 endif

@@ -37,7 +37,7 @@
 #
 #	Description: Base signals used in most Newton descriptions.
 #
-include "applications/newton/include/NewtonBaseSignals.nt"
+include "NewtonBaseSignals.nt"
 
 #
 #	Description: Additional signals used in this particular newton description.
@@ -205,7 +205,7 @@ bmx055: sensor (
 		#
 		#	Get MSB and LSB of zAccel data...
 		#
-		 
+
 		zAccelHigh := read 16r07;
 		zAccelLow  := read 16r06;
 		bmx055zAcceleration = (zAccelHigh << 4) | (zAccelLow >> 4);
@@ -218,9 +218,9 @@ bmx055: sensor (
 	#
 	interface bmx055Temperature == i2c (address: 16r18)
 	{
-		#		
+		#
 		#	Start up at normal mode, modify (write value register) if set to other modes ...
-		#	
+		#
 		#	Get Temp data...
 		#
 		bmx055Temperature = read 16r08;
@@ -235,7 +235,7 @@ bmx055: sensor (
 	{
 		#
 		#	Start up at normal mode, modify (write value register) if set to other modes ...
-		#	
+		#
 		#	Get MSB and LSB of xMagneto data...
 		#
 		xMagnetoHigh := read 16r43;
@@ -289,7 +289,7 @@ bmx055: sensor (
 		#
 		#	Start up at normal mode, modify (write value register) if set to other modes ...
 		#
-		#	Get MSB and LSB of yAngularRate data...	
+		#	Get MSB and LSB of yAngularRate data...
 		#
 		yAngularRateHigh := read 16r05;
 		yAngularRateLow := read 16r04;

@@ -1297,8 +1297,6 @@ handleFMul(Instruction * llvmIrInstruction, Type * quantizedType)
 
 	llvm::errs() << "Finished handling FMul\n";
 }
-
-
 void handleFDiv(Instruction *llvmIrInstruction, Type *quantizedType) {
 	llvm::errs() << "Handling FDiv\n";
 	llvm::errs() << "Original Instruction: " << *llvmIrInstruction << "\n";
@@ -1321,7 +1319,7 @@ void handleFDiv(Instruction *llvmIrInstruction, Type *quantizedType) {
 	bool lhsIsFloat = lhs->getType()->isFloatTy() || lhs->getType()->isDoubleTy();
 	bool rhsIsFloat = rhs->getType()->isFloatTy() || rhs->getType()->isDoubleTy();
 
-	// 检查常量：如果其中一个操作数是常量FP，则尝试简化
+	// 检查常量：如果其中一个操作数是 ConstantFP，则尝试简化
 	if (auto rhsConst = dyn_cast<ConstantFP>(rhs)) {
 		if (checkAndSimplifyForConstant(rhsConst, lhs, llvmIrInstruction))
 			return;
@@ -1345,8 +1343,17 @@ void handleFDiv(Instruction *llvmIrInstruction, Type *quantizedType) {
 		rhsIsFloat = false;
 	}
 
-	// 如果任一操作数是整数常量，则直接用整数除法
+	// 如果任一操作数是整数常量，则先检查特殊情况优化：
+	// 如果右操作数为常量 1，则直接替换为左操作数
 	if (isa<ConstantInt>(lhs) || isa<ConstantInt>(rhs)) {
+		if (ConstantInt *CI = dyn_cast<ConstantInt>(rhs)) {
+			if (CI->isOne()) {
+				llvm::errs() << "RHS is constant one, replacing division with LHS\n";
+				llvmIrInstruction->replaceAllUsesWith(lhs);
+				llvmIrInstruction->eraseFromParent();
+				return;
+			}
+		}
 		llvm::errs() << "One of the operands is an integer constant, using division directly\n";
 		Value *newInst = Builder.CreateSDiv(lhs, rhs);
 		llvmIrInstruction->replaceAllUsesWith(newInst);
@@ -1367,12 +1374,88 @@ void handleFDiv(Instruction *llvmIrInstruction, Type *quantizedType) {
 	// 此时，lhs 和 rhs 均为整数（固定点表示），根据要求：
 	// 除法过程中不需要左移（即不乘 FRAC_BASE），也不在除法后做位移
 	// 所以直接进行整数除法即可
-	llvm::Value *newInst = Builder.CreateSDiv(lhs, rhs);
+	Value *newInst = Builder.CreateSDiv(lhs, rhs);
 	llvmIrInstruction->replaceAllUsesWith(newInst);
 	llvmIrInstruction->eraseFromParent();
 
 	llvm::errs() << "Finished handling FDiv\n";
 }
+
+
+//void handleFDiv(Instruction *llvmIrInstruction, Type *quantizedType) {
+//	llvm::errs() << "Handling FDiv\n";
+//	llvm::errs() << "Original Instruction: " << *llvmIrInstruction << "\n";
+//	IRBuilder<> Builder(llvmIrInstruction);
+//
+//	// 如果已有 quantized 元数据，则跳过处理
+//	if (llvmIrInstruction->getMetadata("quantized")) {
+//		llvm::errs() << "Skipping already quantized instruction.\n";
+//		return;
+//	}
+//
+//	// 获取左右操作数
+//	Value *lhs = llvmIrInstruction->getOperand(0);
+//	Value *rhs = llvmIrInstruction->getOperand(1);
+//
+//	llvm::errs() << "LHS: " << *lhs << "\n";
+//	llvm::errs() << "RHS: " << *rhs << "\n";
+//
+//	// 判断操作数是否为浮点型（float 或 double）
+//	bool lhsIsFloat = lhs->getType()->isFloatTy() || lhs->getType()->isDoubleTy();
+//	bool rhsIsFloat = rhs->getType()->isFloatTy() || rhs->getType()->isDoubleTy();
+//
+//	// 检查常量：如果其中一个操作数是常量FP，则尝试简化
+//	if (auto rhsConst = dyn_cast<ConstantFP>(rhs)) {
+//		if (checkAndSimplifyForConstant(rhsConst, lhs, llvmIrInstruction))
+//			return;
+//	}
+//	if (auto lhsConst = dyn_cast<ConstantFP>(lhs)) {
+//		if (checkAndSimplifyForConstant(lhsConst, rhs, llvmIrInstruction))
+//			return;
+//	}
+//
+//	// 如果任一操作数是浮点常量，则通过 simplifyConstant 将其转换为固定点整数
+//	if (isa<ConstantFP>(lhs)) {
+//		llvm::errs() << "LHS is a floating-point constant, handling it with simplifyConstant\n";
+//		simplifyConstant(llvmIrInstruction, quantizedType);
+//		lhs = llvmIrInstruction->getOperand(0);
+//		lhsIsFloat = false;  // 更新状态，现已转换为固定点整数
+//	}
+//	if (isa<ConstantFP>(rhs)) {
+//		llvm::errs() << "RHS is a floating-point constant, handling it with simplifyConstant\n";
+//		simplifyConstant(llvmIrInstruction, quantizedType);
+//		rhs = llvmIrInstruction->getOperand(1);
+//		rhsIsFloat = false;
+//	}
+//
+//	// 如果任一操作数是整数常量，则直接用整数除法
+//	if (isa<ConstantInt>(lhs) || isa<ConstantInt>(rhs)) {
+//		llvm::errs() << "One of the operands is an integer constant, using division directly\n";
+//		Value *newInst = Builder.CreateSDiv(lhs, rhs);
+//		llvmIrInstruction->replaceAllUsesWith(newInst);
+//		llvmIrInstruction->eraseFromParent();
+//		return;
+//	}
+//
+//	// 如果任一操作数仍为浮点，则转换为固定点整数
+//	if (lhsIsFloat) {
+//		lhs = Builder.CreateFPToSI(lhs, quantizedType);
+//		llvm::errs() << "Converted LHS to fixed-point: " << *lhs << "\n";
+//	}
+//	if (rhsIsFloat) {
+//		rhs = Builder.CreateFPToSI(rhs, quantizedType);
+//		llvm::errs() << "Converted RHS to fixed-point: " << *rhs << "\n";
+//	}
+//
+//	// 此时，lhs 和 rhs 均为整数（固定点表示），根据要求：
+//	// 除法过程中不需要左移（即不乘 FRAC_BASE），也不在除法后做位移
+//	// 所以直接进行整数除法即可
+//	llvm::Value *newInst = Builder.CreateSDiv(lhs, rhs);
+//	llvmIrInstruction->replaceAllUsesWith(newInst);
+//	llvmIrInstruction->eraseFromParent();
+//
+//	llvm::errs() << "Finished handling FDiv\n";
+//}
 
 
 
@@ -1755,6 +1838,8 @@ handleSinCosCall(CallInst * llvmIrCallInstruction, Type * quantizedType, const s
 //	llvmIrCallInstruction->eraseFromParent();
 //}
 
+
+
 void
 
 // handleCall(CallInst * llvmIrCallInstruction, Type * quantizedType, std::vector<llvm::Function *> & functionsToInsert,  llvm::Function * fixrsqrt)
@@ -2069,15 +2154,6 @@ adaptTypeCast(llvm::Function & llvmIrFunction, Type * quantizedType)
 }
 
 
-
-
-
-// Main function to perform LLVM IR auto quantization
-//void
-//irPassLLVMIRAutoQuantization(State * N, llvm::Function & llvmIrFunction, std::vector<llvm::Function *> & functionsToInsert, int maxPrecisionBits, int bitWidth, std::vector<std::pair<double, double>>> &virtualRegisterVectorRange,bool enableVectorization,bool enableRangeAnalysis)
-//void irPassLLVMIRAutoQuantization(State *N, Function &F, std::vector<Function *> &functionsToInsert,
-//                                  int maxPrecisionBits, std::map<Value *, std::vector<std::pair<double, double>>> &virtualRegisterVectorRange,
-//                                  int bitWidth, bool enableVectorization, bool enableRangeAnalysis)
 void
 irPassLLVMIRAutoQuantization(State *N, llvm::Function &llvmIrFunction, std::vector<llvm::Function *> &functionsToInsert,
 
@@ -2263,6 +2339,9 @@ irPassLLVMIRAutoQuantization(State *N, llvm::Function &llvmIrFunction, std::vect
 
 					case Instruction::BitCast:
 					case Instruction::Ret:
+//						handleReturn(cast<ReturnInst>(llvmIrInstruction), quantizedType);
+//						break;
+
 					case Instruction::Switch:
 					case Instruction::Br:
 					case Instruction::Select:
@@ -2292,7 +2371,8 @@ irPassLLVMIRAutoQuantization(State *N, llvm::Function &llvmIrFunction, std::vect
 					case Instruction::InsertValue:
 					case Instruction::LandingPad:
 					case Instruction::Freeze:
-						break;
+
+
 					default:
 						break;
 				}
