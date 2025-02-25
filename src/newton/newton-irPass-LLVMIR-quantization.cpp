@@ -354,7 +354,8 @@ bool shouldProcessFunction(Function &F) {
 	    "matrixAdd",
 	    "matrixSub",
 	    "pzero",
-	    "qzero"
+	    "qzero",
+	    "__ieee754_exp"
 
 	};
 
@@ -778,11 +779,20 @@ handleLoad(Instruction * llvmIrInstruction, Type * quantizedType)
 			Value *	   pointerOperand = loadInst->getPointerOperand();
 			Function * parentFunc	  = loadInst->getFunction();
 
+//			if (isa<GlobalVariable>(pointerOperand) ||
+//			    parentFunc->getName() == "MadgwickAHRSupdateIMU" ||
+//			    parentFunc->getName() == "MahonyAHRSupdateIMU" ||
+//			    parentFunc->getName() == "pzero" ||
+//			    parentFunc->getName() == "qzero") ||
+//				    parentFunc->getName() == "ieee754_exp"
 			if (isa<GlobalVariable>(pointerOperand) ||
 			    parentFunc->getName() == "MadgwickAHRSupdateIMU" ||
 			    parentFunc->getName() == "MahonyAHRSupdateIMU" ||
 			    parentFunc->getName() == "pzero" ||
-			    parentFunc->getName() == "qzero")
+			    parentFunc->getName() == "qzero" ||
+			    parentFunc->getName() == "__ieee754_exp")
+				// ...
+
 			{
 
 				llvm::errs() << "Handling load from global variable: " << *pointerOperand << "\n";
@@ -988,6 +998,54 @@ handleFCmp(Instruction * inInstruction, Type * quantizedType)
 		}
 		inInstruction->eraseFromParent();
 	}
+}
+
+void handleSelect(Instruction * inInstruction, Type * quantizedType)
+{
+	llvm::errs() << "Handling Select\n";
+
+	// 检查操作数数量
+	if (inInstruction->getNumOperands() < 3) {
+		llvm::errs() << "Error: Select instruction does not have 3 operands!\n";
+		return;
+	}
+	IRBuilder<> Builder(inInstruction);
+
+	// 获取 select 指令的三个操作数
+	// 操作数 0 为条件值，操作数 1 为条件为 true 时的值，操作数 2 为条件为 false 时的值
+	Value * condition = inInstruction->getOperand(0);
+	Value * opTrue    = inInstruction->getOperand(1);
+	Value * opFalse   = inInstruction->getOperand(2);
+
+	llvm::errs() << "Original condition: " << *condition << "\n";
+	llvm::errs() << "Original true branch: " << *opTrue << "\n";
+	llvm::errs() << "Original false branch: " << *opFalse << "\n";
+
+	// 如果 true 分支的操作数是浮点常量，则进行量化转换
+	if (ConstantFP * constFp = dyn_cast<ConstantFP>(opTrue))
+	{
+		float constValue = constFp->getValueAPF().convertToFloat();
+		int64_t quantizedValue = static_cast<int64_t>(round(constValue * FRAC_BASE));
+		opTrue = ConstantInt::get(quantizedType, quantizedValue);
+	}
+
+	// 如果 false 分支的操作数是浮点常量，则进行量化转换
+	if (ConstantFP * constFp = dyn_cast<ConstantFP>(opFalse))
+	{
+		float constValue = constFp->getValueAPF().convertToFloat();
+		int64_t quantizedValue = static_cast<int64_t>(round(constValue * FRAC_BASE));
+		opFalse = ConstantInt::get(quantizedType, quantizedValue);
+	}
+
+	// 生成新的 select 指令，保持条件不变，使用转换后的 true 和 false 值
+	Value * newInst = Builder.CreateSelect(condition, opTrue, opFalse);
+	llvm::errs() << "Created new select instruction: " << *newInst << "\n";
+
+	// 将原来的 select 指令替换成新的 select 指令
+	inInstruction->replaceAllUsesWith(newInst);
+	inInstruction->eraseFromParent();
+
+	llvm::errs() << "Finished handling Select\n";
 }
 
 void
@@ -1381,81 +1439,71 @@ void handleFDiv(Instruction *llvmIrInstruction, Type *quantizedType) {
 	llvm::errs() << "Finished handling FDiv\n";
 }
 
+void handlePhi(Instruction *inInstruction, Type *quantizedType)
+{
+	llvm::errs() << "Handling PHI\n";
+	PHINode *phi = dyn_cast<PHINode>(inInstruction);
+	if (!phi) {
+		llvm::errs() << "Error: Instruction is not a PHI node.\n";
+		return;
+	}
 
-//void handleFDiv(Instruction *llvmIrInstruction, Type *quantizedType) {
-//	llvm::errs() << "Handling FDiv\n";
-//	llvm::errs() << "Original Instruction: " << *llvmIrInstruction << "\n";
-//	IRBuilder<> Builder(llvmIrInstruction);
-//
-//	// 如果已有 quantized 元数据，则跳过处理
-//	if (llvmIrInstruction->getMetadata("quantized")) {
-//		llvm::errs() << "Skipping already quantized instruction.\n";
-//		return;
-//	}
-//
-//	// 获取左右操作数
-//	Value *lhs = llvmIrInstruction->getOperand(0);
-//	Value *rhs = llvmIrInstruction->getOperand(1);
-//
-//	llvm::errs() << "LHS: " << *lhs << "\n";
-//	llvm::errs() << "RHS: " << *rhs << "\n";
-//
-//	// 判断操作数是否为浮点型（float 或 double）
-//	bool lhsIsFloat = lhs->getType()->isFloatTy() || lhs->getType()->isDoubleTy();
-//	bool rhsIsFloat = rhs->getType()->isFloatTy() || rhs->getType()->isDoubleTy();
-//
-//	// 检查常量：如果其中一个操作数是常量FP，则尝试简化
-//	if (auto rhsConst = dyn_cast<ConstantFP>(rhs)) {
-//		if (checkAndSimplifyForConstant(rhsConst, lhs, llvmIrInstruction))
-//			return;
-//	}
-//	if (auto lhsConst = dyn_cast<ConstantFP>(lhs)) {
-//		if (checkAndSimplifyForConstant(lhsConst, rhs, llvmIrInstruction))
-//			return;
-//	}
-//
-//	// 如果任一操作数是浮点常量，则通过 simplifyConstant 将其转换为固定点整数
-//	if (isa<ConstantFP>(lhs)) {
-//		llvm::errs() << "LHS is a floating-point constant, handling it with simplifyConstant\n";
-//		simplifyConstant(llvmIrInstruction, quantizedType);
-//		lhs = llvmIrInstruction->getOperand(0);
-//		lhsIsFloat = false;  // 更新状态，现已转换为固定点整数
-//	}
-//	if (isa<ConstantFP>(rhs)) {
-//		llvm::errs() << "RHS is a floating-point constant, handling it with simplifyConstant\n";
-//		simplifyConstant(llvmIrInstruction, quantizedType);
-//		rhs = llvmIrInstruction->getOperand(1);
-//		rhsIsFloat = false;
-//	}
-//
-//	// 如果任一操作数是整数常量，则直接用整数除法
-//	if (isa<ConstantInt>(lhs) || isa<ConstantInt>(rhs)) {
-//		llvm::errs() << "One of the operands is an integer constant, using division directly\n";
-//		Value *newInst = Builder.CreateSDiv(lhs, rhs);
-//		llvmIrInstruction->replaceAllUsesWith(newInst);
-//		llvmIrInstruction->eraseFromParent();
-//		return;
-//	}
-//
-//	// 如果任一操作数仍为浮点，则转换为固定点整数
-//	if (lhsIsFloat) {
-//		lhs = Builder.CreateFPToSI(lhs, quantizedType);
-//		llvm::errs() << "Converted LHS to fixed-point: " << *lhs << "\n";
-//	}
-//	if (rhsIsFloat) {
-//		rhs = Builder.CreateFPToSI(rhs, quantizedType);
-//		llvm::errs() << "Converted RHS to fixed-point: " << *rhs << "\n";
-//	}
-//
-//	// 此时，lhs 和 rhs 均为整数（固定点表示），根据要求：
-//	// 除法过程中不需要左移（即不乘 FRAC_BASE），也不在除法后做位移
-//	// 所以直接进行整数除法即可
-//	llvm::Value *newInst = Builder.CreateSDiv(lhs, rhs);
-//	llvmIrInstruction->replaceAllUsesWith(newInst);
-//	llvmIrInstruction->eraseFromParent();
-//
-//	llvm::errs() << "Finished handling FDiv\n";
-//}
+	// 判断是否是指针类型的 PHI 节点
+	bool isPtr = phi->getType()->isPointerTy();
+	unsigned pointerAddr = 0;
+	if (isPtr)
+		pointerAddr = phi->getType()->getPointerAddressSpace();
+
+	// 新 PHI 节点的类型
+	// 如果原来是 pointer 类型，则新类型为 quantizedType->getPointerTo(pointerAddr)
+	// 否则直接使用 quantizedType
+	Type *newPhiType = isPtr ? quantizedType->getPointerTo(pointerAddr) : quantizedType;
+
+	// 创建新的 PHI 节点，新节点插入在原 PHI 节点之前
+	PHINode *newPhi = PHINode::Create(newPhiType, phi->getNumIncomingValues(),
+					   phi->getName() + ".quantized", phi);
+
+	// 遍历所有入边
+	for (unsigned i = 0, e = phi->getNumIncomingValues(); i < e; i++) {
+		Value *incoming = phi->getIncomingValue(i);
+		BasicBlock *incomingBB = phi->getIncomingBlock(i);
+		Value *newVal = nullptr;
+
+		llvm::errs() << "Original PHI incoming value: " << *incoming << "\n";
+
+		if (!isPtr) {
+			// 针对非指针情况：如果是浮点常量，直接量化；如果是浮点值，则插入 FPToSI 转换
+			if (ConstantFP *constFp = dyn_cast<ConstantFP>(incoming)) {
+				float fpVal = constFp->getValueAPF().convertToFloat();
+				int64_t quantizedValue = static_cast<int64_t>(round(fpVal * FRAC_BASE));
+				newVal = llvm::ConstantInt::get(quantizedType, quantizedValue);
+				llvm::errs() << "Converted constant: " << *newVal << "\n";
+			} else if (incoming->getType()->isFloatingPointTy()) {
+				IRBuilder<> builder(incomingBB->getTerminator());
+				newVal = builder.CreateFPToSI(incoming, quantizedType, incoming->getName() + ".to_int");
+				llvm::errs() << "Inserted conversion: " << *newVal << "\n";
+			} else {
+				newVal = incoming;
+			}
+		} else {
+			// 针对指针类型：要求新入边值类型为 newPhiType
+			if (incoming->getType() != newPhiType) {
+				IRBuilder<> builder(incomingBB->getTerminator());
+				newVal = builder.CreateBitCast(incoming, newPhiType, incoming->getName() + ".cast");
+				llvm::errs() << "BitCast pointer: " << *newVal << "\n";
+			} else {
+				newVal = incoming;
+			}
+		}
+		newPhi->addIncoming(newVal, incomingBB);
+	}
+
+	// 替换所有使用并删除原 PHI 节点
+	phi->replaceAllUsesWith(newPhi);
+	phi->eraseFromParent();
+
+	llvm::errs() << "Finished handling PHI: " << *newPhi << "\n";
+}
 
 
 
@@ -2260,7 +2308,9 @@ irPassLLVMIRAutoQuantization(State *N, llvm::Function &llvmIrFunction, std::vect
 					break;
 					case Instruction::PHI:
 					{
-						setQuantizedType(llvmIrInstruction, quantizedType);
+//						setQuantizedType(llvmIrInstruction, quantizedType);
+						llvm::errs() << "handle phi " << *llvmIrInstruction << "\n";
+						handlePhi(llvmIrInstruction, quantizedType);
 					}
 					break;
 
@@ -2344,7 +2394,16 @@ irPassLLVMIRAutoQuantization(State *N, llvm::Function &llvmIrFunction, std::vect
 
 					case Instruction::Switch:
 					case Instruction::Br:
+					{
+						llvm::errs() << "Skipping Br instruction: " << *llvmIrInstruction << "\n";
+						break;
+					}
 					case Instruction::Select:
+					{
+						handleSelect(llvmIrInstruction, quantizedType);
+						break;
+
+					}
 					case Instruction::IndirectBr:
 					case Instruction::Invoke:
 					case Instruction::Resume:
