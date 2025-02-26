@@ -128,10 +128,8 @@ createFixSqrt(llvm::Module * irModule, Type * quantizedType, std::vector<llvm::F
 
 // TODO 64 bit version of fixmul
 
-
-
-//llvm::Function *
-//createFixMul(Module * irModule, Type * quantizedType, std::vector<llvm::Function *> & functionsToInsert)
+// llvm::Function *
+// createFixMul(Module * irModule, Type * quantizedType, std::vector<llvm::Function *> & functionsToInsert)
 //{
 //	llvm::errs() << "Entering createFixMul\n";
 //
@@ -187,7 +185,7 @@ createFixSqrt(llvm::Module * irModule, Type * quantizedType, std::vector<llvm::F
 //	functionsToInsert.emplace_back(func);
 //	llvm::errs() << "Created fixmul function: " << func->getName() << "\n";
 //	return func;
-//}
+// }
 //
 
 llvm::Function *
@@ -336,27 +334,31 @@ eraseOldFunctions()
 	llvm::errs() << "Exiting eraseOldFunctions\n";
 }
 
-bool isWhitelistedGlobal(const std::string &globalName) {
+bool
+isWhitelistedGlobal(const std::string & globalName)
+{
 	// Define the whitelist of global variables
-	static const std::set<std::string> whitelist = {"beta", "qw", "qx", "qy", "qz"};
+	static const std::set<std::string> whitelist = {"beta", "qw", "qx", "qy", "qz","zero"};
 	return whitelist.find(globalName) != whitelist.end();
 }
 
-bool shouldProcessFunction(Function &F) {
+bool
+shouldProcessFunction(Function & F)
+{
 	// List of function names to process
 	static const std::set<std::string> targetFunctions = {
 	    "sensfusion6UpdateQImpl",
 	    "MadgwickAHRSupdate",
 	    "MadgwickAHRSupdateIMU",
-//	    "__kernel_sin",
-//	    "__kernel_cos",
 	    "matrixMul",
 	    "matrixAdd",
 	    "matrixSub",
 	    "pzero",
 	    "qzero",
-	    "__ieee754_exp"
-
+	    "pone",
+	    "qone"
+//	    "__ieee754_exp",
+//	    "__ieee754_log",
 	};
 
 	// Check if the function name is in the set
@@ -364,37 +366,42 @@ bool shouldProcessFunction(Function &F) {
 }
 
 // Helper to create or retrieve the quantized global variable
-GlobalVariable *getOrCreateQuantizedGlobal(Module *module, GlobalVariable &globalVar, Type *quantizedType) {
+GlobalVariable *
+getOrCreateQuantizedGlobal(Module * module, GlobalVariable & globalVar, Type * quantizedType)
+{
 	std::string quantizedName = globalVar.getName().str() + "_quantized";
 
 	// Check if the quantized version already exists
-	if (GlobalVariable *existingGlobal = module->getNamedGlobal(quantizedName)) {
+	if (GlobalVariable * existingGlobal = module->getNamedGlobal(quantizedName))
+	{
 		llvm::errs() << "Quantized global already exists: " << quantizedName << "\n";
 		return existingGlobal;
 	}
 
-//	// Calculate initializer for the quantized global
-//	llvm::Constant *initializer = nullptr;
-//	if (llvm::Constant *init = globalVar.getInitializer()) {
-//		if (llvm::ConstantFP *constFp = llvm::dyn_cast<llvm::ConstantFP>(init)) {
-//			double value = constFp->getValueAPF().convertToDouble();
-//			int64_t quantizedValue = static_cast<int64_t>(round((value * FRAC_BASE) + 0.5));
-//			initializer = llvm::ConstantInt::get(quantizedType, quantizedValue);
-//		}
+	//	// Calculate initializer for the quantized global
+	//	llvm::Constant *initializer = nullptr;
+	//	if (llvm::Constant *init = globalVar.getInitializer()) {
+	//		if (llvm::ConstantFP *constFp = llvm::dyn_cast<llvm::ConstantFP>(init)) {
+	//			double value = constFp->getValueAPF().convertToDouble();
+	//			int64_t quantizedValue = static_cast<int64_t>(round((value * FRAC_BASE) + 0.5));
+	//			initializer = llvm::ConstantInt::get(quantizedType, quantizedValue);
+	//		}
 	//	}
 
 	// Calculate initializer for the quantized global
-		llvm::Constant *initializer = nullptr;
-		if (llvm::Constant *init = globalVar.getInitializer()) {
-			if (llvm::ConstantFP *constFp = llvm::dyn_cast<llvm::ConstantFP>(init)) {
-				double value = constFp->getValueAPF().convertToDouble();
-				int64_t quantizedValue = static_cast<int64_t>(round((value * FRAC_BASE)));
-				initializer = llvm::ConstantInt::get(quantizedType, quantizedValue);
-			}
+	llvm::Constant * initializer = nullptr;
+	if (llvm::Constant * init = globalVar.getInitializer())
+	{
+		if (llvm::ConstantFP * constFp = llvm::dyn_cast<llvm::ConstantFP>(init))
+		{
+			double	value	       = constFp->getValueAPF().convertToDouble();
+			int64_t quantizedValue = static_cast<int64_t>(round((value * FRAC_BASE)));
+			initializer	       = llvm::ConstantInt::get(quantizedType, quantizedValue);
 		}
+	}
 
 	// Create the quantized global variable
-	GlobalVariable *newGlobalVar = new GlobalVariable(
+	GlobalVariable * newGlobalVar = new GlobalVariable(
 	    *module,
 	    quantizedType,
 	    globalVar.isConstant(),
@@ -403,7 +410,8 @@ GlobalVariable *getOrCreateQuantizedGlobal(Module *module, GlobalVariable &globa
 	    quantizedName);
 
 	// Set alignment based on bit width
-	switch (BIT_WIDTH) {
+	switch (BIT_WIDTH)
+	{
 		case 16:
 			newGlobalVar->setAlignment(llvm::MaybeAlign(2));
 			break;
@@ -420,75 +428,105 @@ GlobalVariable *getOrCreateQuantizedGlobal(Module *module, GlobalVariable &globa
 	return newGlobalVar;
 }
 
-
 // Helper to create or retrieve the quantized internal constant
-GlobalVariable *getOrCreateQuantizedConstant(Module *module, GlobalVariable &origConst, Type *quantizedType) {
+// Helper to create or retrieve the quantized internal constant
+llvm::GlobalVariable *
+getOrCreateQuantizedConstant(llvm::Module *module,
+			     llvm::GlobalVariable &origConst,
+			     llvm::Type *quantizedType)
+{
 	std::string quantizedName = origConst.getName().str() + "_quantized";
 
-	// Check if the quantized version already exists
-	if (GlobalVariable *existingConst = module->getNamedGlobal(quantizedName)) {
-		errs() << "Quantized internal constant already exists: " << quantizedName << "\n";
+	// 检查量化版本是否已存在
+	if (llvm::GlobalVariable *existingConst = module->getNamedGlobal(quantizedName))
+	{
+		llvm::errs() << "Quantized internal constant already exists: " << quantizedName << "\n";
 		return existingConst;
 	}
 
-	// Ensure the original constant has an initializer
-	if (!origConst.hasInitializer()) {
-		errs() << "Skipping quantization: constant has no initializer: " << origConst.getName() << "\n";
+	// 确保原常量有 initializer
+	if (!origConst.hasInitializer())
+	{
+		llvm::errs() << "Skipping quantization: constant has no initializer: " << origConst.getName() << "\n";
 		return nullptr;
 	}
 
 	llvm::Constant *init = origConst.getInitializer();
-	ArrayType *origArrayType = dyn_cast<ArrayType>(origConst.getType()->getElementType());
+	llvm::ArrayType *origArrayType = llvm::dyn_cast<llvm::ArrayType>(origConst.getType()->getElementType());
 
-	// Ensure the global variable is an array of floating-point values
-	if (!origArrayType || (!origArrayType->getArrayElementType()->isFloatTy() &&
-			       !origArrayType->getArrayElementType()->isDoubleTy())) {
-		errs() << "Skipping non-float internal constant: " << origConst.getName() << "\n";
+	// 只处理浮点数组
+	if (!origArrayType ||
+	    (!origArrayType->getArrayElementType()->isFloatTy() &&
+	     !origArrayType->getArrayElementType()->isDoubleTy()))
+	{
+		llvm::errs() << "Skipping non-float internal constant: " << origConst.getName() << "\n";
 		return nullptr;
 	}
 
-	errs() << "Quantizing internal constant: " << origConst.getName() << "\n";
+	llvm::errs() << "Quantizing internal constant: " << origConst.getName() << "\n";
 
 	std::vector<llvm::Constant *> quantizedValues;
-	Type *intType = Type::getInt32Ty(module->getContext()); // Use int32 for quantized values
+	// 使用 int32 表示量化后的值
+	llvm::Type *intType = llvm::Type::getInt32Ty(module->getContext());
 
-	// Iterate over array elements and quantize each floating-point value
-	for (unsigned i = 0; i < origArrayType->getNumElements(); ++i) {
-		llvm::ConstantFP *fpVal = dyn_cast<llvm::ConstantFP>(init->getAggregateElement(i));
-		if (!fpVal) continue;
+	// 定义阈值 epsilon，调整为 1e-9 以便对极小值直接量化为0
+	const double epsilon = 1e-9;
+
+	// 遍历数组元素进行量化
+	for (unsigned i = 0; i < origArrayType->getNumElements(); ++i)
+	{
+		llvm::ConstantFP *fpVal = llvm::dyn_cast<llvm::ConstantFP>(init->getAggregateElement(i));
+		if (!fpVal)
+			continue;
 
 		double floatValue = fpVal->getValueAPF().convertToDouble();
-		int quantizedValue = static_cast<int>(round(floatValue * FRAC_BASE));
-
+		int quantizedValue = 0;
+		if (fabs(floatValue) < epsilon)
+		{
+			llvm::errs() << "Quantizing value below epsilon: " << floatValue << "\n";
+			quantizedValue = 0;
+		}
+		else
+		{
+			quantizedValue = static_cast<int>(round(floatValue * FRAC_BASE));
+		}
 		quantizedValues.push_back(llvm::ConstantInt::get(intType, quantizedValue));
 	}
 
-	// Create a new quantized array type
-	ArrayType *quantizedArrayType = ArrayType::get(intType, quantizedValues.size());
+	// 创建新的数组类型和 initializer
+	llvm::ArrayType *quantizedArrayType = llvm::ArrayType::get(intType, quantizedValues.size());
 	llvm::Constant *newInit = llvm::ConstantArray::get(quantizedArrayType, quantizedValues);
 
-	// Create the new quantized GlobalVariable
-	GlobalVariable *quantizedConst = new GlobalVariable(
-	    *module, quantizedArrayType, true, origConst.getLinkage(),
-	    newInit, quantizedName);
+	// 创建新的全局变量
+	llvm::GlobalVariable *quantizedConst = new llvm::GlobalVariable(
+	    *module,
+	    quantizedArrayType,
+	    true,
+	    origConst.getLinkage(),
+	    newInit,
+	    quantizedName);
 
-	// Set appropriate alignment based on bit width
-	quantizedConst->setAlignment(llvm::MaybeAlign(4)); // Align to 4 bytes for int32
-
+	// 设置对齐（这里使用4字节对齐，适用于 int32）
+	quantizedConst->setAlignment(llvm::MaybeAlign(4));
 	quantizedConst->setDSOLocal(true);
-	errs() << "Created quantized internal constant: " << quantizedName << "\n";
+	llvm::errs() << "Created quantized internal constant: " << quantizedName << "\n";
 
 	return quantizedConst;
 }
 
 
 // Helper to replace uses of the original global in whitelisted functions
-void replaceUsesInWhitelistedFunctions(GlobalVariable &originalGlobal, GlobalVariable &quantizedGlobal) {
-	for (auto it = originalGlobal.use_begin(), end = originalGlobal.use_end(); it != end;) {
-		Use &use = *it++;
-		if (Instruction *inst = dyn_cast<Instruction>(use.getUser())) {
-			Function *parentFunc = inst->getFunction();
-			if (parentFunc && shouldProcessFunction(*parentFunc)) {
+void
+replaceUsesInWhitelistedFunctions(GlobalVariable & originalGlobal, GlobalVariable & quantizedGlobal)
+{
+	for (auto it = originalGlobal.use_begin(), end = originalGlobal.use_end(); it != end;)
+	{
+		Use & use = *it++;
+		if (Instruction * inst = dyn_cast<Instruction>(use.getUser()))
+		{
+			Function * parentFunc = inst->getFunction();
+			if (parentFunc && shouldProcessFunction(*parentFunc))
+			{
 				llvm::errs() << "Replacing use of " << originalGlobal.getName()
 					     << " in function: " << parentFunc->getName() << "\n";
 				use.set(&quantizedGlobal);
@@ -496,21 +534,26 @@ void replaceUsesInWhitelistedFunctions(GlobalVariable &originalGlobal, GlobalVar
 		}
 	}
 }
-void updateGlobalVariables(Module *module, Type *quantizedType) {
+void
+updateGlobalVariables(Module * module, Type * quantizedType)
+{
 	llvm::errs() << "Updating global variables\n";
 
-	for (GlobalVariable &globalVar : module->globals()) {
+	for (GlobalVariable & globalVar : module->globals())
+	{
 		std::string globalName = globalVar.getName().str();
 
 		// Skip non-whitelisted globals
-		if (!isWhitelistedGlobal(globalName)) {
+		if (!isWhitelistedGlobal(globalName))
+		{
 			llvm::errs() << "Skipping global variable not in whitelist: " << globalName << "\n";
 			continue;
 		}
 
 		// Process only float or double global variables
 		if (!globalVar.getType()->getElementType()->isFloatTy() &&
-		    !globalVar.getType()->getElementType()->isDoubleTy()) {
+		    !globalVar.getType()->getElementType()->isDoubleTy())
+		{
 			llvm::errs() << "Skipping non-float global variable: " << globalName << "\n";
 			continue;
 		}
@@ -518,7 +561,7 @@ void updateGlobalVariables(Module *module, Type *quantizedType) {
 		llvm::errs() << "Quantizing global variable: " << globalName << "\n";
 
 		// Create or retrieve the quantized version of the global variable
-		GlobalVariable *quantizedGlobal = getOrCreateQuantizedGlobal(module, globalVar, quantizedType);
+		GlobalVariable * quantizedGlobal = getOrCreateQuantizedGlobal(module, globalVar, quantizedType);
 
 		// Replace uses of the original global in whitelisted functions
 		replaceUsesInWhitelistedFunctions(globalVar, *quantizedGlobal);
@@ -529,112 +572,62 @@ void updateGlobalVariables(Module *module, Type *quantizedType) {
 }
 
 // 辅助函数：对于 ConstantExpr 类型的使用，如果它是 GEP，则尝试构造新的 constant GEP 表达式
-static void handleConstantExprUse(llvm::ConstantExpr *constExpr,
-		      llvm::GlobalVariable &origConst,
-		      llvm::GlobalVariable &quantizedConst) {
+static void
+handleConstantExprUse(llvm::ConstantExpr *   constExpr,
+		      llvm::GlobalVariable & origConst,
+		      llvm::GlobalVariable & quantizedConst)
+{
 	// 如果 constant-expression 是 getelementptr，则重建一个新的 constant-expression
-	if (constExpr->getOpcode() == llvm::Instruction::GetElementPtr) {
+	if (constExpr->getOpcode() == llvm::Instruction::GetElementPtr)
+	{
 		llvm::SmallVector<llvm::Constant *, 4> Indices;
 		// 从操作数1开始（operand0 是指针）
-		for (unsigned i = 1, e = constExpr->getNumOperands(); i < e; ++i) {
-			if (llvm::Constant *C = llvm::dyn_cast<llvm::Constant>(constExpr->getOperand(i)))
+		for (unsigned i = 1, e = constExpr->getNumOperands(); i < e; ++i)
+		{
+			if (llvm::Constant * C = llvm::dyn_cast<llvm::Constant>(constExpr->getOperand(i)))
 				Indices.push_back(C);
 		}
 		// 直接使用量化后的全局变量，不做 bitcast
-		llvm::Constant *newGEP = llvm::ConstantExpr::getGetElementPtr(
+		llvm::Constant * newGEP = llvm::ConstantExpr::getGetElementPtr(
 		    quantizedConst.getType()->getPointerElementType(), &quantizedConst, Indices);
 		// 用新构造的 constant 替换所有对该 constant-expression 的使用
 		constExpr->replaceAllUsesWith(newGEP);
 		llvm::errs() << "Replaced constant GEP for " << origConst.getName() << "\n";
-	} else {
+	}
+	else
+	{
 		// 对于非 GEP 的 constant-expression，则转换为指令
-		llvm::Instruction *insertPt = nullptr;
-		for (llvm::Use &U : constExpr->uses()) {
-			if (llvm::Instruction *inst = llvm::dyn_cast<llvm::Instruction>(U.getUser())) {
+		llvm::Instruction * insertPt = nullptr;
+		for (llvm::Use & U : constExpr->uses())
+		{
+			if (llvm::Instruction * inst = llvm::dyn_cast<llvm::Instruction>(U.getUser()))
+			{
 				insertPt = inst;
 				break;
 			}
 		}
-		if (insertPt) {
-			llvm::Instruction *newInst = constExpr->getAsInstruction();
+		if (insertPt)
+		{
+			llvm::Instruction * newInst = constExpr->getAsInstruction();
 			newInst->insertBefore(insertPt);
 			constExpr->replaceAllUsesWith(newInst);
 			llvm::errs() << "Converted constant expr to instruction for " << origConst.getName() << "\n";
 		}
 	}
 }
-//static void handleConstantExprUse(llvm::ConstantExpr *constExpr,
-//		      llvm::GlobalVariable &origConst,
-//		      llvm::GlobalVariable &quantizedConst) {
-//	// 如果 constant-expression 是 getelementptr，则重建一个新的 constant-expression
-//	if (constExpr->getOpcode() == llvm::Instruction::GetElementPtr) {
-//		llvm::SmallVector<llvm::Constant *, 4> Indices;
-//		// 从操作数1开始（operand0 是指针）
-//		for (unsigned i = 1, e = constExpr->getNumOperands(); i < e; ++i) {
-//			if (llvm::Constant *C = llvm::dyn_cast<llvm::Constant>(constExpr->getOperand(i)))
-//				Indices.push_back(C);
-//		}
-//		// 构造 constant bitcast，将量化后的全局变量从 [N x i32]* 转换为原全局变量的类型（例如 [N x double]*）
-//		llvm::Constant *bitcasted = llvm::ConstantExpr::getBitCast(&quantizedConst, origConst.getType());
-//		// 构造新的 constant GEP 表达式
-//		llvm::Constant *newGEP = llvm::ConstantExpr::getGetElementPtr(
-//		    origConst.getType()->getPointerElementType(), bitcasted, Indices);
-//		// 用新构造的 constant 替换所有对该 constant-expression 的使用
-//		constExpr->replaceAllUsesWith(newGEP);
-//		llvm::errs() << "Replaced constant GEP for " << origConst.getName() << "\n";
-//	} else {
-//		// 对于非 GEP 的 constant-expression，则转换为指令
-//		llvm::Instruction *insertPt = nullptr;
-//		for (llvm::Use &U : constExpr->uses()) {
-//			if (llvm::Instruction *inst = llvm::dyn_cast<llvm::Instruction>(U.getUser())) {
-//				insertPt = inst;
-//				break;
-//			}
-//		}
-//		if (insertPt) {
-//			llvm::Instruction *newInst = constExpr->getAsInstruction();
-//			newInst->insertBefore(insertPt);
-//			constExpr->replaceAllUsesWith(newInst);
-//			llvm::errs() << "Converted constant expr to instruction for " << origConst.getName() << "\n";
-//		}
-//	}
-//}
 
-
-//// 辅助函数：处理函数内部的 GEP 指令（非 constant-expression），即将计算结果转换为常量表达式等价形式
-//static void handleGEPInstruction(GetElementPtrInst *gep,
-//		     GlobalVariable &origConst,
-//		     GlobalVariable &quantizedConst) {
-//	IRBuilder<> builder(gep);
-//	// 将量化后的全局变量 bitcast 成原全局变量的类型（例如 [6 x double]*）
-//	Value *quantizedBitcast = builder.CreateBitCast(&quantizedConst, origConst.getType(),
-//							 quantizedConst.getName() + ".bitcast");
-//	// 收集 GEP 的索引（保持原有索引不变）
-//	SmallVector<Value*, 4> Indices;
-//	for (Value *idx : gep->indices())
-//		Indices.push_back(idx);
-//	// 重建 GEP：注意，这里我们希望得到的结果仍然是 double*（与原来的 GEP 相同）
-//	Value *newGEP = builder.CreateGEP(origConst.getType()->getPointerElementType(),
-//					   quantizedBitcast, Indices,
-//					   gep->getName() + ".quantized_gep");
-//	// 如果新得到的 newGEP 类型与原来的不一致，使用 bitcast 调整回来
-//	Value *castedGEP = builder.CreateBitCast(newGEP, gep->getType(),
-//						  gep->getName() + ".casted");
-//	gep->replaceAllUsesWith(castedGEP);
-//	gep->eraseFromParent();
-//	errs() << "Replaced GEP instruction for " << origConst.getName() << "\n";
-//}
-
-static void handleGEPInstruction(llvm::GetElementPtrInst *gep,
-		     llvm::GlobalVariable &origConst,
-		     llvm::GlobalVariable &quantizedConst) {
+static void
+handleGEPInstruction(llvm::GetElementPtrInst * gep,
+		     llvm::GlobalVariable &    origConst,
+		     llvm::GlobalVariable &    quantizedConst)
+{
 	llvm::IRBuilder<> builder(gep);
 	// 直接使用量化后的全局变量，无需 bitcast
-	llvm::SmallVector<llvm::Value*, 4> Indices;
-	for (llvm::Value *idx : gep->indices())
+	llvm::SmallVector<llvm::Value *, 4> Indices;
+	for (llvm::Value * idx : gep->indices())
 		Indices.push_back(idx);
 	// 重建 GEP：注意这里使用 quantizedConst 的类型（例如 [6 x i32]），因此 newGEP 的类型为 i32*
-	llvm::Value *newGEP = builder.CreateGEP(quantizedConst.getType()->getPointerElementType(),
+	llvm::Value * newGEP = builder.CreateGEP(quantizedConst.getType()->getPointerElementType(),
 						 &quantizedConst, Indices,
 						 gep->getName() + ".quantized_gep");
 	// newGEP 应该直接就是你期望的类型，即 i32*
@@ -644,84 +637,153 @@ static void handleGEPInstruction(llvm::GetElementPtrInst *gep,
 }
 
 // 主函数：遍历 origConst 的所有使用，在白名单函数中替换为量化后的全局变量
-void replaceInternalConstantUses(Module *module,
-			    GlobalVariable &origConst,
-			    GlobalVariable &quantizedConst) {
-	std::vector<Use *> usesToReplace;
+//void
+//replaceInternalConstantUses(Module *	     module,
+//			    GlobalVariable & origConst,
+//			    GlobalVariable & quantizedConst)
+//{
+//	std::vector<Use *> usesToReplace;
+//
+//	for (auto it = origConst.use_begin(), end = origConst.use_end(); it != end;)
+//	{
+//		Use &	use  = *it++;
+//		Value * user = use.getUser();
+//
+//		// 如果用户是 ConstantExpr
+//		if (ConstantExpr * constExpr = dyn_cast<ConstantExpr>(user))
+//		{
+//			handleConstantExprUse(constExpr, origConst, quantizedConst);
+//			continue;
+//		}
+//
+//		// 如果用户是指令，且所在函数在白名单中
+//		Instruction * inst = dyn_cast<Instruction>(user);
+//		if (!inst || !inst->getFunction() || !shouldProcessFunction(*inst->getFunction()))
+//			continue;
+//
+//		// 如果该指令是 GEP，并且结果类型为 double*，则进行替换
+//		if (GetElementPtrInst * gep = dyn_cast<GetElementPtrInst>(inst))
+//		{
+//			if (gep->getResultElementType()->isDoubleTy())
+//			{
+//				handleGEPInstruction(gep, origConst, quantizedConst);
+//				continue;  // 该 GEP 指令已经被替换，不需要再添加到 usesToReplace
+//			}
+//		}
+//		// 其他情况，将该 use 加入待统一替换列表
+//		usesToReplace.push_back(&use);
+//	}
+//
+//	// 对剩余未处理的使用，统一替换为量化后的全局变量
+//	for (Use * use : usesToReplace)
+//		use->set(&quantizedConst);
+//
+//	errs() << "Replaced all uses of " << origConst.getName()
+//	       << " with " << quantizedConst.getName()
+//	       << " in whitelisted functions.\n";
+//}
 
-	for (auto it = origConst.use_begin(), end = origConst.use_end(); it != end; ) {
-		Use &use = *it++;
-		Value *user = use.getUser();
+void
+replaceInternalConstantUses(llvm::Module *module,
+			    llvm::GlobalVariable &origConst,
+			    llvm::GlobalVariable &quantizedConst)
+{
+	std::vector<llvm::Use *> usesToReplace;
 
-		// 如果用户是 ConstantExpr
-		if (ConstantExpr *constExpr = dyn_cast<ConstantExpr>(user)) {
-			handleConstantExprUse(constExpr, origConst, quantizedConst);
+	for (auto it = origConst.use_begin(), end = origConst.use_end(); it != end; )
+	{
+		llvm::Use &use = *it++;
+		llvm::Value *user = use.getUser();
+
+		// 如果用户是 ConstantExpr，我们需要检查其最终使用者是否位于白名单函数中
+		if (llvm::ConstantExpr *constExpr = llvm::dyn_cast<llvm::ConstantExpr>(user))
+		{
+			bool replace = false;
+			// 遍历 constant expression 的所有使用
+			for (auto &CEUse : constExpr->uses())
+			{
+				if (llvm::Instruction *inst = llvm::dyn_cast<llvm::Instruction>(CEUse.getUser()))
+				{
+					if (inst->getFunction() && shouldProcessFunction(*inst->getFunction()))
+					{
+						replace = true;
+						break;
+					}
+				}
+			}
+			if (replace)
+			{
+				handleConstantExprUse(constExpr, origConst, quantizedConst);
+			}
+			// 不论是否替换，继续处理下一个 use
 			continue;
 		}
 
 		// 如果用户是指令，且所在函数在白名单中
-		Instruction *inst = dyn_cast<Instruction>(user);
-		if (!inst || !inst->getFunction() || !shouldProcessFunction(*inst->getFunction()))
-			continue;
+		if (llvm::Instruction *inst = llvm::dyn_cast<llvm::Instruction>(user))
+		{
+			if (!inst->getFunction() || !shouldProcessFunction(*inst->getFunction()))
+				continue;
 
-		// 如果该指令是 GEP，并且结果类型为 double*，则进行替换
-		if (GetElementPtrInst *gep = dyn_cast<GetElementPtrInst>(inst)) {
-			if (gep->getResultElementType()->isDoubleTy()) {
-				handleGEPInstruction(gep, origConst, quantizedConst);
-				continue;  // 该 GEP 指令已经被替换，不需要再添加到 usesToReplace
+			// 如果该指令是 GEP 并且结果类型为 double*，则特殊处理
+			if (llvm::GetElementPtrInst *gep = llvm::dyn_cast<llvm::GetElementPtrInst>(inst))
+			{
+				if (gep->getResultElementType()->isDoubleTy())
+				{
+					handleGEPInstruction(gep, origConst, quantizedConst);
+					continue;  // 该 GEP 指令已经被替换，不再加入 usesToReplace
+				}
 			}
+			// 否则，将该 use 加入待统一替换列表
+			usesToReplace.push_back(&use);
 		}
-		// 其他情况，将该 use 加入待统一替换列表
-		usesToReplace.push_back(&use);
 	}
 
 	// 对剩余未处理的使用，统一替换为量化后的全局变量
-	for (Use *use : usesToReplace)
+	for (llvm::Use *use : usesToReplace)
 		use->set(&quantizedConst);
 
-	errs() << "Replaced all uses of " << origConst.getName()
-	       << " with " << quantizedConst.getName()
-	       << " in whitelisted functions.\n";
+	llvm::errs() << "Replaced all uses of " << origConst.getName()
+		     << " with " << quantizedConst.getName()
+		     << " in whitelisted functions.\n";
 }
 
-
-
-
-
-void updateInternalConstants(Module *module, Type *quantizedType) {
+void
+updateInternalConstants(Module * module, Type * quantizedType)
+{
 	llvm::errs() << "Updating internal constants\n";
 
-	for (GlobalVariable &globalVar : module->globals()) {
+	for (GlobalVariable & globalVar : module->globals())
+	{
 		std::string globalName = globalVar.getName().str();
 
-		if (!globalVar.isConstant() || !globalVar.hasInitializer()) {
+		if (!globalVar.isConstant() || !globalVar.hasInitializer())
+		{
 			llvm::errs() << "Skipping non-constant or uninitialized global: " << globalName << "\n";
 			continue;
 		}
 
-		Type *elementType = globalVar.getType()->getElementType();
+		Type * elementType = globalVar.getType()->getElementType();
 		if (!elementType->isArrayTy() ||
 		    (!elementType->getArrayElementType()->isFloatTy() &&
-		     !elementType->getArrayElementType()->isDoubleTy())) {
+		     !elementType->getArrayElementType()->isDoubleTy()))
+		{
 			llvm::errs() << "Skipping non-float internal constant: " << globalName << "\n";
 			continue;
 		}
 
 		llvm::errs() << "Quantizing internal constant: " << globalName << "\n";
 
-		GlobalVariable *quantizedConst = getOrCreateQuantizedConstant(module, globalVar, quantizedType);
+		GlobalVariable * quantizedConst = getOrCreateQuantizedConstant(module, globalVar, quantizedType);
 
-		if (quantizedConst) {
+		if (quantizedConst)
+		{
 			replaceInternalConstantUses(module, globalVar, *quantizedConst);
 		}
 
 		llvm::errs() << "Original internal constant preserved: " << globalName << "\n";
 	}
 }
-
-
-
-
 
 void
 quantizePointer(LoadInst * loadInst, IRBuilder<> & Builder, Type * quantizedType, Type * loadedType)
@@ -740,19 +802,20 @@ quantizePointer(LoadInst * loadInst, IRBuilder<> & Builder, Type * quantizedType
 
 	llvm::errs() << "Replaced load with quantized integer value.\n";
 }
-void quantizeMatrixFloat(LoadInst *loadInst, IRBuilder<> &Builder, Type *quantizedType, Type *loadedType)
+void
+quantizeMatrixFloat(LoadInst * loadInst, IRBuilder<> & Builder, Type * quantizedType, Type * loadedType)
 {
 	// Get the pointer operand of the load instruction
-	Value *pointerOperand = loadInst->getPointerOperand();
-	Type *pointerElementType = pointerOperand->getType()->getPointerElementType();
+	Value * pointerOperand	   = loadInst->getPointerOperand();
+	Type *	pointerElementType = pointerOperand->getType()->getPointerElementType();
 
 	if (pointerElementType->isFloatingPointTy())
 	{
 		llvm::errs() << "Quantizing load from local float pointer: " << *pointerOperand << "\n";
 
-		Value *loadedValue = Builder.CreateLoad(loadedType, pointerOperand, loadInst->getName() + ".p");
-		Value *scaledValue = Builder.CreateFMul(loadedValue, ConstantFP::get(loadedType, FRAC_BASE), loadInst->getName() + ".scaled");
-		Value *quantizedValue = Builder.CreateFPToSI(scaledValue, quantizedType, loadInst->getName() + ".quantized");
+		Value * loadedValue    = Builder.CreateLoad(loadedType, pointerOperand, loadInst->getName() + ".p");
+		Value * scaledValue    = Builder.CreateFMul(loadedValue, ConstantFP::get(loadedType, FRAC_BASE), loadInst->getName() + ".scaled");
+		Value * quantizedValue = Builder.CreateFPToSI(scaledValue, quantizedType, loadInst->getName() + ".quantized");
 		loadInst->replaceAllUsesWith(quantizedValue);
 		loadInst->eraseFromParent();
 
@@ -779,22 +842,24 @@ handleLoad(Instruction * llvmIrInstruction, Type * quantizedType)
 			Value *	   pointerOperand = loadInst->getPointerOperand();
 			Function * parentFunc	  = loadInst->getFunction();
 
-//			if (isa<GlobalVariable>(pointerOperand) ||
-//			    parentFunc->getName() == "MadgwickAHRSupdateIMU" ||
-//			    parentFunc->getName() == "MahonyAHRSupdateIMU" ||
-//			    parentFunc->getName() == "pzero" ||
-//			    parentFunc->getName() == "qzero") ||
-//				    parentFunc->getName() == "ieee754_exp"
+			//			if (isa<GlobalVariable>(pointerOperand) ||
+			//			    parentFunc->getName() == "MadgwickAHRSupdateIMU" ||
+			//			    parentFunc->getName() == "MahonyAHRSupdateIMU" ||
+			//			    parentFunc->getName() == "pzero" ||
+			//			    parentFunc->getName() == "qzero") ||
+			//				    parentFunc->getName() == "ieee754_exp"
 			if (isa<GlobalVariable>(pointerOperand) ||
 			    parentFunc->getName() == "MadgwickAHRSupdateIMU" ||
 			    parentFunc->getName() == "MahonyAHRSupdateIMU" ||
 			    parentFunc->getName() == "pzero" ||
 			    parentFunc->getName() == "qzero" ||
-			    parentFunc->getName() == "__ieee754_exp")
-				// ...
+			    parentFunc->getName() == "pone" ||
+			    parentFunc->getName() == "qone" ||
+			    parentFunc->getName() == "__ieee754_exp"||
+			    parentFunc->getName() == "__ieee754_log")
+			// ...
 
 			{
-
 				llvm::errs() << "Handling load from global variable: " << *pointerOperand << "\n";
 				LoadInst * newLoadInst = Builder.CreateLoad(quantizedType, pointerOperand, loadInst->getName() + ".global_quantized");
 				llvm::errs() << "New load instruction: " << *newLoadInst << "\n";
@@ -803,17 +868,17 @@ handleLoad(Instruction * llvmIrInstruction, Type * quantizedType)
 			}
 
 			// Quantize local pointers
-//#ifndef IS_MATRIX
-//			else if (!isa<GlobalVariable>(pointerOperand))
-//			{
-//				quantizePointer(loadInst, Builder, quantizedType, loadedType);
-//			}
-//#else
-//			else if (!isa<GlobalVariable>(pointerOperand))
-//			{
-//				quantizeMatrixFloat(loadInst, Builder, quantizedType, loadedType);
-//			}
-//#endif
+			// #ifndef IS_MATRIX
+			//			else if (!isa<GlobalVariable>(pointerOperand))
+			//			{
+			//				quantizePointer(loadInst, Builder, quantizedType, loadedType);
+			//			}
+			// #else
+			//			else if (!isa<GlobalVariable>(pointerOperand))
+			//			{
+			//				quantizeMatrixFloat(loadInst, Builder, quantizedType, loadedType);
+			//			}
+			// #endif
 
 #ifdef IS_POINTER
 			else if (!isa<GlobalVariable>(pointerOperand))
@@ -827,7 +892,6 @@ handleLoad(Instruction * llvmIrInstruction, Type * quantizedType)
 				quantizeMatrixFloat(loadInst, Builder, quantizedType, loadedType);
 			}
 #endif
-
 		}
 	}
 }
@@ -1000,12 +1064,14 @@ handleFCmp(Instruction * inInstruction, Type * quantizedType)
 	}
 }
 
-void handleSelect(Instruction * inInstruction, Type * quantizedType)
+void
+handleSelect(Instruction * inInstruction, Type * quantizedType)
 {
 	llvm::errs() << "Handling Select\n";
 
 	// 检查操作数数量
-	if (inInstruction->getNumOperands() < 3) {
+	if (inInstruction->getNumOperands() < 3)
+	{
 		llvm::errs() << "Error: Select instruction does not have 3 operands!\n";
 		return;
 	}
@@ -1014,8 +1080,8 @@ void handleSelect(Instruction * inInstruction, Type * quantizedType)
 	// 获取 select 指令的三个操作数
 	// 操作数 0 为条件值，操作数 1 为条件为 true 时的值，操作数 2 为条件为 false 时的值
 	Value * condition = inInstruction->getOperand(0);
-	Value * opTrue    = inInstruction->getOperand(1);
-	Value * opFalse   = inInstruction->getOperand(2);
+	Value * opTrue	  = inInstruction->getOperand(1);
+	Value * opFalse	  = inInstruction->getOperand(2);
 
 	llvm::errs() << "Original condition: " << *condition << "\n";
 	llvm::errs() << "Original true branch: " << *opTrue << "\n";
@@ -1024,17 +1090,17 @@ void handleSelect(Instruction * inInstruction, Type * quantizedType)
 	// 如果 true 分支的操作数是浮点常量，则进行量化转换
 	if (ConstantFP * constFp = dyn_cast<ConstantFP>(opTrue))
 	{
-		float constValue = constFp->getValueAPF().convertToFloat();
+		float	constValue     = constFp->getValueAPF().convertToFloat();
 		int64_t quantizedValue = static_cast<int64_t>(round(constValue * FRAC_BASE));
-		opTrue = ConstantInt::get(quantizedType, quantizedValue);
+		opTrue		       = ConstantInt::get(quantizedType, quantizedValue);
 	}
 
 	// 如果 false 分支的操作数是浮点常量，则进行量化转换
 	if (ConstantFP * constFp = dyn_cast<ConstantFP>(opFalse))
 	{
-		float constValue = constFp->getValueAPF().convertToFloat();
+		float	constValue     = constFp->getValueAPF().convertToFloat();
 		int64_t quantizedValue = static_cast<int64_t>(round(constValue * FRAC_BASE));
-		opFalse = ConstantInt::get(quantizedType, quantizedValue);
+		opFalse		       = ConstantInt::get(quantizedType, quantizedValue);
 	}
 
 	// 生成新的 select 指令，保持条件不变，使用转换后的 true 和 false 值
@@ -1180,6 +1246,7 @@ simplifyConstant(Instruction * inInstruction, Type * quantizedType)
 	llvm::errs() << "Exiting Simplifying Constant\n";
 }
 }
+
 void
 simplifyUsingShift(Value * operand, Instruction * instruction, int shiftAmount, bool isRightShift)
 {
@@ -1504,6 +1571,55 @@ void handlePhi(Instruction *inInstruction, Type *quantizedType)
 
 	llvm::errs() << "Finished handling PHI: " << *newPhi << "\n";
 }
+
+void handleFpToSi(Instruction *llvmInst, Type *quantizedType) {
+	llvm::errs() << "Handling FPToSI\n";
+
+	// 仅处理 FPToSI 指令
+	FPToSIInst *fpToSiInst = dyn_cast<FPToSIInst>(llvmInst);
+	if (!fpToSiInst) {
+		llvm::errs() << "Not a FPToSI instruction.\n";
+		return;
+	}
+
+	// 检查是否存在使用该 FPToSI 结果的 SIToFP 指令，
+	// 即检测模式：%tmp = fptosi double %in to i32 ； %out = sitofp i32 %tmp to double
+	for (User *U : fpToSiInst->users()) {
+		if (auto *siToFpInst = dyn_cast<SIToFPInst>(U)) {
+			llvm::errs() << "Detected fptosi/sitofp sequence:\n";
+			llvm::errs() << "  FPToSI: " << *fpToSiInst << "\n";
+			llvm::errs() << "  SIToFP: " << *siToFpInst << "\n";
+
+			// 假设你希望丢弃的位数为 FRAC_Q（例如 FRAC_Q 表示小数部分位数）
+			IRBuilder<> Builder(siToFpInst);
+
+			// fpToSiInst 的结果类型是整数，作为固定点值
+			Value *intVal = fpToSiInst;
+
+			// 生成算术右移指令，丢弃低 FRAC_Q 位
+			Value *truncInst = Builder.CreateAShr(
+			    intVal,
+			    ConstantInt::get(intVal->getType(), FRAC_Q),
+			    "trunc");
+
+			llvm::errs() << "Replaced sequence with: " << *truncInst << "\n";
+
+			// 替换所有对 siToFpInst 的使用为 truncInst
+			siToFpInst->replaceAllUsesWith(truncInst);
+
+			// 删除原来的 FPToSI 和 SIToFP 指令
+			siToFpInst->eraseFromParent();
+			fpToSiInst->eraseFromParent();
+
+			return;
+		}
+	}
+
+	// 如果没有匹配到这种模式，则可以继续做其他处理（或者直接保留原来的 FPToSI）
+	llvm::errs() << "No fptosi/sitofp sequence detected. Skipping optimization.\n";
+}
+
+
 
 
 
@@ -2147,6 +2263,7 @@ adaptTypeCast(llvm::Function & llvmIrFunction, Type * quantizedType)
 			{
 				case Instruction::FPToUI:
 				case Instruction::FPToSI:
+
 				case Instruction::SIToFP:
 				case Instruction::UIToFP:
 				{
@@ -2359,6 +2476,10 @@ irPassLLVMIRAutoQuantization(State *N, llvm::Function &llvmIrFunction, std::vect
 
 					case Instruction::FPToUI:
 					case Instruction::FPToSI:
+					{
+						handleFpToSi(llvmIrInstruction, quantizedType);
+						break;
+					}
 					case Instruction::SIToFP:
 					case Instruction::UIToFP:
 
