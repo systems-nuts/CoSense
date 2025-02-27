@@ -338,7 +338,7 @@ bool
 isWhitelistedGlobal(const std::string & globalName)
 {
 	// Define the whitelist of global variables
-	static const std::set<std::string> whitelist = {"beta", "qw", "qx", "qy", "qz","zero"};
+	static const std::set<std::string> whitelist = {"beta", "qw", "qx", "qy", "qz","zero","q0","q1","q2","q3"};
 	return whitelist.find(globalName) != whitelist.end();
 }
 

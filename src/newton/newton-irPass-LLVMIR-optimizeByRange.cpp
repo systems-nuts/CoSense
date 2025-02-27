@@ -84,13 +84,17 @@ POSSIBILITY OF SUCH DAMAGE.
 using namespace llvm;
 #define FRAC_BASE (1 << maxPrecisionBits)
 #define BIT_WIDTH 32
+//#define IS_POINTER 1
 std::set<std::string> whitelist = {
     "MadgwickAHRSupdate",
     "MahonyAHRSupdate",
     "sensfusion6UpdateQImpl",
     "matrixMul",
     "pzero",
-    "qzero"
+    "qzero",
+    "pone",
+    "qone",
+    "__ieee754_exp"
 };
 
 
@@ -299,6 +303,7 @@ void dequantizeResults(StoreInst *storeInst, Function &F, int maxPrecisionBits)
 #if IS_MATRIX
 	handleMatrixStore(storeInst, Builder, maxPrecisionBits);
 #elif IS_POINTER
+	llvm::errs() << "Handling pointer store.\n";
 	handlePointerStore(storeInst, Builder, maxPrecisionBits);
 
 #else
@@ -590,6 +595,43 @@ dumpIR(State * N, std::string fileSuffix, const std::unique_ptr<Module> & Mod)
 	dumpedFile.close();
 }
 
+//void dumpIR(State *N, std::string fileSuffix, const std::unique_ptr<Module> &Mod) {
+//	StringRef filePath(N->llvmIR);
+//	std::string dirPath = std::string(sys::path::parent_path(filePath)) + "/";
+//	std::string fileName = std::string(sys::path::stem(filePath)) + "_" + fileSuffix + ".bc";
+//	std::string filePathStr = dirPath + fileName;
+//	filePath = StringRef(filePathStr);
+//
+//	// 输出调试信息：目标 IR 文件路径
+//	flexprint(N->Fe, N->Fm, N->Fpinfo, "Dump IR of: %s\n", filePath.str().c_str());
+//	llvm::errs() << "DumpIR: File path = " << filePath.str() << "\n";
+//
+//	// 使用 errorCode 检查创建文件是否成功
+//	std::error_code errorCode;
+//	raw_fd_ostream dumpedFile(filePath, errorCode);
+//	if (errorCode) {
+//		// 输出错误信息
+//		flexprint(N->Fe, N->Fm, N->Fpinfo, "Error opening file %s: %s\n", filePath.str().c_str(), errorCode.message().c_str());
+//		llvm::errs() << "DumpIR: Failed to open file: " << filePath.str() << " (" << errorCode.message() << ")\n";
+//		return;
+//	} else {
+//		llvm::errs() << "DumpIR: File opened successfully.\n";
+//	}
+//
+//	// 写入 IR 并检查写入过程
+//	WriteBitcodeToFile(*Mod, dumpedFile);
+//	dumpedFile.flush();
+//	if (dumpedFile.has_error()) {
+//		llvm::errs() << "DumpIR: Error during WriteBitcodeToFile: " << dumpedFile.error().message() << "\n";
+//		flexprint(N->Fe, N->Fm, N->Fpinfo, "Error during WriteBitcodeToFile: %s\n", dumpedFile.error().message().c_str());
+//	} else {
+//		llvm::errs() << "DumpIR: WriteBitcodeToFile completed successfully.\n";
+//	}
+//
+//	dumpedFile.close();
+//	llvm::errs() << "DumpIR: File closed.\n";
+//}
+
 void
 mergeBoundInfo(BoundInfo * dst, const BoundInfo * src)
 {
@@ -859,44 +901,42 @@ irPassLLVMIROptimizeByRange(State * N, bool enableQuantization, bool enableOverl
 
 
 
-//#ifdef AUTO_QUANTIZATION
-
-//#endif
 
 
-		/*
-		 * analyze the range of all local variables in each function
-		 * */
-		flexprint(N->Fe, N->Fm, N->Fpinfo, "infer bound\n");
-		std::map<std::string, CallInst *> callerMap;
-		callerMap.clear();
-		funcBoundInfo.clear();
-		bool useOverLoad = false;
-		for (auto & mi : *Mod)
-		{
-			auto boundInfo = new BoundInfo();
-			mergeBoundInfo(boundInfo, globalBoundInfo);
-			rangeAnalysis(N, mi, boundInfo, callerMap, typeRange, virtualRegisterVectorRange, useOverLoad);
-			funcBoundInfo.emplace(mi.getName().str(), boundInfo);
-			std::vector<std::string> calleeNames;
-			collectCalleeInfo(calleeNames, funcBoundInfo, boundInfo);
-		}
+
+//		/*
+//		 * analyze the range of all local variables in each function
+//		 * */
+//		flexprint(N->Fe, N->Fm, N->Fpinfo, "infer bound\n");
+//		std::map<std::string, CallInst *> callerMap;
+//		callerMap.clear();
+//		funcBoundInfo.clear();
+//		bool useOverLoad = false;
+//		for (auto & mi : *Mod)
+//		{
+//			auto boundInfo = new BoundInfo();
+//			mergeBoundInfo(boundInfo, globalBoundInfo);
+//			rangeAnalysis(N, mi, boundInfo, callerMap, typeRange, virtualRegisterVectorRange, useOverLoad);
+//			funcBoundInfo.emplace(mi.getName().str(), boundInfo);
+//			std::vector<std::string> calleeNames;
+//			collectCalleeInfo(calleeNames, funcBoundInfo, boundInfo);
+//		}
 
 
 	//
-		flexprint(N->Fe, N->Fm, N->Fpinfo, "shrink data type by range\n");
-		for (auto & mi : *Mod)
-		{
-			auto boundInfoIt = funcBoundInfo.find(mi.getName().str());
-			if (boundInfoIt != funcBoundInfo.end())
-			{
-				shrinkType(N, boundInfoIt->second, mi);
-			}
-			//            else
-			//            {
-			//	            assert(false);
-			//	        }
-		}
+//		flexprint(N->Fe, N->Fm, N->Fpinfo, "shrink data type by range\n");
+//		for (auto & mi : *Mod)
+//		{
+//			auto boundInfoIt = funcBoundInfo.find(mi.getName().str());
+//			if (boundInfoIt != funcBoundInfo.end())
+//			{
+//				shrinkType(N, boundInfoIt->second, mi);
+//			}
+//			//            else
+//			//            {
+//			//	            assert(false);
+//			//	        }
+//		}
 
 		if (enableQuantization)
 		{
@@ -952,28 +992,28 @@ irPassLLVMIROptimizeByRange(State * N, bool enableQuantization, bool enableOverl
 //			collectCalleeInfo(calleeNames, funcBoundInfo, boundInfo);
 //		}
 
-	/*
-	 * simplify the condition of each branch
-	 * */
-		flexprint(N->Fe, N->Fm, N->Fpinfo, "simplify control flow by range\n");
-		for (auto & mi : *Mod)
-		{
-			auto boundInfoIt = funcBoundInfo.find(mi.getName().str());
-			if (boundInfoIt != funcBoundInfo.end())
-			{
-				simplifyControlFlow(N, boundInfoIt->second, mi);
-			}
-			//		else
-			//		{
-			//			assert(false);
-			//		}
-		}
-	//
-		legacy::PassManager passManager;
-		passManager.add(createCFGSimplificationPass());
-		passManager.add(createInstSimplifyLegacyPass());
-		passManager.add(createGlobalDCEPass());
-		passManager.run(*Mod);
+//	/*
+//	 * simplify the condition of each branch
+//	 * */
+//		flexprint(N->Fe, N->Fm, N->Fpinfo, "simplify control flow by range\n");
+//		for (auto & mi : *Mod)
+//		{
+//			auto boundInfoIt = funcBoundInfo.find(mi.getName().str());
+//			if (boundInfoIt != funcBoundInfo.end())
+//			{
+//				simplifyControlFlow(N, boundInfoIt->second, mi);
+//			}
+//			//		else
+//			//		{
+//			//			assert(false);
+//			//		}
+//		}
+//
+//		legacy::PassManager passManager;
+//		passManager.add(createCFGSimplificationPass());
+//		passManager.add(createInstSimplifyLegacyPass());
+//		passManager.add(createGlobalDCEPass());
+//		passManager.run(*Mod);
 
 		//
 
