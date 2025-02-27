@@ -10,6 +10,8 @@
 #include <unordered_map>
 #include "llvm/IR/Metadata.h"
 #include "config.h"
+#include <limits>
+#include <cstdint>
 using namespace llvm;
 
 unsigned int FRAC_Q;
@@ -356,8 +358,8 @@ shouldProcessFunction(Function & F)
 	    "pzero",
 	    "qzero",
 	    "pone",
-	    "qone"
-//	    "__ieee754_exp",
+	    "qone",
+	    "__ieee754_exp"
 //	    "__ieee754_log",
 	};
 
@@ -1506,8 +1508,8 @@ void handleFDiv(Instruction *llvmIrInstruction, Type *quantizedType) {
 	llvm::errs() << "Finished handling FDiv\n";
 }
 
-void handlePhi(Instruction *inInstruction, Type *quantizedType)
-{
+
+void handlePhi(Instruction *inInstruction, Type *quantizedType) {
 	llvm::errs() << "Handling PHI\n";
 	PHINode *phi = dyn_cast<PHINode>(inInstruction);
 	if (!phi) {
@@ -1515,22 +1517,17 @@ void handlePhi(Instruction *inInstruction, Type *quantizedType)
 		return;
 	}
 
-	// 判断是否是指针类型的 PHI 节点
+	// Check if the PHI node is of pointer type.
 	bool isPtr = phi->getType()->isPointerTy();
 	unsigned pointerAddr = 0;
 	if (isPtr)
 		pointerAddr = phi->getType()->getPointerAddressSpace();
 
-	// 新 PHI 节点的类型
-	// 如果原来是 pointer 类型，则新类型为 quantizedType->getPointerTo(pointerAddr)
-	// 否则直接使用 quantizedType
+	// Determine new PHI node type.
 	Type *newPhiType = isPtr ? quantizedType->getPointerTo(pointerAddr) : quantizedType;
-
-	// 创建新的 PHI 节点，新节点插入在原 PHI 节点之前
 	PHINode *newPhi = PHINode::Create(newPhiType, phi->getNumIncomingValues(),
-					   phi->getName() + ".quantized", phi);
+					       phi->getName() + ".quantized", phi);
 
-	// 遍历所有入边
 	for (unsigned i = 0, e = phi->getNumIncomingValues(); i < e; i++) {
 		Value *incoming = phi->getIncomingValue(i);
 		BasicBlock *incomingBB = phi->getIncomingBlock(i);
@@ -1539,12 +1536,38 @@ void handlePhi(Instruction *inInstruction, Type *quantizedType)
 		llvm::errs() << "Original PHI incoming value: " << *incoming << "\n";
 
 		if (!isPtr) {
-			// 针对非指针情况：如果是浮点常量，直接量化；如果是浮点值，则插入 FPToSI 转换
 			if (ConstantFP *constFp = dyn_cast<ConstantFP>(incoming)) {
-				float fpVal = constFp->getValueAPF().convertToFloat();
-				int64_t quantizedValue = static_cast<int64_t>(round(fpVal * FRAC_BASE));
-				newVal = llvm::ConstantInt::get(quantizedType, quantizedValue);
-				llvm::errs() << "Converted constant: " << *newVal << "\n";
+				// Check for infinity.
+				if (constFp->getValueAPF().isInfinity()) {
+					int64_t maxVal = 0, minVal = 0;
+					// Choose maximum/minimum based on BIT_WIDTH.
+					if (BIT_WIDTH == 16) {
+						maxVal = (std::numeric_limits<int16_t>::max)();
+						minVal = (std::numeric_limits<int16_t>::min)();
+					} else if (BIT_WIDTH == 32) {
+						maxVal = (std::numeric_limits<int32_t>::max)();
+						minVal = (std::numeric_limits<int32_t>::min)();
+					} else if (BIT_WIDTH == 64) {
+						maxVal = (std::numeric_limits<int64_t>::max)();
+						minVal = (std::numeric_limits<int64_t>::min)();
+					} else {
+						maxVal = (std::numeric_limits<int>::max)();
+						minVal = (std::numeric_limits<int>::min)();
+					}
+
+					if (!constFp->getValueAPF().isNegative()) {
+						llvm::errs() << "Detected positive infinity, mapping to max integer.\n";
+						newVal = llvm::ConstantInt::get(quantizedType, maxVal, true);
+					} else {
+						llvm::errs() << "Detected negative infinity, mapping to min integer.\n";
+						newVal = llvm::ConstantInt::get(quantizedType, minVal, true);
+					}
+				} else {
+					float fpVal = constFp->getValueAPF().convertToFloat();
+					int64_t quantizedValue = static_cast<int64_t>(round(fpVal * FRAC_BASE));
+					newVal = llvm::ConstantInt::get(quantizedType, quantizedValue, true);
+					llvm::errs() << "Converted constant: " << *newVal << "\n";
+				}
 			} else if (incoming->getType()->isFloatingPointTy()) {
 				IRBuilder<> builder(incomingBB->getTerminator());
 				newVal = builder.CreateFPToSI(incoming, quantizedType, incoming->getName() + ".to_int");
@@ -1553,7 +1576,6 @@ void handlePhi(Instruction *inInstruction, Type *quantizedType)
 				newVal = incoming;
 			}
 		} else {
-			// 针对指针类型：要求新入边值类型为 newPhiType
 			if (incoming->getType() != newPhiType) {
 				IRBuilder<> builder(incomingBB->getTerminator());
 				newVal = builder.CreateBitCast(incoming, newPhiType, incoming->getName() + ".cast");
@@ -1565,59 +1587,137 @@ void handlePhi(Instruction *inInstruction, Type *quantizedType)
 		newPhi->addIncoming(newVal, incomingBB);
 	}
 
-	// 替换所有使用并删除原 PHI 节点
 	phi->replaceAllUsesWith(newPhi);
 	phi->eraseFromParent();
-
 	llvm::errs() << "Finished handling PHI: " << *newPhi << "\n";
 }
+
+
+//void handlePhi(Instruction *inInstruction, Type *quantizedType)
+//{
+//	llvm::errs() << "Handling PHI\n";
+//	PHINode *phi = dyn_cast<PHINode>(inInstruction);
+//	if (!phi) {
+//		llvm::errs() << "Error: Instruction is not a PHI node.\n";
+//		return;
+//	}
+//
+//	// 判断是否是指针类型的 PHI 节点
+//	bool isPtr = phi->getType()->isPointerTy();
+//	unsigned pointerAddr = 0;
+//	if (isPtr)
+//		pointerAddr = phi->getType()->getPointerAddressSpace();
+//
+//	// 新 PHI 节点的类型
+//	// 如果原来是 pointer 类型，则新类型为 quantizedType->getPointerTo(pointerAddr)
+//	// 否则直接使用 quantizedType
+//	Type *newPhiType = isPtr ? quantizedType->getPointerTo(pointerAddr) : quantizedType;
+//
+//	// 创建新的 PHI 节点，新节点插入在原 PHI 节点之前
+//	PHINode *newPhi = PHINode::Create(newPhiType, phi->getNumIncomingValues(),
+//					   phi->getName() + ".quantized", phi);
+//
+//	// 遍历所有入边
+//	for (unsigned i = 0, e = phi->getNumIncomingValues(); i < e; i++) {
+//		Value *incoming = phi->getIncomingValue(i);
+//		BasicBlock *incomingBB = phi->getIncomingBlock(i);
+//		Value *newVal = nullptr;
+//
+//		llvm::errs() << "Original PHI incoming value: " << *incoming << "\n";
+//
+//		if (!isPtr) {
+//			// 针对非指针情况：如果是浮点常量，直接量化；如果是浮点值，则插入 FPToSI 转换
+//			if (ConstantFP *constFp = dyn_cast<ConstantFP>(incoming)) {
+//				float fpVal = constFp->getValueAPF().convertToFloat();
+//				int64_t quantizedValue = static_cast<int64_t>(round(fpVal * FRAC_BASE));
+//				newVal = llvm::ConstantInt::get(quantizedType, quantizedValue);
+//				llvm::errs() << "Converted constant: " << *newVal << "\n";
+//			} else if (incoming->getType()->isFloatingPointTy()) {
+//				IRBuilder<> builder(incomingBB->getTerminator());
+//				newVal = builder.CreateFPToSI(incoming, quantizedType, incoming->getName() + ".to_int");
+//				llvm::errs() << "Inserted conversion: " << *newVal << "\n";
+//			} else {
+//				newVal = incoming;
+//			}
+//		} else {
+//			// 针对指针类型：要求新入边值类型为 newPhiType
+//			if (incoming->getType() != newPhiType) {
+//				IRBuilder<> builder(incomingBB->getTerminator());
+//				newVal = builder.CreateBitCast(incoming, newPhiType, incoming->getName() + ".cast");
+//				llvm::errs() << "BitCast pointer: " << *newVal << "\n";
+//			} else {
+//				newVal = incoming;
+//			}
+//		}
+//		newPhi->addIncoming(newVal, incomingBB);
+//	}
+//
+//	// 替换所有使用并删除原 PHI 节点
+//	phi->replaceAllUsesWith(newPhi);
+//	phi->eraseFromParent();
+//
+//	llvm::errs() << "Finished handling PHI: " << *newPhi << "\n";
+//}
 
 void handleFpToSi(Instruction *llvmInst, Type *quantizedType) {
 	llvm::errs() << "Handling FPToSI\n";
 
-	// 仅处理 FPToSI 指令
+	// Ensure we are processing an FPToSI instruction.
 	FPToSIInst *fpToSiInst = dyn_cast<FPToSIInst>(llvmInst);
 	if (!fpToSiInst) {
 		llvm::errs() << "Not a FPToSI instruction.\n";
 		return;
 	}
 
-	// 检查是否存在使用该 FPToSI 结果的 SIToFP 指令，
-	// 即检测模式：%tmp = fptosi double %in to i32 ； %out = sitofp i32 %tmp to double
+	// Check if the operand to FPToSI is already an integer.
+	Value *inputVal = fpToSiInst->getOperand(0);
+	if (inputVal->getType()->isIntegerTy()) {
+		llvm::errs() << "Input of FPToSI is already integer. Replacing redundant conversion.\n";
+
+		// Set insertion point immediately after the FPToSI instruction.
+		IRBuilder<> Builder(fpToSiInst->getNextNode());
+
+		// Directly apply an arithmetic right shift on the input value.
+		Value *truncInst = Builder.CreateAShr(
+		    inputVal,
+		    ConstantInt::get(inputVal->getType(), FRAC_Q),
+		    "trunc");
+		llvm::errs() << "Created ASHR instruction: " << *truncInst << "\n";
+
+		// Replace all uses of the FPToSI instruction with the new ASHR result.
+		fpToSiInst->replaceAllUsesWith(truncInst);
+		fpToSiInst->eraseFromParent();
+		return;
+	}
+
+	// Otherwise, if the input is not already integer, try to match the standard fptosi/sitofp sequence.
 	for (User *U : fpToSiInst->users()) {
 		if (auto *siToFpInst = dyn_cast<SIToFPInst>(U)) {
 			llvm::errs() << "Detected fptosi/sitofp sequence:\n";
 			llvm::errs() << "  FPToSI: " << *fpToSiInst << "\n";
 			llvm::errs() << "  SIToFP: " << *siToFpInst << "\n";
 
-			// 假设你希望丢弃的位数为 FRAC_Q（例如 FRAC_Q 表示小数部分位数）
-			IRBuilder<> Builder(siToFpInst);
-
-			// fpToSiInst 的结果类型是整数，作为固定点值
-			Value *intVal = fpToSiInst;
-
-			// 生成算术右移指令，丢弃低 FRAC_Q 位
+			// Use the result of FPToSI (assumed to be the fixed-point representation) directly.
+			IRBuilder<> Builder(siToFpInst->getNextNode());
 			Value *truncInst = Builder.CreateAShr(
-			    intVal,
-			    ConstantInt::get(intVal->getType(), FRAC_Q),
-			    "trunc");
+				fpToSiInst,
+				ConstantInt::get(fpToSiInst->getType(), FRAC_Q),
+				"trunc");
+			llvm::errs() << "Created ASHR instruction: " << *truncInst << "\n";
 
-			llvm::errs() << "Replaced sequence with: " << *truncInst << "\n";
-
-			// 替换所有对 siToFpInst 的使用为 truncInst
 			siToFpInst->replaceAllUsesWith(truncInst);
-
-			// 删除原来的 FPToSI 和 SIToFP 指令
 			siToFpInst->eraseFromParent();
-			fpToSiInst->eraseFromParent();
-
+			if (fpToSiInst->use_empty()) {
+				fpToSiInst->eraseFromParent();
+			}
 			return;
 		}
 	}
 
-	// 如果没有匹配到这种模式，则可以继续做其他处理（或者直接保留原来的 FPToSI）
-	llvm::errs() << "No fptosi/sitofp sequence detected. Skipping optimization.\n";
+	llvm::errs() << "No matching pattern found for FPToSI optimization. Skipping.\n";
 }
+
+
 
 
 
