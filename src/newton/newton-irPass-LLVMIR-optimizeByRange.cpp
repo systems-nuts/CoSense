@@ -82,8 +82,11 @@ POSSIBILITY OF SUCH DAMAGE.
 
 
 using namespace llvm;
-#define FRAC_BASE (1 << maxPrecisionBits)
-#define BIT_WIDTH 32
+//#define FRAC_BASE (1 << maxPrecisionBits)
+#define FRAC_BASE (1 << MAX_PRECISION_BITS)
+
+
+#define BIT_WIDTH 16
 //#define IS_POINTER 1
 std::set<std::string> whitelist = {
     "MadgwickAHRSupdate",
@@ -803,15 +806,16 @@ irPassLLVMIROptimizeByRange(State * N, bool enableQuantization, bool enableOverl
 		}
 	}
 
-	int maxPrecisionBits = 0;
-	for (auto & typePrecisionBit : typePrecisionBits)
-	{
-		if (typePrecisionBit.second > maxPrecisionBits)
-		{
-			maxPrecisionBits = typePrecisionBit.second;
-		}
-	}
-
+//	int maxPrecisionBits = 0;
+	int maxPrecisionBits = MAX_PRECISION_BITS;
+//	for (auto & typePrecisionBit : typePrecisionBits)
+//	{
+//		if (typePrecisionBit.second > maxPrecisionBits)
+//		{
+//			maxPrecisionBits = typePrecisionBit.second;
+//		}
+//	}
+//
 	flexprint(N->Fe, N->Fm, N->Fpinfo, "maxPrecisionBits: %d\n", maxPrecisionBits);
 	flexprint(N->Fe, N->Fm, N->Fpinfo, "bitwidth: %d\n", BIT_WIDTH);
 
@@ -820,7 +824,6 @@ irPassLLVMIROptimizeByRange(State * N, bool enableQuantization, bool enableOverl
 	 */
 //	int BIT_WIDTH = 32;
 //	maxPrecisionBits = 16;
-	maxPrecisionBits = 16;
 
 	/*
 	 * get const global variables
@@ -1060,7 +1063,7 @@ irPassLLVMIROptimizeByRange(State * N, bool enableQuantization, bool enableOverl
 //		 * */
 //		if (useOverLoad)
 //			cleanFunctionMap(Mod, callerMap);
-//
+//./
 //		if (useOverLoad)
 //			overloadFunc(Mod, callerMap);
 

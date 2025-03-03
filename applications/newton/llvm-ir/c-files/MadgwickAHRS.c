@@ -26,6 +26,16 @@
 #define sampleFreq	128.0f		// sample frequency in Hz
 #define betaDef		0.1f		// 2 * proportional gain
 
+typedef float bmx055xAcceleration;
+typedef float bmx055yAcceleration;
+typedef float bmx055zAcceleration;
+typedef float bmx055xAngularRate;
+typedef float bmx055yAngularRate;
+typedef float bmx055zAngularRate;
+typedef float bmx055xMagneto;
+typedef float bmx055yMagneto;
+typedef float bmx055zMagneto;
+
 #ifndef lowerBound
 #define lowerBound -16
 #endif
@@ -65,7 +75,13 @@ float invSqrt(float x) {
 //---------------------------------------------------------------------------------------------------
 // AHRS algorithm update
 
-void MadgwickAHRSupdate(float gx, float gy, float gz, float ax, float ay, float az, float mx, float my, float mz,
+//void MadgwickAHRSupdate(float gx, float gy, float gz, float ax, float ay, float az, float mx, float my, float mz,
+//		   float* q0_ptr, float* q1_ptr, float* q2_ptr, float* q3_ptr) {
+
+void
+MadgwickAHRSupdate(bmx055xAngularRate gx, bmx055yAngularRate gy, bmx055zAngularRate gz,
+		   bmx055xAcceleration ax, bmx055yAcceleration ay, bmx055zAcceleration az,
+		   bmx055xMagneto mx, bmx055yMagneto my, bmx055zMagneto mz,
 		   float* q0_ptr, float* q1_ptr, float* q2_ptr, float* q3_ptr) {
 	float q0 = *q0_ptr;
 	float q1 = *q1_ptr;
@@ -74,7 +90,7 @@ void MadgwickAHRSupdate(float gx, float gy, float gz, float ax, float ay, float 
 #ifdef ASSUME
 	__builtin_assume(ax > lowerBound && ax < upperBound);
 	__builtin_assume(ay > lowerBound && ay < upperBound);
-	__builtin_assume(az > lowerBound && az < upperBound);
+	__builtin_assume(az > lowerBound && az < upperBound);b
 #endif
 	float recipNorm;
 	float s0, s1, s2, s3;
@@ -93,6 +109,9 @@ void MadgwickAHRSupdate(float gx, float gy, float gz, float ax, float ay, float 
 	qDot2 = 0.5f * (q0 * gx + q2 * gz - q3 * gy);
 	qDot3 = 0.5f * (q0 * gy - q1 * gz + q3 * gx);
 	qDot4 = 0.5f * (q0 * gz + q1 * gy - q2 * gx);
+
+
+
 
 	// Compute feedback only if accelerometer measurement valid (avoids NaN in accelerometer normalisation)
 	if(!((ax == 0.0f) && (ay == 0.0f) && (az == 0.0f))) {
@@ -135,7 +154,7 @@ void MadgwickAHRSupdate(float gx, float gy, float gz, float ax, float ay, float 
 		// Reference direction of Earth's magnetic field
 		hx = mx * q0q0 - _2q0my * q3 + _2q0mz * q2 + mx * q1q1 + _2q1 * my * q2 + _2q1 * mz * q3 - mx * q2q2 - mx * q3q3;
 		hy = _2q0mx * q3 + my * q0q0 - _2q0mz * q1 + _2q1mx * q2 - my * q1q1 + my * q2q2 + _2q2 * mz * q3 - my * q3q3;
-		_2bx = sqrt(hx * hx + hy * hy);
+		_2bx = sqrtf(hx * hx + hy * hy);
 		_2bz = -_2q0mx * q2 + _2q0my * q1 + mz * q0q0 + _2q1mx * q3 - mz * q1q1 + _2q2 * my * q3 - mz * q2q2 + mz * q3q3;
 		_4bx = 2.0f * _2bx;
 		_4bz = 2.0f * _2bz;
@@ -189,7 +208,10 @@ void MadgwickAHRSupdate(float gx, float gy, float gz, float ax, float ay, float 
 //---------------------------------------------------------------------------------------------------
 // IMU algorithm update
 
-void MadgwickAHRSupdateIMU(float gx, float gy, float gz, float ax, float ay, float az,
+
+void
+MadgwickAHRSupdateIMU(bmx055xAngularRate gx, bmx055yAngularRate gy, bmx055zAngularRate gz,
+		      bmx055xAcceleration ax, bmx055yAcceleration ay, bmx055zAcceleration az,
 		      float* q0_ptr, float* q1_ptr, float* q2_ptr, float* q3_ptr) {
 	float q0 = *q0_ptr;
 	float q1 = *q1_ptr;

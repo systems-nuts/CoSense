@@ -23,8 +23,10 @@
 //---------------------------------------------------------------------------------------------------
 // Function declarations
 
-void MahonyAHRSupdate(float gx, float gy, float gz, float ax, float ay, float az, float mx, float my, float mz);
-void MahonyAHRSupdateIMU(float gx, float gy, float gz, float ax, float ay, float az);
+void MahonyAHRSupdate(float gx, float gy, float gz, float ax, float ay, float az, float mx, float my, float mz,
+		      			float* q0_ptr, float* q1_ptr, float* q2_ptr, float* q3_ptr);
+void MahonyAHRSupdateIMU(float gx, float gy, float gz, float ax, float ay, float az,
+		      			float* q0_ptr, float* q1_ptr, float* q2_ptr, float* q3_ptr);
 
 #endif
 //=====================================================================================================

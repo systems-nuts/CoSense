@@ -17,7 +17,7 @@ using namespace llvm;
 unsigned int FRAC_Q;
 
 #define FRAC_BASE (1 << FRAC_Q)
-#define BIT_WIDTH 32
+#define BIT_WIDTH 16
 
 llvm::Value *
 performFixedPointMul(llvm::IRBuilder<> & Builder, llvm::Value * lhs, llvm::Value * rhs, unsigned int FRAC_Q)
@@ -359,7 +359,8 @@ shouldProcessFunction(Function & F)
 	    "qzero",
 	    "pone",
 	    "qone",
-	    "__ieee754_exp"
+	    "__ieee754_exp",
+	    "twofft"
 //	    "__ieee754_log",
 	};
 
@@ -858,7 +859,8 @@ handleLoad(Instruction * llvmIrInstruction, Type * quantizedType)
 			    parentFunc->getName() == "pone" ||
 			    parentFunc->getName() == "qone" ||
 			    parentFunc->getName() == "__ieee754_exp"||
-			    parentFunc->getName() == "__ieee754_log")
+			    parentFunc->getName() == "__ieee754_log"||
+			    parentFunc->getName() == "twofft")
 			// ...
 
 			{
@@ -1517,13 +1519,20 @@ void handlePhi(Instruction *inInstruction, Type *quantizedType) {
 		return;
 	}
 
+	// If the PHI node is already of an integer type, skip quantization.
+	if (phi->getType()->isIntegerTy()) {
+		llvm::errs() << "PHI node already has an integer type, skipping quantization: " << *phi << "\n";
+		return;
+	}
+
 	// Check if the PHI node is of pointer type.
 	bool isPtr = phi->getType()->isPointerTy();
 	unsigned pointerAddr = 0;
 	if (isPtr)
 		pointerAddr = phi->getType()->getPointerAddressSpace();
 
-	// Determine new PHI node type.
+	// Determine new PHI node type: if pointer, then quantizedType->getPointerTo(pointerAddr);
+	// otherwise, simply quantizedType.
 	Type *newPhiType = isPtr ? quantizedType->getPointerTo(pointerAddr) : quantizedType;
 	PHINode *newPhi = PHINode::Create(newPhiType, phi->getNumIncomingValues(),
 					       phi->getName() + ".quantized", phi);
@@ -1556,10 +1565,10 @@ void handlePhi(Instruction *inInstruction, Type *quantizedType) {
 					}
 
 					if (!constFp->getValueAPF().isNegative()) {
-						llvm::errs() << "Detected positive infinity, mapping to max integer.\n";
+						llvm::errs() << "Detected positive infinity, mapping to maximum integer.\n";
 						newVal = llvm::ConstantInt::get(quantizedType, maxVal, true);
 					} else {
-						llvm::errs() << "Detected negative infinity, mapping to min integer.\n";
+						llvm::errs() << "Detected negative infinity, mapping to minimum integer.\n";
 						newVal = llvm::ConstantInt::get(quantizedType, minVal, true);
 					}
 				} else {
@@ -1591,6 +1600,7 @@ void handlePhi(Instruction *inInstruction, Type *quantizedType) {
 	phi->eraseFromParent();
 	llvm::errs() << "Finished handling PHI: " << *newPhi << "\n";
 }
+
 
 
 //void handlePhi(Instruction *inInstruction, Type *quantizedType)

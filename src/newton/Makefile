@@ -1,5 +1,9 @@
 TREEROOT	= ../..
 
+ifndef MAX_PRECISION_BITS
+MAX_PRECISION_BITS = 16
+endif
+
 include		$(TREEROOT)/config.local
 
 PRECOMMITHOOK = precommitStatisticsHook-$(OSTYPE).sh
@@ -25,6 +29,11 @@ EXAMPLES_NEWTON_FLAGS = -v 2 -p#--verbose 1
 CXXFLAGS	= $(PLATFORM_DBGFLAGS) $(PLATFORM_CFLAGS) $(PLATFORM_DFLAGS) $(PLATFORM_OPTFLAGS)
 CCFLAGS		= $(PLATFORM_DBGFLAGS) $(PLATFORM_CFLAGS) $(PLATFORM_DFLAGS) $(PLATFORM_OPTFLAGS)
 LDFLAGS 	= $(PLATFORM_DBGFLAGS) -lm $(PLATFORM_LFLAGS) `pkg-config --libs 'libprotobuf-c >= 1.0.0'`
+
+CCFLAGS += -DMAX_PRECISION_BITS=$(MAX_PRECISION_BITS)
+CXXFLAGS += -DMAX_PRECISION_BITS=$(MAX_PRECISION_BITS)
+
+
 
 CCFLAGS+=$(shell $(LLVM_CONFIG) --cflags)
 LDFLAGS+=$(shell $(LLVM_CONFIG) --ldflags)
@@ -327,6 +336,10 @@ cgi:lib$(LIBNEWTON)-$(OSTYPE)-$(NEWTON_L10N).a $(CGIOBJS) $(CONFIGPATH)/config.$
 	$(LD) $(LINKDIRS) $(LDFLAGS) $(CGIOBJS) $(LLVMLIBS) $(SYSTEMLIBS) -lflex-$(OSTYPE) $(LINKDIRS) $(LDFLAGS) -o $(CGI_TARGET) -lstdc++
 
 
+
+maxprec.cfg:
+	@echo $(MAX_PRECISION_BITS) > maxprec.cfg
+
 #
 #			Objects
 #
@@ -366,17 +379,26 @@ newton-irPass-LLVMIR-shrinkTypeByRange.$(OBJECTEXTENSION): newton-irPass-LLVMIR-
 	$(CXX) $(FLEXFLAGS) $(INCDIRS) $(CXXFLAGS) $(WFLAGS) $(OPTFLAGS) $(LINTFLAGS) $<
 	$(CXX) $(FLEXFLAGS) $(INCDIRS) $(CXXFLAGS) $(WFLAGS) $(OPTFLAGS) $<
 
-newton-irPass-LLVMIR-quantization.$(OBJECTEXTENSION): newton-irPass-LLVMIR-quantization.cpp
+newton-irPass-LLVMIR-quantization.$(OBJECTEXTENSION): newton-irPass-LLVMIR-quantization.cpp maxprec.cfg
 	$(CXX) $(FLEXFLAGS) $(INCDIRS) $(CXXFLAGS) $(WFLAGS) $(OPTFLAGS) $(LINTFLAGS) $<
 	$(CXX) $(FLEXFLAGS) $(INCDIRS) $(CXXFLAGS) $(WFLAGS) $(OPTFLAGS) $<
 
-newton-irPass-LLVMIR-memoryAlignment.$(OBJECTEXTENSION): newton-irPass-LLVMIR-memoryAlignment.cpp
+newton-irPass-LLVMIR-memoryAlignment.$(OBJECTEXTENSION): newton-irPass-LLVMIR-memoryAlignment.cpp maxprec.cfg
 	$(CXX) $(FLEXFLAGS) $(INCDIRS) $(CXXFLAGS) $(WFLAGS) $(OPTFLAGS) $(LINTFLAGS) $<
 	$(CXX) $(FLEXFLAGS) $(INCDIRS) $(CXXFLAGS) $(WFLAGS) $(OPTFLAGS) $<
+
+
 
 newton-irPass-LLVMIR-emitAssume.$(OBJECTEXTENSION): newton-irPass-LLVMIR-emitAssume.cpp
 	$(CXX) $(FLEXFLAGS) $(INCDIRS) $(CXXFLAGS) $(WFLAGS) $(OPTFLAGS) $(LINTFLAGS) $<
 	$(CXX) $(FLEXFLAGS) $(INCDIRS) $(CXXFLAGS) $(WFLAGS) $(OPTFLAGS) $<
+
+
+.PHONY: rebuild-quant-opt
+
+rebuild-quant-opt:
+	rm -f newton-irPass-LLVMIR-quantization.$(OBJECTEXTENSION) newton-irPass-LLVMIR-optimizeByRange.$(OBJECTEXTENSION)
+	$(MAKE) newton-irPass-LLVMIR-quantization.$(OBJECTEXTENSION) newton-irPass-LLVMIR-optimizeByRange.$(OBJECTEXTENSION)
 
 version.c: $(HEADERS) Makefile
 	echo 'char kNewtonVersion[] = "0.3-alpha-'`git rev-list --count HEAD`' ('`git rev-parse HEAD`') (build '`date '+%m-%d-%Y-%H:%M'`-`whoami`@`hostname -s`-`uname -s`-`uname -r`-`uname -m`\)\"\; > version.c
