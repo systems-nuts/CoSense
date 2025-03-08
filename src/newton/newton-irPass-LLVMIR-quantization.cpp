@@ -17,7 +17,7 @@ using namespace llvm;
 unsigned int FRAC_Q;
 
 #define FRAC_BASE (1 << FRAC_Q)
-#define BIT_WIDTH 16
+
 
 llvm::Value *
 performFixedPointMul(llvm::IRBuilder<> & Builder, llvm::Value * lhs, llvm::Value * rhs, unsigned int FRAC_Q)
@@ -340,8 +340,9 @@ bool
 isWhitelistedGlobal(const std::string & globalName)
 {
 	// Define the whitelist of global variables
-	static const std::set<std::string> whitelist = {"beta", "qw", "qx", "qy", "qz","zero","q0","q1","q2","q3"};
-	return whitelist.find(globalName) != whitelist.end();
+//	static const std::set<std::string> whitelist = {"beta", "qw", "qx", "qy", "qz","zero","q0","q1","q2","q3"};
+//	return whitelist.find(globalName) != whitelist.end();
+	return true;
 }
 
 bool
@@ -352,6 +353,8 @@ shouldProcessFunction(Function & F)
 	    "sensfusion6UpdateQImpl",
 	    "MadgwickAHRSupdate",
 	    "MadgwickAHRSupdateIMU",
+	    "MahonyAHRSupdate",
+	    "MahonyAHRSupdateIMU",
 	    "matrixMul",
 	    "matrixAdd",
 	    "matrixSub",

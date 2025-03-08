@@ -58,38 +58,46 @@ def calculate_rms_errors(fp_data, int_data):
 
     return rms_q0, rms_q1, rms_q2, rms_q3, rms_overall, avg_rms
 
-def compute_snr(fp_data, int_data, assume_signal_power=1.0):
+def compute_signal_power(data):
     """
-    Calculate SNR (in dB). Assumes:
-    1) The original signal power = assume_signal_power (default 1)
-    2) Noise power = (RMS Error)^2 (overall RMS)
-    """
-    _, _, _, _, rms_overall, _ = calculate_rms_errors(fp_data, int_data)
-    p_noise = rms_overall ** 2
-    p_signal = assume_signal_power
-    if p_noise == 0:
-        return float('inf')
-    snr_db = 10 * math.log10(p_signal / p_noise)
-    return snr_db
-
-def compute_real_signal_power(fp_data):
-    """
-    If you want to compute the real signal power from FP data.
-    P_signal = mean( q0^2 + q1^2 + q2^2 + q3^2 ) over the dataset.
+    Calculate signal power, P_signal = mean(q0^2 + q1^2 + q2^2 + q3^2)
     """
     total = 0.0
-    for fp in fp_data:
-        q0, q1, q2, q3 = fp
+    for quaternion in data:
+        q0, q1, q2, q3 = quaternion
         total += (q0**2 + q1**2 + q2**2 + q3**2)
-    return total / len(fp_data)
+    return total / len(data)
+
+def compute_sqnr(fp_data, int_data):
+    """
+    Calculate Signal-to-Quantization-Noise Ratio (SQNR).
+    Uses floating-point data as the reference signal and quantization error as noise.
+    SQNR = 10 * log10(signal_power / noise_power)
+    """
+    # Calculate noise power (mean squared quantization error)
+    _, _, _, _, rms_overall, _ = calculate_rms_errors(fp_data, int_data)
+    noise_power = rms_overall ** 2
+
+    # Calculate signal power (using floating-point data)
+    signal_power = compute_signal_power(fp_data)
+
+    # Handle division by zero case
+    if noise_power == 0:
+        return float('inf')
+
+    # Calculate SQNR in dB
+    sqnr_db = 10 * math.log10(signal_power / noise_power)
+    return sqnr_db
 
 def main():
-    parser = argparse.ArgumentParser(description="Calculate RMS error and SNR for quaternion data.")
-    parser.add_argument("--filter", choices=["madgwick", "mahony"], default="madgwick",
-                        help="Select which algorithm's data to process (default: madgwick)")
+    parser = argparse.ArgumentParser(description="Calculate RMS errors and SQNR for quaternion data.")
+    parser.add_argument("--filter", choices=["MadgwickAHRS", "MahonyAHRS"], default="MadgwickAHRS",
+                        help="Select which algorithm's data to process (default: MadgwickAHRS)")
+    parser.add_argument("--limit", type=int, default=1000,
+                        help="Limit the number of data lines to process (default: 1000)")
     args = parser.parse_args()
 
-    if args.filter == "madgwick":
+    if args.filter == "MadgwickAHRS":
         fp_data = parse_data('fp_result.txt', 'Original: ')
         int_data = parse_data('int_result.txt', 'FIX: ')
     else:  # mahony
@@ -100,9 +108,12 @@ def main():
         print("Mismatch in the number of quaternions between files!")
         return
 
-    # Use only the first 50 data lines
-    fp_data = fp_data[:50]
-    int_data = int_data[:50]
+    # Use specified number of data lines
+    data_limit = min(args.limit, len(fp_data)) if args.limit > 0 else len(fp_data)
+    fp_data = fp_data[:data_limit]
+    int_data = int_data[:data_limit]
+
+    print(f"Processing {len(fp_data)} lines of data...")
 
     # Calculate RMS errors
     rms_q0, rms_q1, rms_q2, rms_q3, rms_overall, avg_rms = calculate_rms_errors(fp_data, int_data)
@@ -113,17 +124,23 @@ def main():
     print(f"Overall RMS Error: {rms_overall:.6f}")
     print(f"Average of RMS Values: {avg_rms:.6f}")
 
-    # Calculate SNR (assuming original signal power = 1)
-    snr_db = compute_snr(fp_data, int_data, assume_signal_power=1.0)
-    print(f"SNR (dB) [Assume P_signal=1]: {snr_db:.2f}")
+    # Calculate SQNR
+    sqnr_db = compute_sqnr(fp_data, int_data)
+    print(f"SQNR (dB): {sqnr_db:.2f}")
 
-    # For debugging: print first line error values if needed
-    first_fp = fp_data[0]
-    first_int = int_data[0]
-    first_error = [first_fp[i] - first_int[i] for i in range(4)]
-    print(f"First line FP: {first_fp}")
-    print(f"First line INT: {first_int}")
-    print(f"First line errors (q0, q1, q2, q3): {first_error}")
+    # Calculate signal power (for debugging)
+    signal_power = compute_signal_power(fp_data)
+    print(f"Signal Power: {signal_power:.6f}")
+
+    # Debug info: print first line error values
+    if len(fp_data) > 0:
+        first_fp = fp_data[0]
+        first_int = int_data[0]
+        first_error = [first_fp[i] - first_int[i] for i in range(4)]
+        print("\nDebug Information:")
+        print(f"First line FP: {first_fp}")
+        print(f"First line INT: {first_int}")
+        print(f"First line errors (q0, q1, q2, q3): {first_error}")
 
 if __name__ == "__main__":
     main()

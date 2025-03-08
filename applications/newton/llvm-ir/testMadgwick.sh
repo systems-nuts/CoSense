@@ -4,6 +4,7 @@
 
 # Set the algorithm name based on the first command-line argument, default to MadgwickAHRS
 ALGO=${1:-MadgwickAHRS}
+ALGO=${1:-MahonyAHRS}
 
 # Validate the input (optional)
 if [[ "$ALGO" != "MadgwickAHRS" && "$ALGO" != "MahonyAHRS" ]]; then
