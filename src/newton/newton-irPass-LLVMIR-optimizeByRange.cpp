@@ -79,7 +79,7 @@ POSSIBILITY OF SUCH DAMAGE.
 
 #include <unordered_map>
 #include <set>
-
+#include <limits>
 
 using namespace llvm;
 //#define FRAC_BASE (1 << maxPrecisionBits)
@@ -617,6 +617,11 @@ removeQuantizedSuffixInModule(llvm::Module & M)
 	}
 }
 
+double computeResolution(Modality *mod)
+{
+	return (mod->rangeUpperBound - mod->rangeLowerBound) / (1 << mod->precisionBits);
+}
+
 void
 dumpIR(State * N, std::string fileSuffix, const std::unique_ptr<Module> & Mod)
 {
@@ -824,6 +829,8 @@ irPassLLVMIROptimizeByRange(State * N, bool enableQuantization, bool enableOverl
 			flexprint(N->Fe, N->Fm, N->Fpinfo, "\t\trangeLowerBound: %f\n", currentModality->rangeLowerBound);
 			flexprint(N->Fe, N->Fm, N->Fpinfo, "\t\trangeUpperBound: %f\n", currentModality->rangeUpperBound);
 			typeRange.emplace(currentModality->identifier, std::make_pair(currentModality->rangeLowerBound, currentModality->rangeUpperBound));
+			double resolution = computeResolution(currentModality);
+			flexprint(N->Fe, N->Fm, N->Fpinfo, "\t\tresolution: %.10f\n", resolution);
 		}
 	}
 
@@ -838,6 +845,9 @@ irPassLLVMIROptimizeByRange(State * N, bool enableQuantization, bool enableOverl
 			flexprint(N->Fe, N->Fm, N->Fpinfo, "\tModality: %s\n", currentModality->identifier);
 			flexprint(N->Fe, N->Fm, N->Fpinfo, "\t\tprecisionBits: %d\n", currentModality->precisionBits);
 			typePrecisionBits.emplace(currentModality->identifier, currentModality->precisionBits);
+
+			//resolution
+
 		}
 	}
 
@@ -851,6 +861,50 @@ irPassLLVMIROptimizeByRange(State * N, bool enableQuantization, bool enableOverl
 //		}
 //	}
 //
+	double minResolution = 0.0;
+	bool isFirstSensor = true;
+
+	for (Modality* currentModality = N->sensorList->modalityList; currentModality != NULL; currentModality = currentModality->next) {
+		// Calculate resolution
+		double resolution = (currentModality->rangeUpperBound - currentModality->rangeLowerBound) /
+				    (1 << currentModality->precisionBits);
+
+		// Store and print
+		currentModality->resolution = resolution;
+
+		// Initialize or compare for minimum
+		if (isFirstSensor) {
+			minResolution = resolution;
+			isFirstSensor = false;
+		} else if (resolution < minResolution) {
+			minResolution = resolution;
+		}
+	}
+
+	// Only print if we had at least one sensor
+	if (!isFirstSensor) {
+		flexprint(N->Fe, N->Fm, N->Fpinfo, "Minimum resolution across all sensors: %f\n", minResolution);
+	} else {
+		flexprint(N->Fe, N->Fm, N->Fpinfo, "No sensors found to calculate minimum resolution\n");
+	}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 	flexprint(N->Fe, N->Fm, N->Fpinfo, "maxPrecisionBits: %d\n", maxPrecisionBits);
 	flexprint(N->Fe, N->Fm, N->Fpinfo, "bitwidth: %d\n", BIT_WIDTH);
 

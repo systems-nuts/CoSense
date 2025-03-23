@@ -161,9 +161,9 @@ bmx055: sensor (
 	#
 	#	Range of Angular Rate can be found in Table 3 on page 14.
 	#
-	range bmx055xAngularRate == [0 ajf, 2000 ajf],
-	range bmx055yAngularRate == [0 ajf, 2000 ajf],
-	range bmx055zAngularRate == [0 ajf, 2000 ajf],
+	range bmx055xAngularRate == [-2000 ajf, 2000 ajf],
+	range bmx055yAngularRate == [-2000 ajf, 2000 ajf],
+	range bmx055zAngularRate == [-2000 ajf, 2000 ajf],
 
 	#
 	#	The operation sequence needed to get a sample
@@ -196,7 +196,7 @@ bmx055: sensor (
 		yAccelLow := read 16r04;
 		bmx055yAcceleration = (yAccelHigh << 4) | (yAccelLow >> 4);
 		# bmx055yAcceleration = yAccelHigh[:4] + yAccelLow[4:];
-	},
+	},# @sensitivity bmx055xAcceleration = 1024 LSB/g
 
 	interface bmx055zAcceleration == i2c (address: 16r18)
 	{
@@ -390,6 +390,11 @@ bmx055: sensor (
 	precision bmx055zAngularRate == {
 					(16, -1)
 				},
+
+
+	# @sensitivity bmx055xAcceleration = 1024 LSB/g
+
+
 
 	#
 	#	Accuracy settings list for the sensor. This is a list of (accuracy, cost) pairs.
