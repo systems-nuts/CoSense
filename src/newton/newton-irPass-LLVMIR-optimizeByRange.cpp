@@ -85,8 +85,43 @@ using namespace llvm;
 //#define FRAC_BASE (1 << maxPrecisionBits)
 #define FRAC_BASE (1 << MAX_PRECISION_BITS)
 
+void checkOverflow(State * N, BoundInfo * boundInfo, int FRAC_Q) {
+	int maxVal, minVal;
+	if (BIT_WIDTH == 16) {
+		maxVal = INT16_MAX;
+		minVal = INT16_MIN;
+	} else if (BIT_WIDTH == 32) {
+		maxVal = INT32_MAX;
+		minVal = INT32_MIN;
+	} else {
+		flexprint(N->Fe, N->Fm, N->Fperr, "Unsupported BIT_WIDTH: %d\n", BIT_WIDTH);
+		return;
+	}
 
-#define BIT_WIDTH 16
+	for (const auto& entry : boundInfo->virtualRegisterRange) {
+		double scaledMin = entry.second.first * FRAC_BASE;
+		double scaledMax = entry.second.second * FRAC_BASE;
+
+		std::string instStr = "unknown";
+		if (Instruction* inst = dyn_cast<Instruction>(entry.first)) {
+			instStr = inst->getOpcodeName();
+		}
+
+		if ((scaledMin > maxVal && scaledMax > maxVal) || (scaledMin < minVal && scaledMax < minVal)) {
+			flexprint(N->Fe, N->Fm, N->Fperr,
+				  "Definite overflow detected: %s range [%f, %f] when scaled by 2^%d is completely outside int%d bounds\n",
+				  instStr.c_str(), entry.second.first, entry.second.second,
+				  FRAC_Q, BIT_WIDTH);
+		}
+		else if (scaledMax > maxVal || scaledMin < minVal) {
+			flexprint(N->Fe, N->Fm, N->Fperr,
+				  "Possible overflow detected: %s range [%f, %f] when scaled by 2^%d partially exceeds int%d bounds\n",
+				  instStr.c_str(), entry.second.first, entry.second.second,
+				  FRAC_Q, BIT_WIDTH);
+		}
+	}
+}
+
 //#define IS_POINTER 1
 std::set<std::string> whitelist = {
     "MadgwickAHRSupdate",
@@ -907,23 +942,39 @@ irPassLLVMIROptimizeByRange(State * N, bool enableQuantization, bool enableOverl
 
 
 
-//		/*
-//		 * analyze the range of all local variables in each function
-//		 * */
-//		flexprint(N->Fe, N->Fm, N->Fpinfo, "infer bound\n");
-//		std::map<std::string, CallInst *> callerMap;
-//		callerMap.clear();
-//		funcBoundInfo.clear();
-//		bool useOverLoad = false;
-//		for (auto & mi : *Mod)
-//		{
-//			auto boundInfo = new BoundInfo();
-//			mergeBoundInfo(boundInfo, globalBoundInfo);
-//			rangeAnalysis(N, mi, boundInfo, callerMap, typeRange, virtualRegisterVectorRange, useOverLoad);
-//			funcBoundInfo.emplace(mi.getName().str(), boundInfo);
-//			std::vector<std::string> calleeNames;
-//			collectCalleeInfo(calleeNames, funcBoundInfo, boundInfo);
-//		}
+		/*
+		 * analyze the range of all local variables in each function
+		 * */
+		flexprint(N->Fe, N->Fm, N->Fpinfo, "infer bound\n");
+		std::map<std::string, CallInst *> callerMap;
+		callerMap.clear();
+		funcBoundInfo.clear();
+		bool useOverLoad = false;
+		for (auto & mi : *Mod)
+		{
+			auto boundInfo = new BoundInfo();
+			mergeBoundInfo(boundInfo, globalBoundInfo);
+			rangeAnalysis(N, mi, boundInfo, callerMap, typeRange, virtualRegisterVectorRange, useOverLoad);
+			funcBoundInfo.emplace(mi.getName().str(), boundInfo);
+			std::vector<std::string> calleeNames;
+			collectCalleeInfo(calleeNames, funcBoundInfo, boundInfo);
+		}
+
+		/**
+		 * Check for potential overflows
+		 */
+		flexprint(N->Fe, N->Fm, N->Fpinfo, "checking for potential overflows\n");
+		for (auto & funcPair : funcBoundInfo) {
+			checkOverflow(N, funcPair.second, maxPrecisionBits);
+		}
+
+
+
+
+
+
+
+
 
 
 	//
@@ -958,6 +1009,33 @@ irPassLLVMIROptimizeByRange(State * N, bool enableQuantization, bool enableOverl
 				Mod->getFunctionList().push_front(mi);
 			}
 		}
+
+
+//		/*
+//		 * analyze the range of all local variables in each function
+//		 * */
+//		flexprint(N->Fe, N->Fm, N->Fpinfo, "infer bound\n");
+//		std::map<std::string, CallInst *> callerMap;
+//		callerMap.clear();
+//		funcBoundInfo.clear();
+//		bool useOverLoad = false;
+//		for (auto & mi : *Mod)
+//		{
+//			auto boundInfo = new BoundInfo();
+//			mergeBoundInfo(boundInfo, globalBoundInfo);
+//			rangeAnalysis(N, mi, boundInfo, callerMap, typeRange, virtualRegisterVectorRange, useOverLoad);
+//			funcBoundInfo.emplace(mi.getName().str(), boundInfo);
+//			std::vector<std::string> calleeNames;
+//			collectCalleeInfo(calleeNames, funcBoundInfo, boundInfo);
+//		}
+//
+//		/**
+//		 * Check for potential overflows
+//		 */
+//		flexprint(N->Fe, N->Fm, N->Fpinfo, "checking for potential overflows\n");
+//		for (auto & funcPair : funcBoundInfo) {
+//			checkOverflow(N, funcPair.second, maxPrecisionBits);
+//		}
 	//
 //		flexprint(N->Fe, N->Fm, N->Fpinfo, "memory alignment\n");
 //		for (auto & mi : *Mod)

@@ -642,52 +642,7 @@ handleGEPInstruction(llvm::GetElementPtrInst * gep,
 	llvm::errs() << "Replaced GEP instruction for " << origConst.getName() << "\n";
 }
 
-// 主函数：遍历 origConst 的所有使用，在白名单函数中替换为量化后的全局变量
-//void
-//replaceInternalConstantUses(Module *	     module,
-//			    GlobalVariable & origConst,
-//			    GlobalVariable & quantizedConst)
-//{
-//	std::vector<Use *> usesToReplace;
-//
-//	for (auto it = origConst.use_begin(), end = origConst.use_end(); it != end;)
-//	{
-//		Use &	use  = *it++;
-//		Value * user = use.getUser();
-//
-//		// 如果用户是 ConstantExpr
-//		if (ConstantExpr * constExpr = dyn_cast<ConstantExpr>(user))
-//		{
-//			handleConstantExprUse(constExpr, origConst, quantizedConst);
-//			continue;
-//		}
-//
-//		// 如果用户是指令，且所在函数在白名单中
-//		Instruction * inst = dyn_cast<Instruction>(user);
-//		if (!inst || !inst->getFunction() || !shouldProcessFunction(*inst->getFunction()))
-//			continue;
-//
-//		// 如果该指令是 GEP，并且结果类型为 double*，则进行替换
-//		if (GetElementPtrInst * gep = dyn_cast<GetElementPtrInst>(inst))
-//		{
-//			if (gep->getResultElementType()->isDoubleTy())
-//			{
-//				handleGEPInstruction(gep, origConst, quantizedConst);
-//				continue;  // 该 GEP 指令已经被替换，不需要再添加到 usesToReplace
-//			}
-//		}
-//		// 其他情况，将该 use 加入待统一替换列表
-//		usesToReplace.push_back(&use);
-//	}
-//
-//	// 对剩余未处理的使用，统一替换为量化后的全局变量
-//	for (Use * use : usesToReplace)
-//		use->set(&quantizedConst);
-//
-//	errs() << "Replaced all uses of " << origConst.getName()
-//	       << " with " << quantizedConst.getName()
-//	       << " in whitelisted functions.\n";
-//}
+
 
 void
 replaceInternalConstantUses(llvm::Module *module,
@@ -808,6 +763,31 @@ quantizePointer(LoadInst * loadInst, IRBuilder<> & Builder, Type * quantizedType
 
 	llvm::errs() << "Replaced load with quantized integer value.\n";
 }
+
+//void
+//quantizePointer(LoadInst * loadInst, IRBuilder<> & Builder, Type * quantizedType, Type * loadedType)
+//{
+//	Value * pointerOperand = loadInst->getPointerOperand();
+//	llvm::errs() << "Quantizing load from local pointer: " << *pointerOperand << "\n";
+//
+//
+//	Value * loadedValue = Builder.CreateLoad(loadedType, pointerOperand, loadInst->getName() + ".p");
+//
+//
+//	Value * scaledValue = Builder.CreateFMul(loadedValue, ConstantFP::get(loadedType, FRAC_BASE), loadInst->getName() + ".scaled_ptr");
+//
+//
+//	Value * roundingOffset = ConstantFP::get(loadedType, 0.5);
+//	Value * roundedValue = Builder.CreateFAdd(scaledValue, roundingOffset, loadInst->getName() + ".rounded_ptr");
+//
+//	Value * quantizedValue = Builder.CreateFPToSI(roundedValue, quantizedType, loadInst->getName() + ".quantized_ptr");
+//
+//	loadInst->replaceAllUsesWith(quantizedValue);
+//	loadInst->eraseFromParent();
+//
+//	llvm::errs() << "Replaced load with quantized integer value with rounding.\n";
+//}
+
 void
 quantizeMatrixFloat(LoadInst * loadInst, IRBuilder<> & Builder, Type * quantizedType, Type * loadedType)
 {
@@ -1295,7 +1275,9 @@ checkAndSimplifyForConstant(ConstantFP * constFP, Value * otherOperand, Instruct
 	    {2.0, {1, false}},
 	    {4.0, {2, false}},
 	    {8.0, {3, false}},
-	    {1 / 128.0, {7, true}}};
+	    {1 / 128.0, {7, true}},
+	    {1 / 256.0, {8, true}},
+	    {1 / 512.0, {9, true}}};
 	double value = constFP->getValueAPF().convertToDouble();
 	auto   it    = constantsMap.find(value);
 	if (it != constantsMap.end())
@@ -1307,6 +1289,7 @@ checkAndSimplifyForConstant(ConstantFP * constFP, Value * otherOperand, Instruct
 	}
 	return false;
 }
+
 
 void
 handleFMul(Instruction * llvmIrInstruction, Type * quantizedType)
