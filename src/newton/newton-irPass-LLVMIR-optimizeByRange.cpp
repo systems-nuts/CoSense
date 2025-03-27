@@ -342,13 +342,11 @@ handleMatrixStore(StoreInst * storeInst, IRBuilder<> & Builder, int maxPrecision
 void
 handleReturnValue(ReturnInst * retInst, int maxPrecisionBits)
 {
-	// 如果返回指令没有返回值，则不处理
 	if (!retInst->getReturnValue())
 		return;
 
 	Value * retVal = retInst->getReturnValue();
 
-	// 如果返回值不是整数类型，则不做反量化处理
 	if (!retVal->getType()->isIntegerTy())
 	{
 		errs() << "Return value is not integer type, skipping dequantization.\n";
@@ -358,19 +356,13 @@ handleReturnValue(ReturnInst * retInst, int maxPrecisionBits)
 	IRBuilder<> Builder(retInst);
 	Type *	    targetType = Type::getDoubleTy(retInst->getContext());
 
-	// 将固定点整数转换为浮点数（double）
 	Value * fpVal = Builder.CreateSIToFP(retVal, targetType);
 
-	// 创建常量 1/FRAC_BASE，注意用 llvm::ConstantFP 避免歧义
 	llvm::Constant * oneDivFrac = llvm::ConstantFP::get(targetType, 1.0 / FRAC_BASE);
 
-	// 计算反量化结果：fpVal * (1/FRAC_BASE)
 	Value * dequantizedVal = Builder.CreateFMul(fpVal, oneDivFrac);
-
-	// 构造新的返回指令，返回 dequantizedVal（double 类型）
 	ReturnInst * newRet = ReturnInst::Create(retInst->getContext(), dequantizedVal, retInst);
 
-	// 删除原有返回指令
 	retInst->eraseFromParent();
 
 	errs() << "Replaced return with dequantized value: " << *newRet << "\n";
@@ -465,9 +457,7 @@ detectFloatingPointOps(Module & Mod)
 				    I.getOpcode() == Instruction::FDiv)
 				{
 					hasFloatOps = true;
-					functionFloatOpCount++;	 // Increment the counter for this function
-								 //					llvm::errs() << "Detected floating-point operation in function: "
-								 //						     << F.getName() << " - Instruction: " << I << "\n";
+					functionFloatOpCount++;
 				}
 
 				// Check if the instruction is a return
@@ -580,21 +570,18 @@ checkFPUAvailability(Module & Mod)
 void
 processWhitelistedFunctions(Module & module, const std::set<std::string> & whitelist, int maxPrecisionBits)
 {
-	// 对于白名单中的函数，我们先遍历，收集所有需要处理的返回指令
 	for (Function & F : module)
 	{
 		if (whitelist.find(F.getName().str()) != whitelist.end())
 		{
 			llvm::errs() << "Found whitelisted function: " << F.getName() << "\n";
 			std::vector<ReturnInst *> retWorkList;
-			// 遍历函数基本块，并将所有返回指令收集到 retWorkList 中
 			for (BasicBlock & BB : F)
 			{
 				for (Instruction & I : BB)
 				{
 					if (ReturnInst * retInst = dyn_cast<ReturnInst>(&I))
 					{
-						// 仅处理返回值存在且为整数类型的返回指令
 						if (retInst->getReturnValue() && retInst->getReturnValue()->getType()->isIntegerTy())
 						{
 							retWorkList.push_back(retInst);
@@ -602,13 +589,11 @@ processWhitelistedFunctions(Module & module, const std::set<std::string> & white
 					}
 				}
 			}
-			// 依次处理收集到的返回指令
 			for (ReturnInst * retInst : retWorkList)
 			{
 				handleReturnValue(retInst, maxPrecisionBits);
 			}
 
-			// 同时继续处理其他指令，例如 StoreInst（这部分你已有代码）
 			for (BasicBlock & BB : F)
 			{
 				for (Instruction & I : BB)

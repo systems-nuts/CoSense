@@ -128,67 +128,7 @@ createFixSqrt(llvm::Module * irModule, Type * quantizedType, std::vector<llvm::F
 	return func;
 }
 
-// TODO 64 bit version of fixmul
 
-// llvm::Function *
-// createFixMul(Module * irModule, Type * quantizedType, std::vector<llvm::Function *> & functionsToInsert)
-//{
-//	llvm::errs() << "Entering createFixMul\n";
-//
-//	// Check if irModule is valid
-//	if (!irModule)
-//	{
-//		llvm::errs() << "Error: irModule is nullptr\n";
-//		return nullptr;
-//	}
-//
-//	std::string fixmulFuncName = "fixmul";
-//	for (auto & function : *irModule)
-//	{
-//		if (function.getName() == fixmulFuncName)
-//		{
-//			llvm::errs() << "fixmul already exists\n";
-//			return &function;
-//		}
-//	}
-//
-//	llvm::FunctionType * funcType = llvm::FunctionType::get(quantizedType, {quantizedType, quantizedType}, false);
-//	llvm::Function *     func     = llvm::Function::Create(funcType, llvm::Function::PrivateLinkage, fixmulFuncName, irModule);
-//
-//	llvm::BasicBlock * entryBB = llvm::BasicBlock::Create(irModule->getContext(), "entry", func);
-//	llvm::IRBuilder<>  builder(entryBB);
-//	builder.SetInsertPoint(entryBB);
-//
-//	// Create fixed-point multiplication instruction
-//	Type * higherQuantizedType;
-//	switch (BIT_WIDTH)
-//	{
-//		case 8:
-//			higherQuantizedType = Type::getInt16Ty(irModule->getContext());
-//			break;
-//		case 16:
-//			higherQuantizedType = Type::getInt32Ty(irModule->getContext());
-//			break;
-//		default:
-//			higherQuantizedType = Type::getInt64Ty(irModule->getContext());
-//			break;
-//	}
-//
-//	llvm::Function::arg_iterator arg1    = &*(func->arg_begin());
-//	llvm::Value *		     sext1   = builder.CreateSExt(arg1, higherQuantizedType);
-//	llvm::Function::arg_iterator arg2    = &*(++arg1);
-//	llvm::Value *		     sext2   = builder.CreateSExt(arg2, higherQuantizedType);
-//	llvm::Value *		     mulInst = builder.CreateNSWMul(sext1, sext2);
-//	// llvm::Value * mulInst	= builder.CreateMul(sext1, sext2);
-//	llvm::Value * ashrInst	= builder.CreateLShr(mulInst, ConstantInt::get(higherQuantizedType, FRAC_Q));
-//	llvm::Value * truncInst = builder.CreateTrunc(ashrInst, quantizedType);
-//	builder.CreateRet(truncInst);
-//
-//	functionsToInsert.emplace_back(func);
-//	llvm::errs() << "Created fixmul function: " << func->getName() << "\n";
-//	return func;
-// }
-//
 
 llvm::Function *
 createFixRsqrt(llvm::Module * irModule, llvm::Type * quantizedType, std::vector<llvm::Function *> & functionsToInsert)
@@ -628,15 +568,12 @@ handleGEPInstruction(llvm::GetElementPtrInst * gep,
 		     llvm::GlobalVariable &    quantizedConst)
 {
 	llvm::IRBuilder<> builder(gep);
-	// 直接使用量化后的全局变量，无需 bitcast
 	llvm::SmallVector<llvm::Value *, 4> Indices;
 	for (llvm::Value * idx : gep->indices())
 		Indices.push_back(idx);
-	// 重建 GEP：注意这里使用 quantizedConst 的类型（例如 [6 x i32]），因此 newGEP 的类型为 i32*
 	llvm::Value * newGEP = builder.CreateGEP(quantizedConst.getType()->getPointerElementType(),
 						 &quantizedConst, Indices,
 						 gep->getName() + ".quantized_gep");
-	// newGEP 应该直接就是你期望的类型，即 i32*
 	gep->replaceAllUsesWith(newGEP);
 	gep->eraseFromParent();
 	llvm::errs() << "Replaced GEP instruction for " << origConst.getName() << "\n";
@@ -656,7 +593,6 @@ replaceInternalConstantUses(llvm::Module *module,
 		llvm::Use &use = *it++;
 		llvm::Value *user = use.getUser();
 
-		// 如果用户是 ConstantExpr，我们需要检查其最终使用者是否位于白名单函数中
 		if (llvm::ConstantExpr *constExpr = llvm::dyn_cast<llvm::ConstantExpr>(user))
 		{
 			bool replace = false;
@@ -676,31 +612,29 @@ replaceInternalConstantUses(llvm::Module *module,
 			{
 				handleConstantExprUse(constExpr, origConst, quantizedConst);
 			}
-			// 不论是否替换，继续处理下一个 use
 			continue;
 		}
 
-		// 如果用户是指令，且所在函数在白名单中
+
 		if (llvm::Instruction *inst = llvm::dyn_cast<llvm::Instruction>(user))
 		{
 			if (!inst->getFunction() || !shouldProcessFunction(*inst->getFunction()))
 				continue;
 
-			// 如果该指令是 GEP 并且结果类型为 double*，则特殊处理
+
 			if (llvm::GetElementPtrInst *gep = llvm::dyn_cast<llvm::GetElementPtrInst>(inst))
 			{
 				if (gep->getResultElementType()->isDoubleTy())
 				{
 					handleGEPInstruction(gep, origConst, quantizedConst);
-					continue;  // 该 GEP 指令已经被替换，不再加入 usesToReplace
+					continue;
 				}
 			}
-			// 否则，将该 use 加入待统一替换列表
+
 			usesToReplace.push_back(&use);
 		}
 	}
 
-	// 对剩余未处理的使用，统一替换为量化后的全局变量
 	for (llvm::Use *use : usesToReplace)
 		use->set(&quantizedConst);
 
@@ -1056,7 +990,6 @@ handleSelect(Instruction * inInstruction, Type * quantizedType)
 {
 	llvm::errs() << "Handling Select\n";
 
-	// 检查操作数数量
 	if (inInstruction->getNumOperands() < 3)
 	{
 		llvm::errs() << "Error: Select instruction does not have 3 operands!\n";
@@ -1064,8 +997,6 @@ handleSelect(Instruction * inInstruction, Type * quantizedType)
 	}
 	IRBuilder<> Builder(inInstruction);
 
-	// 获取 select 指令的三个操作数
-	// 操作数 0 为条件值，操作数 1 为条件为 true 时的值，操作数 2 为条件为 false 时的值
 	Value * condition = inInstruction->getOperand(0);
 	Value * opTrue	  = inInstruction->getOperand(1);
 	Value * opFalse	  = inInstruction->getOperand(2);
@@ -1074,7 +1005,6 @@ handleSelect(Instruction * inInstruction, Type * quantizedType)
 	llvm::errs() << "Original true branch: " << *opTrue << "\n";
 	llvm::errs() << "Original false branch: " << *opFalse << "\n";
 
-	// 如果 true 分支的操作数是浮点常量，则进行量化转换
 	if (ConstantFP * constFp = dyn_cast<ConstantFP>(opTrue))
 	{
 		float	constValue     = constFp->getValueAPF().convertToFloat();
@@ -1082,7 +1012,6 @@ handleSelect(Instruction * inInstruction, Type * quantizedType)
 		opTrue		       = ConstantInt::get(quantizedType, quantizedValue);
 	}
 
-	// 如果 false 分支的操作数是浮点常量，则进行量化转换
 	if (ConstantFP * constFp = dyn_cast<ConstantFP>(opFalse))
 	{
 		float	constValue     = constFp->getValueAPF().convertToFloat();
@@ -1090,11 +1019,9 @@ handleSelect(Instruction * inInstruction, Type * quantizedType)
 		opFalse		       = ConstantInt::get(quantizedType, quantizedValue);
 	}
 
-	// 生成新的 select 指令，保持条件不变，使用转换后的 true 和 false 值
 	Value * newInst = Builder.CreateSelect(condition, opTrue, opFalse);
 	llvm::errs() << "Created new select instruction: " << *newInst << "\n";
 
-	// 将原来的 select 指令替换成新的 select 指令
 	inInstruction->replaceAllUsesWith(newInst);
 	inInstruction->eraseFromParent();
 
@@ -1381,34 +1308,15 @@ handleFMul(Instruction * llvmIrInstruction, Type * quantizedType)
 
 	if (lhsIsInteger && rhsIsInteger)
 
-	// fixmul
-	//			{
-	//				llvm::errs() << "Both operands are integers, substituting with fixmul function...\n";
-	//				llvm::CallInst * callInst = Builder.CreateCall(fixmul, {lhs, rhs});
-	//				llvmIrInstruction->replaceAllUsesWith(callInst);
-	//				llvmIrInstruction->eraseFromParent();
-	//			}
-	// 64bit
+
+
 	{
 		llvm::Value * newInst = performFixedPointMul(Builder, lhs, rhs, FRAC_Q);
 		llvmIrInstruction->replaceAllUsesWith(newInst);
 		llvmIrInstruction->eraseFromParent();
 	}
 
-	// 32bit
-	//			{
-	//				llvm::errs() << "Both operands are integers, performing  multiplication and shifting...\n";
-	//
-	//				// Perform multiplication directly
-	//				llvm::Value * mulResult = Builder.CreateMul(lhs, rhs, "");
-	//
-	//				// Perform right arithmetic shift
-	//				llvm::Value * shiftResult = Builder.CreateLShr(mulResult, llvm::ConstantInt::get(lhs->getType(), FRAC_Q));
-	//
-	//				// Replace all uses of the original instruction with the result of the shift
-	//				llvmIrInstruction->replaceAllUsesWith(shiftResult);
-	//				llvmIrInstruction->eraseFromParent();
-	//			}
+
 
 	llvm::errs() << "Finished handling FMul\n";
 }
@@ -1417,24 +1325,20 @@ void handleFDiv(Instruction *llvmIrInstruction, Type *quantizedType) {
 	llvm::errs() << "Original Instruction: " << *llvmIrInstruction << "\n";
 	IRBuilder<> Builder(llvmIrInstruction);
 
-	// 如果已有 quantized 元数据，则跳过处理
 	if (llvmIrInstruction->getMetadata("quantized")) {
 		llvm::errs() << "Skipping already quantized instruction.\n";
 		return;
 	}
 
-	// 获取左右操作数
 	Value *lhs = llvmIrInstruction->getOperand(0);
 	Value *rhs = llvmIrInstruction->getOperand(1);
 
 	llvm::errs() << "LHS: " << *lhs << "\n";
 	llvm::errs() << "RHS: " << *rhs << "\n";
 
-	// 判断操作数是否为浮点型（float 或 double）
 	bool lhsIsFloat = lhs->getType()->isFloatTy() || lhs->getType()->isDoubleTy();
 	bool rhsIsFloat = rhs->getType()->isFloatTy() || rhs->getType()->isDoubleTy();
 
-	// 检查常量：如果其中一个操作数是 ConstantFP，则尝试简化
 	if (auto rhsConst = dyn_cast<ConstantFP>(rhs)) {
 		if (checkAndSimplifyForConstant(rhsConst, lhs, llvmIrInstruction))
 			return;
@@ -1443,13 +1347,11 @@ void handleFDiv(Instruction *llvmIrInstruction, Type *quantizedType) {
 		if (checkAndSimplifyForConstant(lhsConst, rhs, llvmIrInstruction))
 			return;
 	}
-
-	// 如果任一操作数是浮点常量，则通过 simplifyConstant 将其转换为固定点整数
 	if (isa<ConstantFP>(lhs)) {
 		llvm::errs() << "LHS is a floating-point constant, handling it with simplifyConstant\n";
 		simplifyConstant(llvmIrInstruction, quantizedType);
 		lhs = llvmIrInstruction->getOperand(0);
-		lhsIsFloat = false;  // 更新状态，现已转换为固定点整数
+		lhsIsFloat = false;
 	}
 	if (isa<ConstantFP>(rhs)) {
 		llvm::errs() << "RHS is a floating-point constant, handling it with simplifyConstant\n";
@@ -1458,25 +1360,6 @@ void handleFDiv(Instruction *llvmIrInstruction, Type *quantizedType) {
 		rhsIsFloat = false;
 	}
 
-	// 如果任一操作数是整数常量，则先检查特殊情况优化：
-	// 如果右操作数为常量 1，则直接替换为左操作数
-	if (isa<ConstantInt>(lhs) || isa<ConstantInt>(rhs)) {
-		if (ConstantInt *CI = dyn_cast<ConstantInt>(rhs)) {
-			if (CI->isOne()) {
-				llvm::errs() << "RHS is constant one, replacing division with LHS\n";
-				llvmIrInstruction->replaceAllUsesWith(lhs);
-				llvmIrInstruction->eraseFromParent();
-				return;
-			}
-		}
-		llvm::errs() << "One of the operands is an integer constant, using division directly\n";
-		Value *newInst = Builder.CreateSDiv(lhs, rhs);
-		llvmIrInstruction->replaceAllUsesWith(newInst);
-		llvmIrInstruction->eraseFromParent();
-		return;
-	}
-
-	// 如果任一操作数仍为浮点，则转换为固定点整数
 	if (lhsIsFloat) {
 		lhs = Builder.CreateFPToSI(lhs, quantizedType);
 		llvm::errs() << "Converted LHS to fixed-point: " << *lhs << "\n";
@@ -1486,9 +1369,6 @@ void handleFDiv(Instruction *llvmIrInstruction, Type *quantizedType) {
 		llvm::errs() << "Converted RHS to fixed-point: " << *rhs << "\n";
 	}
 
-	// 此时，lhs 和 rhs 均为整数（固定点表示），根据要求：
-	// 除法过程中不需要左移（即不乘 FRAC_BASE），也不在除法后做位移
-	// 所以直接进行整数除法即可
 	Value *newInst = Builder.CreateSDiv(lhs, rhs);
 	llvmIrInstruction->replaceAllUsesWith(newInst);
 	llvmIrInstruction->eraseFromParent();
@@ -1587,73 +1467,6 @@ void handlePhi(Instruction *inInstruction, Type *quantizedType) {
 	llvm::errs() << "Finished handling PHI: " << *newPhi << "\n";
 }
 
-
-
-//void handlePhi(Instruction *inInstruction, Type *quantizedType)
-//{
-//	llvm::errs() << "Handling PHI\n";
-//	PHINode *phi = dyn_cast<PHINode>(inInstruction);
-//	if (!phi) {
-//		llvm::errs() << "Error: Instruction is not a PHI node.\n";
-//		return;
-//	}
-//
-//	// 判断是否是指针类型的 PHI 节点
-//	bool isPtr = phi->getType()->isPointerTy();
-//	unsigned pointerAddr = 0;
-//	if (isPtr)
-//		pointerAddr = phi->getType()->getPointerAddressSpace();
-//
-//	// 新 PHI 节点的类型
-//	// 如果原来是 pointer 类型，则新类型为 quantizedType->getPointerTo(pointerAddr)
-//	// 否则直接使用 quantizedType
-//	Type *newPhiType = isPtr ? quantizedType->getPointerTo(pointerAddr) : quantizedType;
-//
-//	// 创建新的 PHI 节点，新节点插入在原 PHI 节点之前
-//	PHINode *newPhi = PHINode::Create(newPhiType, phi->getNumIncomingValues(),
-//					   phi->getName() + ".quantized", phi);
-//
-//	// 遍历所有入边
-//	for (unsigned i = 0, e = phi->getNumIncomingValues(); i < e; i++) {
-//		Value *incoming = phi->getIncomingValue(i);
-//		BasicBlock *incomingBB = phi->getIncomingBlock(i);
-//		Value *newVal = nullptr;
-//
-//		llvm::errs() << "Original PHI incoming value: " << *incoming << "\n";
-//
-//		if (!isPtr) {
-//			// 针对非指针情况：如果是浮点常量，直接量化；如果是浮点值，则插入 FPToSI 转换
-//			if (ConstantFP *constFp = dyn_cast<ConstantFP>(incoming)) {
-//				float fpVal = constFp->getValueAPF().convertToFloat();
-//				int64_t quantizedValue = static_cast<int64_t>(round(fpVal * FRAC_BASE));
-//				newVal = llvm::ConstantInt::get(quantizedType, quantizedValue);
-//				llvm::errs() << "Converted constant: " << *newVal << "\n";
-//			} else if (incoming->getType()->isFloatingPointTy()) {
-//				IRBuilder<> builder(incomingBB->getTerminator());
-//				newVal = builder.CreateFPToSI(incoming, quantizedType, incoming->getName() + ".to_int");
-//				llvm::errs() << "Inserted conversion: " << *newVal << "\n";
-//			} else {
-//				newVal = incoming;
-//			}
-//		} else {
-//			// 针对指针类型：要求新入边值类型为 newPhiType
-//			if (incoming->getType() != newPhiType) {
-//				IRBuilder<> builder(incomingBB->getTerminator());
-//				newVal = builder.CreateBitCast(incoming, newPhiType, incoming->getName() + ".cast");
-//				llvm::errs() << "BitCast pointer: " << *newVal << "\n";
-//			} else {
-//				newVal = incoming;
-//			}
-//		}
-//		newPhi->addIncoming(newVal, incomingBB);
-//	}
-//
-//	// 替换所有使用并删除原 PHI 节点
-//	phi->replaceAllUsesWith(newPhi);
-//	phi->eraseFromParent();
-//
-//	llvm::errs() << "Finished handling PHI: " << *newPhi << "\n";
-//}
 
 void handleFpToSi(Instruction *llvmInst, Type *quantizedType) {
 	llvm::errs() << "Handling FPToSI\n";
@@ -1778,40 +1591,6 @@ handleAlloca(AllocaInst * llvmIrAllocaInstruction, Type * quantizedType)
 }
 
 
-void handleGEPForQuantization(GetElementPtrInst *gep, Type *quantizedType) {
-	// 检查原来的元素类型是否为浮点型
-	if (gep->getResultElementType()->isFloatingPointTy()) {
-		IRBuilder<> Builder(gep);
-		llvm::errs() << "Handling GEP quantization for: " << *gep << "\n";
-
-		// 获取原指针操作数
-		Value *ptr = gep->getPointerOperand();
-		// 如果指针操作数的元素类型不是 quantizedType，则转换
-		if (ptr->getType()->getPointerElementType() != quantizedType) {
-			// 注意：如果 ptr 原本不是 quantizedType*，这里我们进行 bitcast
-			ptr = Builder.CreateBitCast(ptr, PointerType::getUnqual(quantizedType),
-						    ptr->getName() + ".casted");
-		}
-
-		// 收集原来的索引（不包括第一个操作数）
-		SmallVector<Value*, 4> Indices;
-		for (Value *idx : gep->indices()) {
-			Indices.push_back(idx);
-		}
-
-		// 创建新的 GEP 指令，元素类型直接使用 quantizedType
-		Value *newGEP = Builder.CreateGEP(quantizedType, ptr, Indices, gep->getName() + ".quantized");
-
-		// 替换所有使用，并删除原来的 GEP 指令
-		gep->replaceAllUsesWith(newGEP);
-		gep->eraseFromParent();
-
-		llvm::errs() << "Replaced GEP with quantized version: " << *newGEP << "\n";
-	} else {
-		llvm::errs() << "GEP element type is not floating-point. No quantization performed for: "
-			     << *gep << "\n";
-	}
-}
 
 void
 handleStore(Instruction * llvmIrInstruction, Type * quantizedType)
@@ -1969,28 +1748,6 @@ handleRsqrtCall(CallInst * llvmIrCallInstruction, Type * quantizedType, Function
 	llvmIrCallInstruction->eraseFromParent();
 }
 
-/*
- * // Call sqrt on the floating-point value
-llvm::Function * sqrtFunc   = llvm::Intrinsic::getDeclaration(irModule, llvm::Intrinsic::sqrt, llvm::Type::getFloatTy(context));
-llvm::Value *	 sqrtResult = builder.CreateCall(sqrtFunc, {fp_x});
-
-// Convert the result back to a fixed-point integer
-llvm::Value * res = builder.CreateFPToSI(sqrtResult, quantizedType);
-
-// Perform a left shift to scale the result
-llvm::Value * shlRes = builder.CreateShl(res, FRAC_Q / 2);
-
-// Apply compensation if FRAC_Q is odd
-llvm::Value * finalRes = shlRes;
-if (FRAC_Q % 2 != 0)
-{
-llvm::Value * compensationFactor = llvm::ConstantFP::get(llvm::Type::getFloatTy(context), 1.414213562);
-llvm::Value * fpShlRes		 = builder.CreateSIToFP(shlRes, llvm::Type::getFloatTy(context));
-llvm::Value * compensated	 = builder.CreateFMul(fpShlRes, compensationFactor);
-finalRes			 = builder.CreateFPToSI(compensated, quantizedType);
-}
-
- */
 
 llvm::Value *
 performFixedPointSqrt(IRBuilder<> & builder, Module * irModule, Value * fixedPointValue, Type * quantizedType, int FRAC_Q, LLVMContext & context)
