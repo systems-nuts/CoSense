@@ -389,7 +389,7 @@ dequantizeResults(StoreInst * storeInst, Function & F, int maxPrecisionBits)
 
 bool enableAutoQuantization = false;
 
-void
+voidb
 detectFloatingPointOps(Module & Mod)
 {
 	bool			   hasFloatOps = false;

@@ -383,14 +383,14 @@ getOrCreateQuantizedConstant(llvm::Module *module,
 {
 	std::string quantizedName = origConst.getName().str() + "_quantized";
 
-	// 检查量化版本是否已存在
+
 	if (llvm::GlobalVariable *existingConst = module->getNamedGlobal(quantizedName))
 	{
 		llvm::errs() << "Quantized internal constant already exists: " << quantizedName << "\n";
 		return existingConst;
 	}
 
-	// 确保原常量有 initializer
+
 	if (!origConst.hasInitializer())
 	{
 		llvm::errs() << "Skipping quantization: constant has no initializer: " << origConst.getName() << "\n";
@@ -400,7 +400,6 @@ getOrCreateQuantizedConstant(llvm::Module *module,
 	llvm::Constant *init = origConst.getInitializer();
 	llvm::ArrayType *origArrayType = llvm::dyn_cast<llvm::ArrayType>(origConst.getType()->getElementType());
 
-	// 只处理浮点数组
 	if (!origArrayType ||
 	    (!origArrayType->getArrayElementType()->isFloatTy() &&
 	     !origArrayType->getArrayElementType()->isDoubleTy()))
@@ -412,13 +411,11 @@ getOrCreateQuantizedConstant(llvm::Module *module,
 	llvm::errs() << "Quantizing internal constant: " << origConst.getName() << "\n";
 
 	std::vector<llvm::Constant *> quantizedValues;
-	// 使用 int32 表示量化后的值
+
 	llvm::Type *intType = llvm::Type::getInt32Ty(module->getContext());
 
-	// 定义阈值 epsilon，调整为 1e-9 以便对极小值直接量化为0
 	const double epsilon = 1e-9;
 
-	// 遍历数组元素进行量化
 	for (unsigned i = 0; i < origArrayType->getNumElements(); ++i)
 	{
 		llvm::ConstantFP *fpVal = llvm::dyn_cast<llvm::ConstantFP>(init->getAggregateElement(i));
@@ -439,11 +436,9 @@ getOrCreateQuantizedConstant(llvm::Module *module,
 		quantizedValues.push_back(llvm::ConstantInt::get(intType, quantizedValue));
 	}
 
-	// 创建新的数组类型和 initializer
 	llvm::ArrayType *quantizedArrayType = llvm::ArrayType::get(intType, quantizedValues.size());
 	llvm::Constant *newInit = llvm::ConstantArray::get(quantizedArrayType, quantizedValues);
 
-	// 创建新的全局变量
 	llvm::GlobalVariable *quantizedConst = new llvm::GlobalVariable(
 	    *module,
 	    quantizedArrayType,
@@ -452,7 +447,6 @@ getOrCreateQuantizedConstant(llvm::Module *module,
 	    newInit,
 	    quantizedName);
 
-	// 设置对齐（这里使用4字节对齐，适用于 int32）
 	quantizedConst->setAlignment(llvm::MaybeAlign(4));
 	quantizedConst->setDSOLocal(true);
 	llvm::errs() << "Created quantized internal constant: " << quantizedName << "\n";
