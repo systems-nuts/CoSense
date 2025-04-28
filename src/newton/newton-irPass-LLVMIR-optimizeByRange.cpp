@@ -45,8 +45,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "newton-irPass-LLVMIR-memoryAlignment.h"
 #include "newton-irPass-LLVMIR-emitAssume.h"
 
-// added code
-// #include "myRangeAnalysis.h"
+
 #endif /* __cplusplus */
 
 #include <algorithm>
@@ -133,6 +132,39 @@ checkOverflow(State * N, BoundInfo * boundInfo, int FRAC_Q)
 	}
 }
 
+void
+autoWhitelistFunctions(Module &Mod, std::set<std::string> &whitelist)
+{
+	for (Function &F : Mod)
+	{
+		if (F.isDeclaration()) continue;
+
+		bool hasSensorParams = false;
+
+		for (auto &Arg : F.args())
+		{
+			if (Arg.hasName())
+			{
+				std::string argName = Arg.getName().str();
+				// 这里你可以加更丰富的匹配，比如查 typedef 类型名（需要调试信息）
+				if (argName.find("bmx055") != std::string::npos)
+				{
+					hasSensorParams = true;
+					break;
+				}
+			}
+		}
+
+		if (hasSensorParams)
+		{
+			llvm::errs() << "Auto-Whitelisting function based on sensor params: " << F.getName() << "\n";
+			whitelist.insert(F.getName().str());
+		}
+	}
+}
+
+
+
 // #define IS_POINTER 1
 std::set<std::string> whitelist = {
     "MadgwickAHRSupdate",
@@ -146,21 +178,44 @@ std::set<std::string> whitelist = {
     "__ieee754_exp"};
 
 
+//void eraseUnusedConstant(Module &M) {
+//	std::set<std::string> quantizedGlobals;
+//
+//	// First pass: collect all _quantized names
+//	for (auto &GV : M.globals()) {
+//		if (GV.getName().endswith("_quantized")) {
+//			std::string baseName = GV.getName().str().substr(0, GV.getName().size() - 10);
+//			quantizedGlobals.insert(baseName);
+//		}
+//	}
+//	// Second pass: delete unused original globals
+//	std::vector<GlobalVariable *> toDelete;
+//	for (auto &GV : M.globals()) {
+//		std::string name = GV.getName().str();
+//		if (GV.use_empty() && quantizedGlobals.count(name)) {
+//			toDelete.push_back(&GV);
+//		}
+//	}
+//	for (auto *GV : toDelete) {
+//		GV->eraseFromParent();
+//	}
+//}
 void eraseUnusedConstant(Module &M) {
-	std::set<std::string> quantizedGlobals;
-
-	// First pass: collect all _quantized names
+	std::set<std::string> quantizedBaseNames;
 	for (auto &GV : M.globals()) {
 		if (GV.getName().endswith("_quantized")) {
-			std::string baseName = GV.getName().str().substr(0, GV.getName().size() - 10);
-			quantizedGlobals.insert(baseName);
+			std::string baseName = GV.getName().str().substr(0, GV.getName().size() - 10); // remove "_quantized"
+			quantizedBaseNames.insert(baseName);
 		}
 	}
-	// Second pass: delete unused original globals
 	std::vector<GlobalVariable *> toDelete;
 	for (auto &GV : M.globals()) {
 		std::string name = GV.getName().str();
-		if (GV.use_empty() && quantizedGlobals.count(name)) {
+
+		if (GV.use_empty() && quantizedBaseNames.count(name)) {
+			toDelete.push_back(&GV);
+		}
+		if (GV.use_empty() && name.size() > 10 && name.substr(name.size() - 10) == "_quantized") {
 			toDelete.push_back(&GV);
 		}
 	}
@@ -168,6 +223,7 @@ void eraseUnusedConstant(Module &M) {
 		GV->eraseFromParent();
 	}
 }
+
 
 
 
@@ -1133,6 +1189,7 @@ irPassLLVMIROptimizeByRange(State * N, bool enableQuantization, bool enableOverl
 		for (auto & mi : *Mod)
 		{
 			llvm::errs() << "Quantizing function: " << mi.getName() << "\n";
+
 			irPassLLVMIRAutoQuantization(N, mi, functionsToInsert, maxPrecisionBits);
 		}
 		for (auto mi : functionsToInsert)
