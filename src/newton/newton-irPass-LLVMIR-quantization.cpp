@@ -286,30 +286,69 @@ isWhitelistedGlobal(const std::string & globalName)
 }
 
 bool
-shouldProcessFunction(Function & F)
+shouldProcessFunction(Function &F)
 {
-	// List of function names to process
-	static const std::set<std::string> targetFunctions = {
-	    "sensfusion6UpdateQImpl",
-	    "MadgwickAHRSupdate",
-	    "MadgwickAHRSupdateIMU",
-	    "MahonyAHRSupdate",
-	    "MahonyAHRSupdateIMU",
-	    "matrixMul",
-	    "matrixAdd",
-	    "matrixSub",
-	    "pzero",
-	    "qzero",
-	    "pone",
-	    "qone",
-	    "__ieee754_exp",
-	    "twofft"
-//	    "__ieee754_log",
-	};
+	if (F.isDeclaration())
+		return false;
 
-	// Check if the function name is in the set
-	return targetFunctions.find(F.getName().str()) != targetFunctions.end();
+
+	for (auto &BB : F)
+	{
+		for (auto &I : BB)
+		{
+
+			if (auto *DbgValue = dyn_cast<DbgValueInst>(&I))
+			{
+				Value *Val = DbgValue->getValue();
+				if (!Val)
+					continue;
+				if (auto *Arg = dyn_cast<Argument>(Val))
+				{
+					auto *DIVar = DbgValue->getVariable();
+					if (DIVar)
+					{
+						std::string typeName = DIVar->getType()->getName().str();
+						if (typeName.find("bmx055") != std::string::npos)
+						{
+
+							return true;
+						}
+					}
+				}
+			}
+		}
+	}
+
+	return false;
 }
+
+
+
+//bool
+//shouldProcessFunction(Function & F)
+//{
+//	// List of function names to process
+//	static const std::set<std::string> targetFunctions = {
+//	    "sensfusion6UpdateQImpl",
+//	    "MadgwickAHRSupdate",
+//	    "MadgwickAHRSupdateIMU",
+//	    "MahonyAHRSupdate",
+//	    "MahonyAHRSupdateIMU",
+//	    "matrixMul",
+//	    "matrixAdd",
+//	    "matrixSub",
+//	    "pzero",
+//	    "qzero",
+//	    "pone",
+//	    "qone",
+//	    "__ieee754_exp",
+//	    "twofft"
+////	    "__ieee754_log",
+//	};
+//
+//	// Check if the function name is in the set
+//	return targetFunctions.find(F.getName().str()) != targetFunctions.end();
+//}
 
 // Helper to create or retrieve the quantized global variable
 GlobalVariable *
@@ -590,7 +629,6 @@ replaceInternalConstantUses(llvm::Module *module,
 		if (llvm::ConstantExpr *constExpr = llvm::dyn_cast<llvm::ConstantExpr>(user))
 		{
 			bool replace = false;
-			// 遍历 constant expression 的所有使用
 			for (auto &CEUse : constExpr->uses())
 			{
 				if (llvm::Instruction *inst = llvm::dyn_cast<llvm::Instruction>(CEUse.getUser()))
@@ -2188,6 +2226,7 @@ irPassLLVMIRAutoQuantization(State *N, llvm::Function &llvmIrFunction, std::vect
 			llvm::errs() << "Skipping function: " << llvmIrFunction.getName() << "\n";
 			return;
 		}
+
 
 		Type * quantizedType;
 		switch (BIT_WIDTH)
