@@ -91,7 +91,7 @@ def compute_sqnr(fp_data, int_data):
 
 def main():
     parser = argparse.ArgumentParser(description="Calculate RMS errors and SQNR for quaternion data.")
-    parser.add_argument("--filter", choices=["MadgwickAHRS", "MahonyAHRS"], default="MadgwickAHRS",
+    parser.add_argument("--filter", choices=["MadgwickAHRS", "MahonyAHRS", "sensfusion6"], default="MadgwickAHRS",
                         help="Select which algorithm's data to process (default: MadgwickAHRS)")
     parser.add_argument("--limit", type=int, default=1000,
                         help="Limit the number of data lines to process (default: 1000)")
@@ -100,9 +100,16 @@ def main():
     if args.filter == "MadgwickAHRS":
         fp_data = parse_data('fp_result.txt', 'Original: ')
         int_data = parse_data('int_result.txt', 'FIX: ')
-    else:  # mahony
+    elif args.filter == "MahonyAHRS":
         fp_data = parse_data('fp_mahony_result.txt', 'Original: ')
         int_data = parse_data('int_mahony_result.txt', 'FIX: ')
+
+    elif args.filter == "sensfusion6":
+        fp_data = parse_data('fp_sensfusion6_result.txt', 'Original: ')
+        int_data = parse_data('int_sensfusion6_result.txt', 'FIX: ')
+
+    else:
+        raise ValueError(f"Unsupported filter: {args.filter}")
 
     if len(fp_data) != len(int_data):
         print("Mismatch in the number of quaternions between files!")
