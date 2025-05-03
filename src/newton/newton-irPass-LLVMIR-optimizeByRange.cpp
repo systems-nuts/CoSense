@@ -178,28 +178,6 @@ std::set<std::string> whitelist = {
     "__ieee754_exp"};
 
 
-//void eraseUnusedConstant(Module &M) {
-//	std::set<std::string> quantizedGlobals;
-//
-//	// First pass: collect all _quantized names
-//	for (auto &GV : M.globals()) {
-//		if (GV.getName().endswith("_quantized")) {
-//			std::string baseName = GV.getName().str().substr(0, GV.getName().size() - 10);
-//			quantizedGlobals.insert(baseName);
-//		}
-//	}
-//	// Second pass: delete unused original globals
-//	std::vector<GlobalVariable *> toDelete;
-//	for (auto &GV : M.globals()) {
-//		std::string name = GV.getName().str();
-//		if (GV.use_empty() && quantizedGlobals.count(name)) {
-//			toDelete.push_back(&GV);
-//		}
-//	}
-//	for (auto *GV : toDelete) {
-//		GV->eraseFromParent();
-//	}
-//}
 void eraseUnusedConstant(Module &M) {
 	std::set<std::string> quantizedBaseNames;
 	for (auto &GV : M.globals()) {
@@ -561,21 +539,20 @@ detectFloatingPointOps(Module & Mod)
 	}
 }
 
-void
-checkFPUAvailability(Module & Mod)
+void checkFPUAvailability(Module &Mod)
 {
-	bool		      hasFPU = false;
+	bool hasFPU = false;
 	std::set<std::string> detectedFeatures;
 
-	// Iterate over functions to check attributes
-	for (auto & F : Mod)
+	// 1. Check target-features from function attributes
+	for (auto &F : Mod)
 	{
 		if (F.hasFnAttribute("target-features"))
 		{
 			std::string features = F.getFnAttribute("target-features").getValueAsString().str();
 			detectedFeatures.insert(features);
 
-			// Check for x86 floating-point features
+			// x86 FPU features
 			if (features.find("+sse") != std::string::npos ||
 			    features.find("+sse2") != std::string::npos ||
 			    features.find("+avx") != std::string::npos ||
@@ -585,7 +562,7 @@ checkFPUAvailability(Module & Mod)
 				hasFPU = true;
 			}
 
-			// Check for ARM floating-point features
+			// ARM FPU features
 			if (features.find("+vfp") != std::string::npos ||
 			    features.find("+neon") != std::string::npos ||
 			    features.find("+fp-armv8") != std::string::npos ||
@@ -596,21 +573,44 @@ checkFPUAvailability(Module & Mod)
 		}
 	}
 
-	// Print detected target features (only once)
+	// 2. Supplementary check: parse target triple for architecture
+	std::string triple = Mod.getTargetTriple();
+	llvm::errs() << "Target Triple: " << triple << "\n";
+
+	if (triple.find("armv7e-m") != std::string::npos ||
+	    triple.find("armv8-m.main") != std::string::npos ||
+	    triple.find("aarch64") != std::string::npos)
+	{
+		hasFPU = true;
+		llvm::errs() << "Triple indicates hardware FPU support.\n";
+	}
+	else if (triple.find("armv6-m") != std::string::npos ||
+		 triple.find("armv7-m") != std::string::npos)
+	{
+		hasFPU = false;
+		llvm::errs() << "Triple indicates no FPU support.\n";
+	}
+	else
+	{
+		llvm::errs() << "Triple is not recognized. Assuming conservative FPU support = false.\n";
+	}
+
+	// 3. (Removed hardcoded CPU name database for better generality)
+
+	// Summary
 	if (!detectedFeatures.empty())
 	{
 		llvm::errs() << "Target Features: ";
-		for (const auto & feature : detectedFeatures)
+		for (const auto &feature : detectedFeatures)
 		{
 			llvm::errs() << feature << " ";
 		}
 		llvm::errs() << "\n";
 	}
 
-	// Final decision based on FPU detection
 	if (hasFPU)
 	{
-		llvm::errs() << "FPU detected via function attributes. \n";
+		llvm::errs() << "FPU detected (from features and/or triple).\n";
 	}
 	else
 	{
@@ -618,6 +618,8 @@ checkFPUAvailability(Module & Mod)
 		enableAutoQuantization = true;
 	}
 }
+
+
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
