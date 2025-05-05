@@ -19,7 +19,7 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-OUTPUT_FILE="snr_results_${ALGO,,}.txt"
+OUTPUT_FILE="sqnr_results_${ALGO,,}.txt"
 
 # Clear old file contents
 > "$OUTPUT_FILE"
@@ -35,7 +35,7 @@ echo "| MAX_PRECISION_BITS | SQNR (dB) |" >> "$OUTPUT_FILE"
 echo "|--------------------|-----------|" >> "$OUTPUT_FILE"
 
 # Loop over MAX_PRECISION_BITS values from 8 to 18
-for i in {8..9}; do
+for i in {8..11}; do
     echo "Compiling and testing with MAX_PRECISION_BITS = $i ..."
 
     # Switch to the make directory for compilation
@@ -50,12 +50,13 @@ for i in {8..9}; do
     # Run the test
     ./testMadgwick.sh "$ALGO"
 
-    # Extract SNR line
-    SNR_VALUE=$(python3 rms_error.py --filter "$ALGO" | grep "SQNR (dB)" | awk -F': ' '{print $2}')
-    echo "MAX_PRECISION_BITS=$i, SQNR (dB)=$SNR_VALUE"
+    # Extract sqnr line
+    sqnr_VALUE=$(python3 rms_error.py --filter "$ALGO" | grep "SQNR (dB)" | awk -F': ' '{print $2}')
+    echo "MAX_PRECISION_BITS=$i, SQNR (dB)=$sqnr_VALUE"
 
     # Append as a clean table row
-    printf "| %-18s | %-9s |\n" "$i" "$SNR_VALUE" >> "$OUTPUT_FILE"
+    printf "| %-18s | %-9s |\n" "$i" "$sqnr_VALUE" >> "$OUTPUT_FILE"
 done
 
 echo "All tests completed. Results saved to $OUTPUT_FILE."
+python3 plot_sqnr.py "$OUTPUT_FILE"
