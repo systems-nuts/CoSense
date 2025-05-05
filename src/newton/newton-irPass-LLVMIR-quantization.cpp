@@ -224,7 +224,7 @@ createFixRsqrt(llvm::Module * irModule, llvm::Type * quantizedType, std::vector<
 			fpX = builder.CreateFMul(fpX, llvm::ConstantFP::get(llvm::Type::getFloatTy(irModule->getContext()), 1.0f / FRAC_BASE));
 
 //			llvm::Value * i = builder.CreateBitCast(fpX, llvm::Type::getInt32Ty(irModule->getContext()));
-			llvm::Value * i = builder.CreateBitCast(fpX, llvm::Type::getInt64Ty(irModule->getContext()));
+			llvm::Value * i = builder.CreateBitCast(fpX, llvm::Type::getInt32Ty(irModule->getContext()));
 //			i		= builder.CreateNSWSub(llvm::ConstantInt::get(llvm::Type::getInt32Ty(irModule->getContext()), 0x5f3759df), builder.CreateLShr(i, 1));
 			i		= builder.CreateNSWSub(llvm::ConstantInt::get(llvm::Type::getInt32Ty(irModule->getContext()), 0x5f3759df), builder.CreateAShr(i, 1));
 			fpX		= builder.CreateBitCast(i, llvm::Type::getFloatTy(irModule->getContext()));
