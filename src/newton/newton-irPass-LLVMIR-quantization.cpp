@@ -182,8 +182,8 @@ createFixRsqrt(llvm::Module * irModule, llvm::Type * quantizedType, std::vector<
 
 			// Step 3: Approximation using magic number
 			llvm::Value * bitcastFpX   = builder.CreateBitCast(scaledFpX, llvm::Type::getInt32Ty(irModule->getContext()));
-//			llvm::Value * shiftedFpX   = builder.CreateLShr(bitcastFpX, 1);
-			llvm::Value * shiftedFpX   = builder.CreateAShr(bitcastFpX, 1);
+			llvm::Value * shiftedFpX   = builder.CreateLShr(bitcastFpX, 1);
+//			llvm::Value * shiftedFpX   = builder.CreateAShr(bitcastFpX, 1);
 			llvm::Value * magicNumber  = llvm::ConstantInt::get(llvm::Type::getInt32Ty(irModule->getContext()), 0x5f3759df);
 			approx			   = builder.CreateSub(magicNumber, shiftedFpX);
 			llvm::Value * approxFp	   = builder.CreateBitCast(approx, llvm::Type::getFloatTy(irModule->getContext()));
@@ -193,8 +193,8 @@ createFixRsqrt(llvm::Module * irModule, llvm::Type * quantizedType, std::vector<
 			// Step 4: Newton-Raphson refinement
 			llvm::Value * sextShiftedX = builder.CreateSExt(shiftedX, llvm::Type::getInt32Ty(irModule->getContext()));
 			llvm::Value * mul1	   = builder.CreateMul(sextShiftedX, intApprox);
-//			llvm::Value * mul1Shifted  = builder.CreateLShr(mul1, FRAC_Q);
-			llvm::Value * mul1Shifted  = builder.CreateAShr(mul1, FRAC_Q);
+			llvm::Value * mul1Shifted  = builder.CreateLShr(mul1, FRAC_Q);
+//			llvm::Value * mul1Shifted  = builder.CreateAShr(mul1, FRAC_Q);
 
 			llvm::Value * mul2	  = builder.CreateMul(mul1Shifted, intApprox);
 //			llvm::Value * mul2Shifted = builder.CreateLShr(mul2, FRAC_Q);
@@ -205,8 +205,8 @@ createFixRsqrt(llvm::Module * irModule, llvm::Type * quantizedType, std::vector<
 				 llvm::ConstantInt::get(llvm::Type::getInt32Ty(irModule->getContext()), correctionValue),
 				 mul2Shifted);
 			llvm::Value * finalMul	   = builder.CreateMul(intApprox, correction);
-//			llvm::Value * finalShifted = builder.CreateLShr(finalMul, FRAC_Q);
-			llvm::Value * finalShifted = builder.CreateAShr(finalMul, FRAC_Q);
+			llvm::Value * finalShifted = builder.CreateLShr(finalMul, FRAC_Q);
+//			llvm::Value * finalShifted = builder.CreateAShr(finalMul, FRAC_Q);
 
 			// Step 5: Truncate the result back to i16
 			result = builder.CreateTrunc(finalShifted, quantizedType);
@@ -216,8 +216,8 @@ createFixRsqrt(llvm::Module * irModule, llvm::Type * quantizedType, std::vector<
 		default:
 		{
 			// Step 1: Shift x to compute %1 (x >> 1)
-//			llvm::Value * halfBase = builder.CreateLShr(x, llvm::ConstantInt::get(quantizedType, 1));
-			llvm::Value * halfBase = builder.CreateAShr(x, llvm::ConstantInt::get(quantizedType, 1));
+			llvm::Value * halfBase = builder.CreateLShr(x, llvm::ConstantInt::get(quantizedType, 1));
+//			llvm::Value * halfBase = builder.CreateAShr(x, llvm::ConstantInt::get(quantizedType, 1));
 
 			// Step 2: Convert x to floating-point and perform the initial approximation
 			fpX = builder.CreateSIToFP(x, llvm::Type::getFloatTy(irModule->getContext()));
