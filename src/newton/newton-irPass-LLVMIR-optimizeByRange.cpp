@@ -687,39 +687,6 @@ saveModuleIR(llvm::Module & M, const std::string & fileName)
 	file.close();
 }
 
-void
-removeQuantizedSuffixInModule(llvm::Module & M)
-{
-	for (auto & F : M)
-	{
-		if (F.hasName())
-		{
-			std::string FuncName = F.getName().str();
-			size_t	    pos	     = FuncName.find("_quantized");
-			if (pos != std::string::npos)
-			{
-				FuncName.erase(pos, 10);
-				F.setName(FuncName);
-			}
-		}
-	}
-
-	// Remove suffix from global variables
-	for (auto & G : M.globals())
-	{
-		if (G.hasName())
-		{
-			std::string GlobalName = G.getName().str();
-			size_t	    pos	       = GlobalName.find("_quantized");
-			if (pos != std::string::npos)
-			{
-				GlobalName.erase(pos, 10);  // Remove "_quantized"
-				G.setName(GlobalName);
-			}
-		}
-	}
-}
-
 double
 computeResolution(Modality * mod)
 {
@@ -1275,24 +1242,6 @@ irPassLLVMIROptimizeByRange(State * N, bool enableQuantization, bool enableOverl
 //				overloadFunc(Mod, callerMap);
 
 
-
-//			if (enableQuantization)
-//			{
-//				flexprint(N->Fe, N->Fm, N->Fpinfo, "auto quantization\n");
-//				llvm::errs() << "Auto quantization enabled\n";
-//				std::vector<llvm::Function *> functionsToInsert;
-//				for (auto & mi : *Mod)
-//				{
-//					llvm::errs() << "Quantizing function: " << mi.getName() << "\n";
-//
-//					irPassLLVMIRAutoQuantization(N, mi, functionsToInsert, maxPrecisionBits);
-//				}
-//				for (auto mi : functionsToInsert)
-//				{
-//					Mod->getFunctionList().remove(mi);
-//					Mod->getFunctionList().push_front(mi);
-//				}
-//			}
 
 	// Finally, erase old functions
 
