@@ -982,6 +982,8 @@ irPassLLVMIROptimizeByRange(State * N, bool enableQuantization, bool enableOverl
 	/**
 	 * Precision Analysis
 	 */
+	flexprint(N->Fe, N->Fm, N->Fpinfo, "Precision Analysis");
+
 	double minResolution = 0.0;
 	bool   isFirstSensor = true;
 
@@ -1012,32 +1014,6 @@ irPassLLVMIROptimizeByRange(State * N, bool enableQuantization, bool enableOverl
 	flexprint(N->Fe, N->Fm, N->Fpinfo, "Minimum resolution across all sensors: %f\n", minResolution);
 	flexprint(N->Fe, N->Fm, N->Fpinfo, "Required FRAC_Q: ceil(-log2(minResolution) - 1) = ceil(%f) = %d\n",
 		  fracQ_exact, fracQ);
-
-	/**
-	 * Bitwidth Setting
-	 */
-
-//	int maxPrecisionBits = 0;
-//	//	int maxPrecisionBits = MAX_PRECISION_BITS;
-//	for (auto & typePrecisionBit : typePrecisionBits)
-//	{
-//		if (typePrecisionBit.second > maxPrecisionBits)
-//		{
-//			maxPrecisionBits = typePrecisionBit.second;
-//		}
-//	}
-//
-//	int BIT_WIDTH = (maxPrecisionBits > 16) ? 32 : 16;
-//	flexprint(N->Fe, N->Fm, N->Fpinfo,
-//		  "Max precisionBits among sensors: %d → BIT_WIDTH = %d\n",
-//		  maxPrecisionBits, BIT_WIDTH);
-//
-//	flexprint(N->Fe, N->Fm, N->Fpinfo, "bitwidth: %d => using %s\n",
-//		  BIT_WIDTH,
-//		  (BIT_WIDTH == 32 ? "int32_t (i32 fix)" : "int16_t (i16 fix)"));
-
-
-
 
 	/**
 	 * Config
@@ -1164,23 +1140,23 @@ irPassLLVMIROptimizeByRange(State * N, bool enableQuantization, bool enableOverl
 		//	        }
 	}
 
-//	if (enableQuantization)
-//	{
-//		flexprint(N->Fe, N->Fm, N->Fpinfo, "auto quantization\n");
-//		llvm::errs() << "Auto quantization enabled\n";
-//		std::vector<llvm::Function *> functionsToInsert;
-//		for (auto & mi : *Mod)
-//		{
-//			llvm::errs() << "Quantizing function: " << mi.getName() << "\n";
-//
-//			irPassLLVMIRAutoQuantization(N, mi, functionsToInsert, maxPrecisionBits);
-//		}
-//		for (auto mi : functionsToInsert)
-//		{
-//			Mod->getFunctionList().remove(mi);
-//			Mod->getFunctionList().push_front(mi);
-//		}
-//	}
+	if (enableQuantization)
+	{
+		flexprint(N->Fe, N->Fm, N->Fpinfo, "auto quantization\n");
+		llvm::errs() << "Auto quantization enabled\n";
+		std::vector<llvm::Function *> functionsToInsert;
+		for (auto & mi : *Mod)
+		{
+			llvm::errs() << "Quantizing function: " << mi.getName() << "\n";
+
+			irPassLLVMIRAutoQuantization(N, mi, functionsToInsert, maxPrecisionBits);
+		}
+		for (auto mi : functionsToInsert)
+		{
+			Mod->getFunctionList().remove(mi);
+			Mod->getFunctionList().push_front(mi);
+		}
+	}
 
 	/**
 	 * Check for potential overflows
@@ -1300,26 +1276,27 @@ irPassLLVMIROptimizeByRange(State * N, bool enableQuantization, bool enableOverl
 
 
 
-			if (enableQuantization)
-			{
-				flexprint(N->Fe, N->Fm, N->Fpinfo, "auto quantization\n");
-				llvm::errs() << "Auto quantization enabled\n";
-				std::vector<llvm::Function *> functionsToInsert;
-				for (auto & mi : *Mod)
-				{
-					llvm::errs() << "Quantizing function: " << mi.getName() << "\n";
-
-					irPassLLVMIRAutoQuantization(N, mi, functionsToInsert, maxPrecisionBits);
-				}
-				for (auto mi : functionsToInsert)
-				{
-					Mod->getFunctionList().remove(mi);
-					Mod->getFunctionList().push_front(mi);
-				}
-			}
+//			if (enableQuantization)
+//			{
+//				flexprint(N->Fe, N->Fm, N->Fpinfo, "auto quantization\n");
+//				llvm::errs() << "Auto quantization enabled\n";
+//				std::vector<llvm::Function *> functionsToInsert;
+//				for (auto & mi : *Mod)
+//				{
+//					llvm::errs() << "Quantizing function: " << mi.getName() << "\n";
+//
+//					irPassLLVMIRAutoQuantization(N, mi, functionsToInsert, maxPrecisionBits);
+//				}
+//				for (auto mi : functionsToInsert)
+//				{
+//					Mod->getFunctionList().remove(mi);
+//					Mod->getFunctionList().push_front(mi);
+//				}
+//			}
 
 	// Finally, erase old functions
-	eraseOldFunctions();
+
+//	eraseOldFunctions();
 
 	// eraseOldGlobals();
 	eraseUnusedConstant(*Mod);
