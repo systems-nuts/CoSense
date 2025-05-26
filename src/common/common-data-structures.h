@@ -664,6 +664,7 @@ typedef enum
 	kNewtonIrNodeType_PruleList,
 	kNewtonIrNodeType_PnewtonDescription,
 	kNewtonIrNodeType_PnumericConst,
+	kNewtonIrNodeType_PresolutionStatement,
 
 	/*
 	 *	Code depends on this bringing up the rear for Newton Productions.
@@ -897,6 +898,7 @@ typedef struct Signal		Signal;
 typedef struct Sensor		Sensor;
 typedef struct Modality		Modality;
 
+
 typedef struct NoisyType	NoisyType;
 
 enum
@@ -1011,6 +1013,7 @@ struct Modality {
 	double		accuracy;
 	double		accuracyCost;
 	// Signal *	accuracySignal;
+	double 		resolution;
 	
 	SensorInterfaceType	interfaceType;	/* WiP */
 	/* Missing register address for modality */
