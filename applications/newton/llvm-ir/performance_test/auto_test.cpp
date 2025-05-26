@@ -373,36 +373,36 @@ int main(int argc, char** argv)
 	    {{-2, 2}, 12, 9},
 	    {{-4, 4}, 12, 8},
 	    {{-8, 8}, 12, 7},
-	    {{-16, 16}, 12, 6}};
-//
-//	    // BMX055 gyroscope
-//	    {{-125, 125}, 16, 8},
-//
-//	    // LM35 Centigrade Temperature Sensor
-//	    {{-40, 110}, 10, 2},
-//	    {{-55, 150}, 11, 3},
-//	    {{0, 100}, 10, 3},
-//	    {{0, 70}, 10, 3},
-//
-//	    // LPS25H Pressure Sensor
-//	    {{260, 1260}, 14, 4},
-//
-//	    // MAX31820 1-Wire Ambient Temperature Sensor
-//	    {{10, 45}, 12, 6},
-//	    {{-55, 125}, 11, 3},
-//
-//	    // DHT11 Humidity Sensor
-//	    {{20, 80}, 8, 2},
-//	    {{0, 50}, 8, 2},
-//
-//	    // LMP82064 Current Sensor and Voltage Monitor with SPI
-//	    {{-0.2, 2}, 14, 12},
-//
-//	    // PCE-353 LEQ Sound Level Meter
-//	    {{30, 130}, 8, 1},
-//
-//	    // LLS05-A Linear Light Sensor
-//	    {{1, 200}, 10, 2}};
+	    {{-16, 16}, 12, 6},
+
+	    // BMX055 gyroscope
+	    {{-125, 125}, 16, 8},
+
+	    // LM35 Centigrade Temperature Sensor
+	    {{-40, 110}, 10, 2},
+	    {{-55, 150}, 11, 3},
+	    {{0, 100}, 10, 3},
+	    {{0, 70}, 10, 3},
+
+	    // LPS25H Pressure Sensor
+	    {{260, 1260}, 14, 4},
+
+	    // MAX31820 1-Wire Ambient Temperature Sensor
+	    {{10, 45}, 12, 6},
+	    {{-55, 125}, 11, 3},
+
+	    // DHT11 Humidity Sensor
+	    {{20, 80}, 8, 2},
+	    {{0, 50}, 8, 2},
+
+	    // LMP82064 Current Sensor and Voltage Monitor with SPI
+	    {{-0.2, 2}, 14, 12},
+
+	    // PCE-353 LEQ Sound Level Meter
+	    {{30, 130}, 8, 1},
+
+	    // LLS05-A Linear Light Sensor
+	    {{1, 200}, 10, 2}};
 
 	std::vector<std::vector<double>> trigonometricParams{
 	    {0, 0.17453292519943295},		       // (0, pi/18)
