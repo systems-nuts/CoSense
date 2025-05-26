@@ -36,7 +36,7 @@ endif
 
 all: default
 
-default: application.ll simple_control_flow.ll inferBound.ll inferBoundControlFlow.ll e_exp.ll sincosf.ll e_log.ll e_acosh.ll e_j0.ll e_j1.ll e_y0.ll e_rem_pio2.ll benchmark_suite.ll phi_two_global_arrays.ll func_call.ll test_shift.ll vec_add.ll vec_add_8.ll MadgwickAHRSfix.ll MadgwickAHRS_softfloat.ll MadgwickAHRS.ll arm_sqrt_q15.ll
+default: application.ll simple_control_flow.ll inferBound.ll inferBoundControlFlow.ll e_exp.ll sincosf.ll e_log.ll e_acosh.ll e_j0.ll  e_y0.ll e_rem_pio2.ll benchmark_suite.ll phi_two_global_arrays.ll func_call.ll test_shift.ll vec_add.ll vec_add_8.ll MadgwickAHRSfix.ll MadgwickAHRS_softfloat.ll MadgwickAHRS.ll arm_sqrt_q15.ll
 
 MadgwickAHRS_softfloat.ll : MadgwickAHRS_softfloat.c
 	@echo Compiling $*.c
@@ -47,7 +47,6 @@ MadgwickAHRS_softfloat.ll : MadgwickAHRS_softfloat.c
 %.ll : %.c
 	@echo Compiling $*.c
 	$(CC) $(TARGET_FLAG) $(CC_FP_FLAG) $(MACRO_FLAG) -g -O0 -Xclang -disable-O0-optnone -S -emit-llvm $(COMMON_FLAGS) -o $@ $<
-	#opt $@ $(OPT_FP_FLAG) --mem2reg --instsimplify -S -o $@
 	opt $@ $(OPT_FP_FLAG) --mem2reg  -S -o $@
 
 clean::
