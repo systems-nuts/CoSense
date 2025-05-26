@@ -30,6 +30,8 @@
 
 #include <math.h>
 #define CONFIG_IMU_MADGWICK_QUATERNION
+//#define CONFIG_IMU_MAHONY_QUATERNION_IMU
+#define dt (1.0f/100.0f)	// sample frequency in Hz
 
 #ifdef CONFIG_IMU_MADGWICK_QUATERNION
 #define BETA_DEF     0.01f    // 2 * proportional gain
@@ -39,16 +41,20 @@
 #endif
 
 #ifdef CONFIG_IMU_MADGWICK_QUATERNION
-#define dt (1.0f/128.0f);	// sample frequency in Hz
-#define betaDef		0.1f		// 2 * proportional gain
-volatile float beta = betaDef;
+
+
+volatile float beta = BETA_DEF;
 #else // MAHONY_QUATERNION_IMU
+
 float twoKp = TWO_KP_DEF;    // 2 * proportional gain (Kp)
 float twoKi = TWO_KI_DEF;    // 2 * integral gain (Ki)
 float integralFBx = 0.0f;
 float integralFBy = 0.0f;
 float integralFBz = 0.0f;  // integral error terms scaled by Ki
 #endif
+
+volatile float M_PI_F = 3.14159265358979323846f;
+
 
 static float invSqrt(float x);
 
@@ -91,6 +97,7 @@ void sensfusion6UpdateQImpl(float gx, float gy, float gz, float ax, float ay, fl
 		_4qy = 4.0f * qy;
 		_8qx = 8.0f * qx;
 		_8qy = 8.0f * qy;
+		qwqw = qw * qw;
 		qwqw = qw * qw;
 		qxqx = qx * qx;
 		qyqy = qy * qy;
@@ -139,7 +146,7 @@ void sensfusion6UpdateQImpl(float gx, float gy, float gz, float ax, float ay, fl
 // Date     Author      Notes
 // 29/09/2011 SOH Madgwick    Initial release
 // 02/10/2011 SOH Madgwick  Optimised for reduced CPU load
-static void sensfusion6UpdateQImpl(float gx, float gy, float gz, float ax, float ay, float az, float dt, float* qw_ptr, float* qx_ptr, float* qy_ptr, float* qz_ptr)
+void sensfusion6UpdateQImpl(float gx, float gy, float gz, float ax, float ay, float az,float* qw_ptr, float* qx_ptr, float* qy_ptr, float* qz_ptr)
 {
 
 	float qw = *qw_ptr;

@@ -36,7 +36,7 @@ performFixedPointMul(llvm::IRBuilder<> & Builder, llvm::Value * lhs, llvm::Value
 			llvm::Value * mulResult32 = Builder.CreateNSWMul(lhs32, rhs32);
 
 			// Right shift the result to simulate fixed-point division by FRAC_Q
-//			llvm::Value * divResult32 = Builder.CreateLShr(mulResult32, llvm::ConstantInt::get(llvm::Type::getInt32Ty(Builder.getContext()), FRAC_Q));
+			//			llvm::Value * divResult32 = Builder.CreateLShr(mulResult32, llvm::ConstantInt::get(llvm::Type::getInt32Ty(Builder.getContext()), FRAC_Q));
 			llvm::Value * divResult32 = Builder.CreateAShr(mulResult32, llvm::ConstantInt::get(llvm::Type::getInt32Ty(Builder.getContext()), FRAC_Q));
 
 			// Truncate the result back to 16-bit integer
@@ -53,12 +53,13 @@ performFixedPointMul(llvm::IRBuilder<> & Builder, llvm::Value * lhs, llvm::Value
 			llvm::Value * mulResult64 = Builder.CreateNSWMul(lhs64, rhs64);
 
 			// Right shift the result to simulate fixed-point division by FRAC_Q
-//			llvm::Value * divResult64 = Builder.CreateLShr(mulResult64, llvm::ConstantInt::get(llvm::Type::getInt64Ty(Builder.getContext()), FRAC_Q));
+			//			llvm::Value * divResult64 = Builder.CreateLShr(mulResult64, llvm::ConstantInt::get(llvm::Type::getInt64Ty(Builder.getContext()), FRAC_Q));
 			llvm::Value * divResult64 = Builder.CreateAShr(mulResult64, llvm::ConstantInt::get(llvm::Type::getInt64Ty(Builder.getContext()), FRAC_Q));
 
 			// Truncate the 64-bit result back to 32-bit integer
 			result = Builder.CreateTrunc(divResult64, llvm::Type::getInt32Ty(Builder.getContext()));
 			break;
+
 		}
 		default:
 		{
@@ -183,7 +184,7 @@ createFixRsqrt(llvm::Module * irModule, llvm::Type * quantizedType, std::vector<
 			// Step 3: Approximation using magic number
 			llvm::Value * bitcastFpX   = builder.CreateBitCast(scaledFpX, llvm::Type::getInt32Ty(irModule->getContext()));
 			llvm::Value * shiftedFpX   = builder.CreateLShr(bitcastFpX, 1);
-//			llvm::Value * shiftedFpX   = builder.CreateAShr(bitcastFpX, 1);
+//						llvm::Value * shiftedFpX   = builder.CreateAShr(bitcastFpX, 1);
 			llvm::Value * magicNumber  = llvm::ConstantInt::get(llvm::Type::getInt32Ty(irModule->getContext()), 0x5f3759df);
 			approx			   = builder.CreateSub(magicNumber, shiftedFpX);
 			llvm::Value * approxFp	   = builder.CreateBitCast(approx, llvm::Type::getFloatTy(irModule->getContext()));
@@ -194,10 +195,10 @@ createFixRsqrt(llvm::Module * irModule, llvm::Type * quantizedType, std::vector<
 			llvm::Value * sextShiftedX = builder.CreateSExt(shiftedX, llvm::Type::getInt32Ty(irModule->getContext()));
 			llvm::Value * mul1	   = builder.CreateMul(sextShiftedX, intApprox);
 			llvm::Value * mul1Shifted  = builder.CreateLShr(mul1, FRAC_Q);
-//			llvm::Value * mul1Shifted  = builder.CreateAShr(mul1, FRAC_Q);
+//						llvm::Value * mul1Shifted  = builder.CreateAShr(mul1, FRAC_Q);
 
 			llvm::Value * mul2	  = builder.CreateMul(mul1Shifted, intApprox);
-//			llvm::Value * mul2Shifted = builder.CreateLShr(mul2, FRAC_Q);
+			//			llvm::Value * mul2Shifted = builder.CreateLShr(mul2, FRAC_Q);
 			llvm::Value * mul2Shifted = builder.CreateAShr(mul2, FRAC_Q);
 
 			int	      correctionValue = static_cast<int>(1.5f * FRAC_BASE);
@@ -206,7 +207,7 @@ createFixRsqrt(llvm::Module * irModule, llvm::Type * quantizedType, std::vector<
 				 mul2Shifted);
 			llvm::Value * finalMul	   = builder.CreateMul(intApprox, correction);
 			llvm::Value * finalShifted = builder.CreateLShr(finalMul, FRAC_Q);
-//			llvm::Value * finalShifted = builder.CreateAShr(finalMul, FRAC_Q);
+//						llvm::Value * finalShifted = builder.CreateAShr(finalMul, FRAC_Q);
 
 			// Step 5: Truncate the result back to i16
 			result = builder.CreateTrunc(finalShifted, quantizedType);
@@ -216,16 +217,16 @@ createFixRsqrt(llvm::Module * irModule, llvm::Type * quantizedType, std::vector<
 		default:
 		{
 			// Step 1: Shift x to compute %1 (x >> 1)
-			llvm::Value * halfBase = builder.CreateLShr(x, llvm::ConstantInt::get(quantizedType, 1));
-//			llvm::Value * halfBase = builder.CreateAShr(x, llvm::ConstantInt::get(quantizedType, 1));
+//			llvm::Value * halfBase = builder.CreateLShr(x, llvm::ConstantInt::get(quantizedType, 1));
+						llvm::Value * halfBase = builder.CreateAShr(x, llvm::ConstantInt::get(quantizedType, 1));
 
 			// Step 2: Convert x to floating-point and perform the initial approximation
 			fpX = builder.CreateSIToFP(x, llvm::Type::getFloatTy(irModule->getContext()));
 			fpX = builder.CreateFMul(fpX, llvm::ConstantFP::get(llvm::Type::getFloatTy(irModule->getContext()), 1.0f / FRAC_BASE));
 
-//			llvm::Value * i = builder.CreateBitCast(fpX, llvm::Type::getInt32Ty(irModule->getContext()));
+			//			llvm::Value * i = builder.CreateBitCast(fpX, llvm::Type::getInt32Ty(irModule->getContext()));
 			llvm::Value * i = builder.CreateBitCast(fpX, llvm::Type::getInt32Ty(irModule->getContext()));
-//			i		= builder.CreateNSWSub(llvm::ConstantInt::get(llvm::Type::getInt32Ty(irModule->getContext()), 0x5f3759df), builder.CreateLShr(i, 1));
+			//			i		= builder.CreateNSWSub(llvm::ConstantInt::get(llvm::Type::getInt32Ty(irModule->getContext()), 0x5f3759df), builder.CreateLShr(i, 1));
 			i		= builder.CreateNSWSub(llvm::ConstantInt::get(llvm::Type::getInt32Ty(irModule->getContext()), 0x5f3759df), builder.CreateAShr(i, 1));
 			fpX		= builder.CreateBitCast(i, llvm::Type::getFloatTy(irModule->getContext()));
 
@@ -273,27 +274,54 @@ std::vector<Function *> functionsToErase;
 
 // Function to actually erase functions after processing
 
-void
-eraseOldFunctions()
-{
+//void
+//eraseOldFunctions()
+//{
+//
+//
+//	llvm::errs() << "Entering eraseOldFunctions\n";
+//	for (auto * func : functionsToErase)
+//	{
+//		llvm::errs() << "Erasing old function: " << func->getName() << "\n";
+//		func->eraseFromParent();
+//	}
+//	functionsToErase.clear();
+//	llvm::errs() << "Exiting eraseOldFunctions\n";
+//}
 
-
+void eraseOldFunctions(Module &M) {
 	llvm::errs() << "Entering eraseOldFunctions\n";
-	for (auto * func : functionsToErase)
-	{
+
+	std::vector<Function*> toErase;
+	for (auto *func : functionsToErase) {
+		if (!func) continue;
+
+		if (M.getFunction(func->getName()) != func) {
+			llvm::errs() << "Skipping dangling or already removed function.\n";
+			continue;
+		}
+
+		toErase.push_back(func);
+	}
+
+	functionsToErase.clear();
+	for (Function *func : toErase) {
 		llvm::errs() << "Erasing old function: " << func->getName() << "\n";
 		func->eraseFromParent();
 	}
-	functionsToErase.clear();
 	llvm::errs() << "Exiting eraseOldFunctions\n";
 }
+
+
+
+
 
 bool
 isWhitelistedGlobal(const std::string & globalName)
 {
 	// Define the whitelist of global variables
-//	static const std::set<std::string> whitelist = {"beta", "qw", "qx", "qy", "qz","zero","q0","q1","q2","q3"};
-//	return whitelist.find(globalName) != whitelist.end();
+	//	static const std::set<std::string> whitelist = {"beta", "qw", "qx", "qy", "qz","zero","q0","q1","q2","q3"};
+	//	return whitelist.find(globalName) != whitelist.end();
 	return true;
 }
 
@@ -355,7 +383,7 @@ shouldProcessFunction(Function & F)
 	    "qone",
 	    "__ieee754_exp",
 	    "twofft"
-//	    "__ieee754_log",
+	    //	    "__ieee754_log",
 	};
 
 	// Check if the function name is in the set
@@ -425,7 +453,7 @@ getOrCreateQuantizedGlobal(Module * module, GlobalVariable & globalVar, Type * q
 	return newGlobalVar;
 }
 
-// Helper to create or retrieve the quantized internal constant
+
 // Helper to create or retrieve the quantized internal constant
 llvm::GlobalVariable *
 getOrCreateQuantizedConstant(llvm::Module *module,
@@ -1843,8 +1871,8 @@ performFixedPointSqrt(IRBuilder<> & builder, Module * irModule, Value * fixedPoi
 	return finalRes;
 }
 
- void
- handleSqrtCall(CallInst * llvmIrCallInstruction, Type * quantizedType)
+void
+handleSqrtCall(CallInst * llvmIrCallInstruction, Type * quantizedType)
 {
 	IRBuilder<> Builder(llvmIrCallInstruction);
 	auto	    operand = llvmIrCallInstruction->getOperand(0);
@@ -1861,7 +1889,7 @@ performFixedPointSqrt(IRBuilder<> & builder, Module * irModule, Value * fixedPoi
 	// No need to apply shl and compensation if it's already done in createFixSqrt
 	llvmIrCallInstruction->replaceAllUsesWith(sqrtResult);
 	llvmIrCallInstruction->eraseFromParent();
- }
+}
 
 void
 handleSinCosCall(CallInst * llvmIrCallInstruction, Type * quantizedType, const std::string & mathFunc)
@@ -1933,10 +1961,10 @@ handleCall(CallInst * llvmIrCallInstruction, Type * quantizedType, std::vector<l
 		llvm::errs() << "Handling invsqrt call\n";
 		handleRsqrtCall(llvmIrCallInstruction, quantizedType, fixrsqrt);
 
-//		functionsToErase.erase(
-//		    std::remove(functionsToErase.begin(), functionsToErase.end(), fixrsqrt),
-//		    functionsToErase.end()
-//		);
+		//		functionsToErase.erase(
+		//		    std::remove(functionsToErase.begin(), functionsToErase.end(), fixrsqrt),
+		//		    functionsToErase.end()
+		//		);
 
 		if (calledFunction->use_empty())
 		{
@@ -2306,7 +2334,7 @@ irPassLLVMIRAutoQuantization(State *N, llvm::Function &llvmIrFunction, std::vect
 		 * */
 		//llvm::Function * fixsqrt  = createFixSqrt(module, quantizedType, functionsToInsert);
 		llvm::Function * fixrsqrt = createFixRsqrt(module, quantizedType, functionsToInsert);
-//		functionsToErase.push_back(fixrsqrt);
+		//		functionsToErase.push_back(fixrsqrt);
 
 		for (BasicBlock & llvmIrBasicBlock : llvmIrFunction)
 		{
@@ -2338,7 +2366,7 @@ irPassLLVMIRAutoQuantization(State *N, llvm::Function &llvmIrFunction, std::vect
 					break;
 					case Instruction::PHI:
 					{
-//						setQuantizedType(llvmIrInstruction, quantizedType);
+						//						setQuantizedType(llvmIrInstruction, quantizedType);
 						llvm::errs() << "handle phi " << *llvmIrInstruction << "\n";
 						handlePhi(llvmIrInstruction, quantizedType);
 					}
@@ -2423,8 +2451,8 @@ irPassLLVMIRAutoQuantization(State *N, llvm::Function &llvmIrFunction, std::vect
 
 					case Instruction::BitCast:
 					case Instruction::Ret:
-//						handleReturn(cast<ReturnInst>(llvmIrInstruction), quantizedType);
-//						break;
+						//						handleReturn(cast<ReturnInst>(llvmIrInstruction), quantizedType);
+						//						break;
 
 					case Instruction::Switch:
 					case Instruction::Br:

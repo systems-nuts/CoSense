@@ -142,9 +142,13 @@ bmx055: sensor (
 	#
 	#	Range of Acceleration can be found in Table 2 on page 11.
 	#
-	range bmx055xAcceleration == [-16 mjf, 16 mjf],
-	range bmx055yAcceleration == [-16 mjf, 16 mjf],
-	range bmx055zAcceleration == [-16 mjf, 16 mjf],
+	#range bmx055xAcceleration == [-16 mjf, 16 mjf],
+	#range bmx055yAcceleration == [-16 mjf, 16 mjf],
+	#range bmx055zAcceleration == [-16 mjf, 16 mjf],
+
+	range bmx055xAcceleration == [-2 mjf, 2 mjf],
+    range bmx055yAcceleration == [-2 mjf, 2 mjf],
+    range bmx055zAcceleration == [-2 mjf, 2 mjf],
 
 	#
 	#	Range of Temperature can be found in Table 2 on page 11.
@@ -196,7 +200,7 @@ bmx055: sensor (
 		yAccelLow := read 16r04;
 		bmx055yAcceleration = (yAccelHigh << 4) | (yAccelLow >> 4);
 		# bmx055yAcceleration = yAccelHigh[:4] + yAccelLow[4:];
-	},# @sensitivity bmx055xAcceleration = 1024 LSB/g
+	},
 
 	interface bmx055zAcceleration == i2c (address: 16r18)
 	{

@@ -59,7 +59,8 @@ irPassLLVMIRAutoQuantization(State * N, llvm::Function & llvmIrFunction,  std::v
 
 
 extern
-void eraseOldFunctions();
+//void eraseOldFunctions();
+    void eraseOldFunctions(llvm::Module &M);
 void eraseOldInstructions();
 void eraseOldGlobals();
 #ifdef __cplusplus

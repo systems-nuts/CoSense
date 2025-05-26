@@ -3,37 +3,37 @@ Authored 2022. Pei Mu.
 
 All rights reserved.
 
-Redistribution and use in source and binary forms, with or without
-	modification, are permitted provided that the following conditions
-are met:
+    Redistribution and use in source and binary forms, with or without
+		modification, are permitted provided that the following conditions
+	are met:
 
-*	Redistributions of source code must retain the above
-copyright notice, this list of conditions and the following
-disclaimer.
-
-    *	Redistributions in binary form must reproduce the above
+    *	Redistributions of source code must retain the above
 	copyright notice, this list of conditions and the following
-	disclaimer in the documentation and/or other materials
-       provided with the distribution.
+	disclaimer.
 
-	   *	Neither the name of the author nor the names of its
-	       contributors may be used to endorse or promote products
-    derived from this software without specific prior written
-	permission.
+	    *	Redistributions in binary form must reproduce the above
+		copyright notice, this list of conditions and the following
+		disclaimer in the documentation and/or other materials
+	       provided with the distribution.
 
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS
-FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE
-    COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
-INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
-    BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
-    LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
-CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
-LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN
-ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
-POSSIBILITY OF SUCH DAMAGE.
-    */
+		   *	Neither the name of the author nor the names of its
+		       contributors may be used to endorse or promote products
+	    derived from this software without specific prior written
+		permission.
+
+	THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+	"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+	LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS
+	FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE
+	    COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
+    INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
+	    BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+	    LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+    CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+    LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN
+    ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+	POSSIBILITY OF SUCH DAMAGE.
+	    */
 
 #ifdef __cplusplus
 #include "newton-irPass-LLVMIR-rangeAnalysis.h"
@@ -80,7 +80,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include <set>
 #include <limits>
 
-using namespace llvm;
+	using namespace llvm;
 // #define FRAC_BASE (1 << maxPrecisionBits)
 #define FRAC_BASE (1 << MAX_PRECISION_BITS)
 
@@ -932,15 +932,15 @@ irPassLLVMIROptimizeByRange(State * N, bool enableQuantization, bool enableOverl
 	//	}
 	//
 
-//	int maxPrecisionBits = 0;
-//	for (auto & typePrecisionBit : typePrecisionBits)
-//	{
-//		if (typePrecisionBit.second > maxPrecisionBits)
-//		{
-//			maxPrecisionBits = typePrecisionBit.second;
-//		}
-//	}
-//	int MAX_PRECISION_BITS = maxPrecisionBits;
+	//	int maxPrecisionBits = 0;
+	//	for (auto & typePrecisionBit : typePrecisionBits)
+	//	{
+	//		if (typePrecisionBit.second > maxPrecisionBits)
+	//		{
+	//			maxPrecisionBits = typePrecisionBit.second;
+	//		}
+	//	}
+	//	int MAX_PRECISION_BITS = maxPrecisionBits;
 
 
 
@@ -1147,112 +1147,120 @@ irPassLLVMIROptimizeByRange(State * N, bool enableQuantization, bool enableOverl
 		//        }
 	}
 
-//	/*
-//	 * remove the functions that are optimized by passes.
-//	 * */
-//			if (useOverLoad)
-//				cleanFunctionMap(Mod, callerMap);
-//
-//			if (useOverLoad)
-//				overloadFunc(Mod, callerMap);
-//
-//			callerMap.clear();
-//			funcBoundInfo.clear();
-//			useOverLoad = true;
-//			for (auto & mi : *Mod)
-//			{
-//				auto boundInfo = new BoundInfo();
-//				mergeBoundInfo(boundInfo, globalBoundInfo);
-//				rangeAnalysis(N, mi, boundInfo, callerMap, typeRange, virtualRegisterVectorRange, useOverLoad);
-//				funcBoundInfo.emplace(mi.getName().str(), boundInfo);
-//				std::vector<std::string> calleeNames;
-//				collectCalleeInfo(calleeNames, funcBoundInfo, boundInfo);
-//			}
+	//	/*
+	//	 * remove the functions that are optimized by passes.
+	//	 * */
+	//			if (useOverLoad)
+	//				cleanFunctionMap(Mod, callerMap);
+	//
+	//			if (useOverLoad)
+	//				overloadFunc(Mod, callerMap);
+	//
+	//			callerMap.clear();
+	//			funcBoundInfo.clear();
+	//			useOverLoad = true;
+	//			for (auto & mi : *Mod)
+	//			{
+	//				auto boundInfo = new BoundInfo();
+	//				mergeBoundInfo(boundInfo, globalBoundInfo);
+	//				rangeAnalysis(N, mi, boundInfo, callerMap, typeRange, virtualRegisterVectorRange, useOverLoad);
+	//				funcBoundInfo.emplace(mi.getName().str(), boundInfo);
+	//				std::vector<std::string> calleeNames;
+	//				collectCalleeInfo(calleeNames, funcBoundInfo, boundInfo);
+	//			}
 
-		/*
+	/*
 		 * simplify the condition of each branch
 		 * */
-			flexprint(N->Fe, N->Fm, N->Fpinfo, "simplify control flow by range\n");
-			for (auto & mi : *Mod)
-			{
-				auto boundInfoIt = funcBoundInfo.find(mi.getName().str());
-				if (boundInfoIt != funcBoundInfo.end())
-				{
-					simplifyControlFlow(N, boundInfoIt->second, mi);
-				}
-				//		else
-				//		{
-				//			assert(false);
-				//		}
-			}
-
-			legacy::PassManager passManager;
-			passManager.add(createCFGSimplificationPass());
-			passManager.add(createInstSimplifyLegacyPass());
-			passManager.add(createGlobalDCEPass());
-			passManager.run(*Mod);
-
-
-
-
-//		/*
-//		 * remove the functions that are optimized by passes.
-//		 * */
-//		if (useOverLoad)
-//			cleanFunctionMap(Mod, callerMap);
-//
-//		if (useOverLoad)
-//			overloadFunc(Mod, callerMap);
-//
-//		flexprint(N->Fe, N->Fm, N->Fpinfo, "infer bound\n");
-//		callerMap.clear();
-//		funcBoundInfo.clear();
-//		useOverLoad = false;
-//		for (auto & mi : *Mod)
-//		{
-//			auto boundInfo = new BoundInfo();
-//			mergeBoundInfo(boundInfo, globalBoundInfo);
-//			rangeAnalysis(N, mi, boundInfo, callerMap, typeRange, virtualRegisterVectorRange, useOverLoad);
-//			funcBoundInfo.emplace(mi.getName().str(), boundInfo);
-//			std::vector<std::string> calleeNames;
-//			collectCalleeInfo(calleeNames, funcBoundInfo, boundInfo);
-//		}
-//
-		flexprint(N->Fe, N->Fm, N->Fpinfo, "constant substitution\n");
-		for (auto & mi : *Mod)
+	flexprint(N->Fe, N->Fm, N->Fpinfo, "simplify control flow by range\n");
+	for (auto & mi : *Mod)
+	{
+		auto boundInfoIt = funcBoundInfo.find(mi.getName().str());
+		if (boundInfoIt != funcBoundInfo.end())
 		{
-			auto boundInfoIt = funcBoundInfo.find(mi.getName().str());
-			if (boundInfoIt != funcBoundInfo.end())
-			{
-				constantSubstitution(N, boundInfoIt->second, mi);
-			}
-			//		else
-			//		{
-			//			assert(false);
-			//		}
+			simplifyControlFlow(N, boundInfoIt->second, mi);
 		}
-//
-//			/*
-//			 * remove the functions that are optimized by passes.
-//			 * */
-//			if (useOverLoad)
-//				cleanFunctionMap(Mod, callerMap);
-//
-//			if (useOverLoad)
-//				overloadFunc(Mod, callerMap);
+		//		else
+		//		{
+		//			assert(false);
+		//		}
+	}
+
+	legacy::PassManager passManager;
+	passManager.add(createCFGSimplificationPass());
+	passManager.add(createInstSimplifyLegacyPass());
+	passManager.add(createGlobalDCEPass());
+	passManager.run(*Mod);
+
+
+
+
+	//		/*
+	//		 * remove the functions that are optimized by passes.
+	//		 * */
+	//		if (useOverLoad)
+	//			cleanFunctionMap(Mod, callerMap);
+	//
+	//		if (useOverLoad)
+	//			overloadFunc(Mod, callerMap);
+	//
+	//		flexprint(N->Fe, N->Fm, N->Fpinfo, "infer bound\n");
+	//		callerMap.clear();
+	//		funcBoundInfo.clear();
+	//		useOverLoad = false;
+	//		for (auto & mi : *Mod)
+	//		{
+	//			auto boundInfo = new BoundInfo();
+	//			mergeBoundInfo(boundInfo, globalBoundInfo);
+	//			rangeAnalysis(N, mi, boundInfo, callerMap, typeRange, virtualRegisterVectorRange, useOverLoad);
+	//			funcBoundInfo.emplace(mi.getName().str(), boundInfo);
+	//			std::vector<std::string> calleeNames;
+	//			collectCalleeInfo(calleeNames, funcBoundInfo, boundInfo);
+	//		}
+	//
+	flexprint(N->Fe, N->Fm, N->Fpinfo, "constant substitution\n");
+	for (auto & mi : *Mod)
+	{
+		auto boundInfoIt = funcBoundInfo.find(mi.getName().str());
+		if (boundInfoIt != funcBoundInfo.end())
+		{
+			constantSubstitution(N, boundInfoIt->second, mi);
+		}
+		//		else
+		//		{
+		//			assert(false);
+		//		}
+	}
+	//
+	//			/*
+	//			 * remove the functions that are optimized by passes.
+	//			 * */
+	//			if (useOverLoad)
+	//				cleanFunctionMap(Mod, callerMap);
+	//
+	//			if (useOverLoad)
+	//				overloadFunc(Mod, callerMap);
 
 
 
 	// Finally, erase old functions
 
-//	eraseOldFunctions();
+	//	eraseOldFunctions();
 
 	// eraseOldGlobals();
 	eraseUnusedConstant(*Mod);
 
+//		eraseOldFunctions();
+//	eraseOldFunctions();
 
 
 	processWhitelistedFunctions(*Mod, whitelist, maxPrecisionBits);
+
+//	eraseOldFunctions();
+	eraseOldFunctions(*Mod);
+
+
+
 
 	const char * homeDir = getenv("HOME");
 	if (!homeDir)

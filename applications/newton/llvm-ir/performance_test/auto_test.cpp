@@ -315,8 +315,8 @@ int main(int argc, char** argv)
 	    //            "perf_y0", "perf_rem_pio2", "perf_sincosf",
 	    //            "perf_float64_add", "perf_float64_div",
 	    //            "perf_float64_mul"};
-	    "perf_j0"};
-//	    "perf_y0"};
+	    "perf_j0","perf_y0"};
+
 
 	if (argc >= 2)
 	{
@@ -471,13 +471,11 @@ int main(int argc, char** argv)
 					continue;
 				}
 
-				// 使用范围构造参数字符串
 				const std::string param_str = change_nt_range("sed -i 's/3 mjf, 10 mjf/", "/g' ../../sensors/test.nt", range);
 				const double	  p1	    = range.front() + 0.6;
 				const double	  p2	    = range.back() + 0.3;
 				change_nt_range("sed -i 's/15 mjf, 36 mjf/", "/g' ../../sensors/test.nt", {p1, p2});
 
-				// 后续测试逻辑保持不变
 				timerData ori_perf_data = recordTimerData(test_cases[case_id], param_str, ofs);
 				timerData opt_perf_data = recordTimerData(test_cases[case_id] + "_opt", param_str, ofs);
 
@@ -575,8 +573,12 @@ int main(int argc, char** argv)
 			}
 		}
 
-		ofs.close();
-
-		return 0;
+//		ofs.close();
+//
+//		return 0;
 	}
+	ofs.close();
+
+	return 0;
 }
+

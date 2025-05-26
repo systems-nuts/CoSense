@@ -30,12 +30,17 @@ MAKE_DIR="/home/xyf/CoSense/src/newton"
 # Current directory (where the test scripts are located)
 TEST_DIR=$(pwd)
 
+#Run fp test
+./testOriginal.sh "$ALGO"
+
 # Print header into file
 echo "| MAX_PRECISION_BITS | SQNR (dB) |" >> "$OUTPUT_FILE"
 echo "|--------------------|-----------|" >> "$OUTPUT_FILE"
 
+
+
 # Loop over MAX_PRECISION_BITS values from 8 to 18
-for i in {8..11}; do
+for i in {12..13}; do
     echo "Compiling and testing with MAX_PRECISION_BITS = $i ..."
 
     # Switch to the make directory for compilation
