@@ -17,7 +17,7 @@
 #include <sstream>
 #include <vector>
 
-const size_t iteration_num = 5;
+const size_t iteration_num = 1;
 
 struct perfData {
     int64_t inst_count_avg;
@@ -30,11 +30,67 @@ struct perfData {
 struct timerData {
     int64_t inst_count_avg = -1;
     double time_consumption_avg;
+	double compile_time_avg;
     std::vector<double> ms_time_consumption;
     int64_t ir_lines;
     int64_t library_size;
     std::vector<double> function_results;
+    std::vector<double> compile_time;
 };
+
+#define TLOG_TIMESPEC_NSEC_PER_SEC  1000000000
+
+/***************************************
+ * Timer functions of the test framework
+ ***************************************/
+
+typedef struct timespec timespec;
+timespec diff(timespec start, timespec end)
+{
+	timespec temp;
+	if ((end.tv_nsec-start.tv_nsec)<0) {
+		temp.tv_sec = end.tv_sec-start.tv_sec-1;
+		temp.tv_nsec = 1000000000+end.tv_nsec-start.tv_nsec;
+	} else {
+		temp.tv_sec = end.tv_sec-start.tv_sec;
+		temp.tv_nsec = end.tv_nsec-start.tv_nsec;
+	}
+	return temp;
+}
+
+timespec sum(timespec t1, timespec t2) {
+	timespec temp;
+	if (t1.tv_nsec + t2.tv_nsec >= 1000000000) {
+		temp.tv_sec = t1.tv_sec + t2.tv_sec + 1;
+		temp.tv_nsec = t1.tv_nsec + t2.tv_nsec - 1000000000;
+	} else {
+		temp.tv_sec = t1.tv_sec + t2.tv_sec;
+		temp.tv_nsec = t1.tv_nsec + t2.tv_nsec;
+	}
+	return temp;
+}
+
+void printTimeSpec(timespec t, const char* prefix) {
+	printf("%s: %d.%09d\n", prefix, (int)t.tv_sec, (int)t.tv_nsec);
+}
+
+timespec tic( )
+{
+	timespec start_time;
+	clock_gettime(CLOCK_REALTIME, &start_time);
+	return start_time;
+}
+
+timespec toc( timespec* start_time, const char* prefix, bool print )
+{
+	timespec current_time;
+	clock_gettime(CLOCK_REALTIME, &current_time);
+	timespec time_diff = diff( *start_time, current_time );
+	if (print)
+		printTimeSpec( time_diff, prefix );
+	*start_time = current_time;
+	return time_diff;
+}
 
 /*
  * Get number from:
@@ -131,6 +187,20 @@ std::pair<int64_t, int64_t> processDataPerf(const std::string test_case, const s
     return std::make_pair(inst_count, time_consumption);
 }
 
+double compileTargetCode(const std::string test_case) {
+	// measure the compile time
+	timespec compile_timer = tic();
+	// perf command
+	std::string cmd = "bash -c 'make " + test_case + " >& compile.log'";
+	int command_return = system(cmd.c_str());
+	timespec compile_time = toc(&compile_timer, "compile time", false);
+	if (command_return != 0) {
+		exit(-1);
+	}
+
+	return (double)compile_time.tv_sec + (double)compile_time.tv_nsec / TLOG_TIMESPEC_NSEC_PER_SEC;
+}
+
 std::pair<double, std::vector<double>> processDataTimer(const std::string test_case, const std::string params) {
     std::string line;
     size_t position;
@@ -138,15 +208,9 @@ std::pair<double, std::vector<double>> processDataTimer(const std::string test_c
     std::vector<double> function_results;
 
     // perf command
-    std::string cmd = "bash -c 'make " + test_case + " >& compile.log'";
-    int command_return = system(cmd.c_str());
-    if (command_return != 0) {
-        return std::make_pair(0, std::vector<double>(0));
-    }
-    cmd.clear();
-    cmd = "bash -c './main_out " + params;
+    std::string cmd = "bash -c './main_out " + params;
     cmd += " 2>&1 | tee tmp.log'";
-    command_return = system(cmd.c_str());
+    int command_return = system(cmd.c_str());
     if (command_return != 0) {
         return std::make_pair(0, std::vector<double>(0));
     }
@@ -263,6 +327,8 @@ struct timerData recordTimerData(const std::string& test_cases, const std::strin
     timerData timer_data;
 
     for (size_t idx = 0; idx < iteration_num; idx++) {
+	    double compile_time = compileTargetCode(test_cases);
+	    timer_data.compile_time.emplace_back(compile_time);
         const std::pair<double, std::vector<double>> data_timer_res = processDataTimer(test_cases, param_str);
         timer_data.ms_time_consumption.emplace_back(data_timer_res.first);
         std::copy_if(data_timer_res.second.begin(), data_timer_res.second.end(),
@@ -285,7 +351,11 @@ struct timerData recordTimerData(const std::string& test_cases, const std::strin
         << "\t" << std::accumulate(timer_data.ms_time_consumption.begin(),
                                    timer_data.ms_time_consumption.end(),
                                    0.0) / timer_data.ms_time_consumption.size()
-        << "\t" << timer_data.ir_lines << "\t" << timer_data.library_size << std::endl;
+        << "\t" << timer_data.ir_lines << "\t" << timer_data.library_size
+		<< "\t" << std::accumulate(timer_data.compile_time.begin(),
+								   timer_data.compile_time.end(),
+								   0.0) / timer_data.compile_time.size()
+		<< std::endl;
 
     return timer_data;
 }
@@ -366,12 +436,13 @@ int main(int argc, char** argv) {
         trigonometricParams.emplace_back(input_param);
     }
 
-    ofs << "test case\tparam\tinstruction count\ttime consumption\tir lines\tlibrary size" << std::endl;
-    avg_speedup << "test cast\tinstruction count\ttime consumption\tir lines\tlibrary size" << std::endl;
+    ofs << "test case\tparam\tinstruction count\ttime consumption\tir lines\tlibrary size\tcompile time" << std::endl;
+    avg_speedup << "test cast\tinstruction count\ttime consumption\tir lines\tlibrary size\tcompile time" << std::endl;
 
     for (size_t case_id = 0; case_id < test_cases.size(); case_id++) {
         int avg_inst_speedup = 0;
         int avg_time_speedup = 0;
+		int avg_compile_time_speedup = 0;
         int avg_ir_reduce = 0;
         int avg_lib_size_reduce = 0;
         const std::vector<std::vector<double>> parameters =
@@ -412,7 +483,7 @@ int main(int argc, char** argv) {
 	            }
 	        }
 
-	        int inst_speedup, time_speedup, ir_reduce, lib_size_reduce;
+	        int inst_speedup, time_speedup, ir_reduce, lib_size_reduce, compile_time_speedup;
 	        if (ori_perf_data.ms_time_consumption.empty()) {
 	            assert(opt_perf_data.ms_time_consumption.empty() && "erase mis-match!");
 	            inst_speedup = 0;
@@ -425,10 +496,19 @@ int main(int argc, char** argv) {
 	                                                                 opt_perf_data.ms_time_consumption.end(),
 	                                                                 0.0) / opt_perf_data.ms_time_consumption.size();
 
+				ori_perf_data.compile_time_avg = std::accumulate(ori_perf_data.compile_time.begin(),
+																 ori_perf_data.compile_time.end(),
+																 0.0) / ori_perf_data.compile_time.size();
+		        opt_perf_data.compile_time_avg = std::accumulate(opt_perf_data.compile_time.begin(),
+		                                                         opt_perf_data.compile_time.end(),
+		                                                         0.0) / opt_perf_data.compile_time.size();
+
 	            inst_speedup = round((ori_perf_data.inst_count_avg - opt_perf_data.inst_count_avg)
 	                    * 100 / opt_perf_data.inst_count_avg);
 	            time_speedup = round((ori_perf_data.time_consumption_avg - opt_perf_data.time_consumption_avg)
 	                    * 100 / opt_perf_data.time_consumption_avg);
+		        compile_time_speedup = round((ori_perf_data.compile_time_avg - opt_perf_data.compile_time_avg)
+				        * 100 / opt_perf_data.compile_time_avg);
 	        }
 
 	        if (ori_perf_data.ir_lines > opt_perf_data.ir_lines) {
@@ -440,14 +520,16 @@ int main(int argc, char** argv) {
 	            lib_size_reduce = 0;
 	        }
 	        ofs << "speed up after optimization\t" << param_str << "\t" << inst_speedup << "%\t" << time_speedup << "%\t"
-	            << ir_reduce << "%\t" << lib_size_reduce << "%" << std::endl;
-	        std::cout << test_cases[case_id] << ": speed up after optimization\t" << param_str << "\t" << inst_speedup << "%\t" << time_speedup << "%\t"
-	            << ir_reduce << "%\t" << lib_size_reduce << "%" << std::endl;
+	            << ir_reduce << "%\t" << lib_size_reduce << "%\t" << compile_time_speedup << "%" << std::endl;
+	        std::cout << test_cases[case_id] << ": speed up after optimization\t" << param_str << "\t" << inst_speedup
+			    << "%\t" << time_speedup << "%\t"
+	            << ir_reduce << "%\t" << lib_size_reduce << "%\t" << compile_time_speedup << "%" << std::endl;
 
 	        avg_inst_speedup += inst_speedup;
 	        avg_time_speedup += time_speedup;
 	        avg_ir_reduce += ir_reduce;
 	        avg_lib_size_reduce += lib_size_reduce;
+			avg_compile_time_speedup += compile_time_speedup;
 
 	        // reset test.nt
 	        change_nt_range("sed -i 's/", "/3 mjf, 10 mjf/g' ../../sensors/test.nt",
@@ -458,11 +540,13 @@ int main(int argc, char** argv) {
 	    avg_time_speedup = round(avg_time_speedup / parameters.size());
 	    avg_ir_reduce = round(avg_ir_reduce / parameters.size());
 	    avg_lib_size_reduce = round(avg_lib_size_reduce / parameters.size());
+		avg_compile_time_speedup = round(avg_compile_time_speedup / parameters.size());
 	    avg_speedup << test_cases[case_id] << "\t" << avg_inst_speedup << "%\t"
-	                << avg_time_speedup << "%\t" << avg_ir_reduce << "%\t" << avg_lib_size_reduce << "%" << std::endl;
+	                << avg_time_speedup << "%\t" << avg_ir_reduce << "%\t" << avg_lib_size_reduce << "%\t"
+					<< avg_compile_time_speedup << "%" << std::endl;
 
 	    if (test_cases[case_id] == "perf_float64_sin") {
-	        // trigonometricParams cannot have extent
+	        // trigonometricParams cannot have extention
 	        break;
 	    }
     }
