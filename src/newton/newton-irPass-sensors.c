@@ -281,6 +281,31 @@ irPassSensorsLoadSensor(State *  N, IrNode *  sensorNode)
 		}
 
 		/*
+		Modality resolution
+		 *	TODO: Currently only handles one resolution setting per sensor modality.
+
+
+		 */
+		tempNode = NULL;
+		n = 0;
+		do
+		{
+			tempNode = findNthIrNodeOfType(N, sensorNode, kNewtonIrNodeType_PresolutionStatement, n++);
+			if (tempNode == NULL)
+			{
+				error(N, "no resolution statement found for modality");
+				break;
+			}
+		} while (strcmp(modality->identifier, tempNode->irLeftChild->tokenString) != 0);
+
+		if (tempNode != NULL)
+		{
+			modality->resolution = RLL(tempNode)->value;
+		}
+
+
+
+		/*
 		 *	Prepare iterator for next `while` iteration
 		 */
 		parameterTuple = parameterTuple->irRightChild;

@@ -320,7 +320,7 @@ main(int argc, char** argv)
     }
 
     printf("results: %f\t%f\t%f\t%f\t%f\n", result[0], result[1], result[2], result[3], result[4]);
-    printf("int results: %d\t%d\t%d\t%d\t%d\n", intResult[0], intResult[1], intResult[2], intResult[3], intResult[4]);
+    //printf("int results: %d\t%d\t%d\t%d\t%d\n", intResult[0], intResult[1], intResult[2], intResult[3], intResult[4]);
 
 	return 0;
 }
