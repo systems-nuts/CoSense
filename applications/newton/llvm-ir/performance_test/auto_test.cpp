@@ -17,7 +17,7 @@
 #include <sstream>
 #include <vector>
 
-const size_t iteration_num = 1;
+const size_t iteration_num = 5;
 
 struct perfData {
     int64_t inst_count_avg;
