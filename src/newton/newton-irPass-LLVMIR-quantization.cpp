@@ -273,22 +273,6 @@ eraseOldGlobals()
 std::vector<Function *> functionsToErase;
 
 // Function to actually erase functions after processing
-
-//void
-//eraseOldFunctions()
-//{
-//
-//
-//	llvm::errs() << "Entering eraseOldFunctions\n";
-//	for (auto * func : functionsToErase)
-//	{
-//		llvm::errs() << "Erasing old function: " << func->getName() << "\n";
-//		func->eraseFromParent();
-//	}
-//	functionsToErase.clear();
-//	llvm::errs() << "Exiting eraseOldFunctions\n";
-//}
-
 void eraseOldFunctions(Module &M) {
 	llvm::errs() << "Entering eraseOldFunctions\n";
 
@@ -1431,6 +1415,17 @@ void handleFDiv(Instruction *llvmIrInstruction, Type *quantizedType) {
 		if (checkAndSimplifyForConstant(lhsConst, rhs, llvmIrInstruction))
 			return;
 	}
+
+    // Check if lhs is the constant 1.0
+    if (auto lhsConst = dyn_cast<ConstantFP>(lhs)) {
+        double val = lhsConst->getValueAPF().convertToDouble();
+        if (fabs(val - 1.0) < 1e-6) {
+            llvm::errs() << "LHS is 1.0, replacing with FRAC_BASE\n";
+            lhs = ConstantInt::get(quantizedType, FRAC_BASE, true);
+            lhsIsFloat = false;
+        }
+    }
+
 	if (isa<ConstantFP>(lhs)) {
 		llvm::errs() << "LHS is a floating-point constant, handling it with simplifyConstant\n";
 		simplifyConstant(llvmIrInstruction, quantizedType);
@@ -1443,6 +1438,8 @@ void handleFDiv(Instruction *llvmIrInstruction, Type *quantizedType) {
 		rhs = llvmIrInstruction->getOperand(1);
 		rhsIsFloat = false;
 	}
+
+
 
 	if (lhsIsFloat) {
 		lhs = Builder.CreateFPToSI(lhs, quantizedType);
@@ -2082,7 +2079,6 @@ quantizeFunctionArguments(llvm::Function & func, llvm::IRBuilder<> & builder)
 			{
 				usesToReplace.push_back(&use);
 			}
-			//TODO Check if the argument is a float or double
 			Value * processedArg = &arg;
 			llvm::Instruction * castedFloat = nullptr;
 			if (arg.getType()->isDoubleTy()) {
