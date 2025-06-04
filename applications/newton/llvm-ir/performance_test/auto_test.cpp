@@ -380,7 +380,7 @@ int main(int argc, char** argv)
 		return -1;
 	}
 
-	std::ofstream avg_speedup("average_speedup.log");
+	std::ofstream avg_speedup("average_speedup_quant.log");
 	if (!avg_speedup.is_open())
 	{
 		std::cout << "error opening perf_quant.log";

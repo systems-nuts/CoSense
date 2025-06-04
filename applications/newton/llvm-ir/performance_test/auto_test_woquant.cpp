@@ -380,15 +380,15 @@ int main(int argc, char** argv) {
 	       test_cases.emplace_back(argv[1]);
        }
 
-       std::ofstream ofs("perf.log");
+       std::ofstream ofs("perf_woquant.log");
        if (!ofs.is_open()) {
-	       std::cout << "error opening perf.log";
+	       std::cout << "error opening perf_woquant.log";
 	       return -1;
        }
 
-       std::ofstream avg_speedup("average_speedup.log");
+       std::ofstream avg_speedup("average_speedup_woquant.log");
        if (!avg_speedup.is_open()) {
-	       std::cout << "error opening perf.log";
+	       std::cout << "error opening perf_woquant.log";
 	       return -1;
        }
 
