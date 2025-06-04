@@ -317,10 +317,12 @@ struct perfData recordData(const std::string& test_cases, const std::string& par
     ofs << test_cases << "\t" << param_str << "\t" << perf_data.inst_count_avg
         << "\t" << perf_data.time_consumption_avg << "\t" << perf_data.ir_lines << "\t" << perf_data.library_size << std::endl;
 
+
+
     return perf_data;
 }
 
-struct timerData recordTimerData(const std::string& test_cases, const std::string& param_str, std::ofstream& ofs) {
+struct timerData recordTimerData(const std::string& test_cases, const std::string& param_str, int precision_bits, std::ofstream& ofs){
     timerData timer_data;
 
     for (size_t idx = 0; idx < iteration_num; idx++) {
@@ -344,15 +346,11 @@ struct timerData recordTimerData(const std::string& test_cases, const std::strin
     timer_data.ir_lines = getIrLines();
     timer_data.library_size = getLibSize();
 
-    ofs << test_cases << "\t" << param_str << "\t" << timer_data.inst_count_avg
-        << "\t" << std::accumulate(timer_data.ms_time_consumption.begin(),
-                                   timer_data.ms_time_consumption.end(),
-                                   0.0) / timer_data.ms_time_consumption.size()
-        << "\t" << timer_data.ir_lines << "\t" << timer_data.library_size
-    << "\t" << timer_data.ir_lines << "\t" << timer_data.library_size
-    << "\t" << std::accumulate(timer_data.compile_time.begin(),
-			       timer_data.compile_time.end(),
-			       0.0) / timer_data.compile_time.size()
+ofs << test_cases << "\t" << param_str << "\t" << precision_bits << "\t"
+    << timer_data.inst_count_avg << "\t"
+    << std::accumulate(timer_data.ms_time_consumption.begin(), timer_data.ms_time_consumption.end(), 0.0) / timer_data.ms_time_consumption.size() << "\t"
+    << timer_data.ir_lines << "\t" << timer_data.library_size << "\t"
+    << std::accumulate(timer_data.compile_time.begin(), timer_data.compile_time.end(), 0.0) / timer_data.compile_time.size()
     << std::endl;
 
     return timer_data;
@@ -483,7 +481,7 @@ int main(int argc, char** argv)
 	}
 
 
-	ofs << "test case\tparam\tinstruction count\ttime consumption\tir lines\tlibrary size\tcompile time" << std::endl;
+	ofs << "test case\tparam\tprecision_bits\tinstruction count\ttime consumption\tir lines\tlibrary size\tcompile time" << std::endl;
 	avg_speedup << "test cast\tinstruction count\ttime consumption\tir lines\tlibrary size\tcompile time" << std::endl;
 
 	for (size_t case_id = 0; case_id < test_cases.size(); case_id++)
@@ -529,8 +527,8 @@ int main(int argc, char** argv)
 				const double	  p2	    = range.back() + 0.3;
 				change_nt_range("sed -i 's/15 mjf, 36 mjf/", "/g' ../../sensors/test.nt", {p1, p2});
 
-				timerData ori_perf_data = recordTimerData(test_cases[case_id], param_str, ofs);
-				timerData opt_perf_data = recordTimerData(test_cases[case_id] + "_opt", param_str, ofs);
+				timerData ori_perf_data = recordTimerData(test_cases[case_id], param_str,std::get<1>(entry), ofs);
+				timerData opt_perf_data = recordTimerData(test_cases[case_id] + "_opt", param_str, std::get<1>(entry), ofs);
 
 				// check function results
 				if (!std::equal(ori_perf_data.function_results.begin(), ori_perf_data.function_results.end(),
