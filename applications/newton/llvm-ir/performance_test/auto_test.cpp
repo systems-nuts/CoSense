@@ -373,6 +373,7 @@ int main(int argc, char** argv)
 		test_cases.emplace_back(argv[1]);
 	}
 
+
 	std::ofstream ofs("perf_quant.log");
 	if (!ofs.is_open())
 	{
@@ -384,6 +385,7 @@ int main(int argc, char** argv)
 	if (!avg_speedup.is_open())
 	{
 		std::cout << "error opening perf_quant.log";
+
 		return -1;
 	}
 
@@ -481,7 +483,9 @@ int main(int argc, char** argv)
 	}
 
 
+
 	ofs << "test case\tparam\tprecision_bits\tinstruction count\ttime consumption\tir lines\tlibrary size\tcompile time" << std::endl;
+
 	avg_speedup << "test cast\tinstruction count\ttime consumption\tir lines\tlibrary size\tcompile time" << std::endl;
 
 	for (size_t case_id = 0; case_id < test_cases.size(); case_id++)
@@ -527,8 +531,10 @@ int main(int argc, char** argv)
 				const double	  p2	    = range.back() + 0.3;
 				change_nt_range("sed -i 's/15 mjf, 36 mjf/", "/g' ../../sensors/test.nt", {p1, p2});
 
+
 				timerData ori_perf_data = recordTimerData(test_cases[case_id], param_str,std::get<1>(entry), ofs);
 				timerData opt_perf_data = recordTimerData(test_cases[case_id] + "_opt", param_str, std::get<1>(entry), ofs);
+
 
 				// check function results
 				if (!std::equal(ori_perf_data.function_results.begin(), ori_perf_data.function_results.end(),
