@@ -1,0 +1,7 @@
+
+changeset: 1609:734c297bb6d7d3eb51df66ce6d4d88eaf12ed5b5
+char kNewtonVersion[] = "0.3-alpha-1609 (734c297bb6d7d3eb51df66ce6d4d88eaf12ed5b5) (build 06-17-2024-14:48-xyf@jige-Linux-5.15.133.1-microsoft-standard-WSL2-x86_64)";
+
+./src/noisy/noisy-linux-EN -O0 applications/noisy/helloWorld.n -s
+
+./src/newton/newton-linux-EN -v 0 -eP applications/newton/invariants/ViolinWithTemperatureDependence-pigroups.nt

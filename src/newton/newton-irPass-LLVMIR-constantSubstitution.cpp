@@ -34,6 +34,26 @@
 using namespace llvm;
 
 extern "C" {
+
+static bool isFromQuantizedGlobal(Value *V) {
+	if (auto *loadInst = dyn_cast<LoadInst>(V)) {
+		if (auto *gv = dyn_cast<GlobalVariable>(loadInst->getPointerOperand())) {
+			if (gv->getName().contains("_quantized")) {
+				return true;
+			}
+		}
+	}
+	if (auto *inst = dyn_cast<Instruction>(V)) {
+		for (auto &op : inst->operands()) {
+			if (isFromQuantizedGlobal(op)) {
+				return true;
+			}
+		}
+	}
+	return false;
+}
+
+
 /*
  * Steps of constantSubstitution:
  *  1. for each instruction (that is the case statement), get the range of current instruction from boundInfo
@@ -132,6 +152,10 @@ constantSubstitution(State * N, BoundInfo * boundInfo, llvm::Function & llvmIrFu
 					 * */
 					if (fabs(lowerBound - upperBound) < DBL_EPSILON)
 					{
+						if (isFromQuantizedGlobal(llvmIrInstruction)) {
+							break;
+						}
+
 						/*
 						 * check the type of instruction
 						 * */

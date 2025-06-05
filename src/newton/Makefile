@@ -1,8 +1,16 @@
 TREEROOT	= ../..
 
+ifndef MAX_PRECISION_BITS
+MAX_PRECISION_BITS = 13
+endif
+
+ifndef BIT_WIDTH
+BIT_WIDTH = 32
+endif
+
 include		$(TREEROOT)/config.local
 
-PRECOMMITHOOK = precommitStatisticsHook-$(OSTYPE).sh 
+PRECOMMITHOOK = precommitStatisticsHook-$(OSTYPE).sh
 
 COMMONPATH	= ../common
 NOISYPATH	= ../noisy
@@ -25,6 +33,17 @@ EXAMPLES_NEWTON_FLAGS = -v 2 -p#--verbose 1
 CXXFLAGS	= $(PLATFORM_DBGFLAGS) $(PLATFORM_CFLAGS) $(PLATFORM_DFLAGS) $(PLATFORM_OPTFLAGS)
 CCFLAGS		= $(PLATFORM_DBGFLAGS) $(PLATFORM_CFLAGS) $(PLATFORM_DFLAGS) $(PLATFORM_OPTFLAGS)
 LDFLAGS 	= $(PLATFORM_DBGFLAGS) -lm $(PLATFORM_LFLAGS) `pkg-config --libs 'libprotobuf-c >= 1.0.0'`
+
+
+#Quantization setting
+CCFLAGS += -DMAX_PRECISION_BITS=$(MAX_PRECISION_BITS)
+CXXFLAGS += -DMAX_PRECISION_BITS=$(MAX_PRECISION_BITS)
+
+
+CCFLAGS += -DBIT_WIDTH=$(BIT_WIDTH)
+CXXFLAGS += -DBIT_WIDTH=$(BIT_WIDTH)
+
+
 
 CCFLAGS+=$(shell $(LLVM_CONFIG) --cflags)
 LDFLAGS+=$(shell $(LLVM_CONFIG) --ldflags)
@@ -313,24 +332,28 @@ installhooks:
 #			Libraries
 #
 
-lib$(LIBNEWTON)-$(OSTYPE)-$(NEWTON_L10N).a: $(LIBNEWTONOBJS) $(CONFIGPATH)/config.$(OSTYPE)-$(MACHTYPE).$(COMPILERVARIANT) $(COMMONPATH)/config.$(OSTYPE)-$(MACHTYPE).$(COMPILERVARIANT) Makefile 
+lib$(LIBNEWTON)-$(OSTYPE)-$(NEWTON_L10N).a: $(LIBNEWTONOBJS) $(CONFIGPATH)/config.$(OSTYPE)-$(MACHTYPE).$(COMPILERVARIANT) $(COMMONPATH)/config.$(OSTYPE)-$(MACHTYPE).$(COMPILERVARIANT) Makefile
 	$(AR) $(ARFLAGS) $@ $(LIBNEWTONOBJS)
 
 #
 #			Executables
 #
-target: $(OBJS) $(CONFIGPATH)/config.$(OSTYPE)-$(MACHTYPE).$(COMPILERVARIANT) $(COMMONPATH)/config.$(OSTYPE)-$(MACHTYPE).$(COMPILERVARIANT) Makefile 
+target: $(OBJS) $(CONFIGPATH)/config.$(OSTYPE)-$(MACHTYPE).$(COMPILERVARIANT) $(COMMONPATH)/config.$(OSTYPE)-$(MACHTYPE).$(COMPILERVARIANT) Makefile
 	$(LD) $(LINKDIRS) $(LDFLAGS) $(OBJS) $(LLVMLIBS) $(SYSTEMLIBS) -lflex-$(OSTYPE) -lm $(LINKDIRS) $(LDFLAGS) -o $(TARGET) -lstdc++
 
 
-cgi:lib$(LIBNEWTON)-$(OSTYPE)-$(NEWTON_L10N).a $(CGIOBJS) $(CONFIGPATH)/config.$(OSTYPE)-$(MACHTYPE).$(COMPILERVARIANT) $(COMMONPATH)/config.$(OSTYPE)-$(MACHTYPE).$(COMPILERVARIANT) Makefile 
+cgi:lib$(LIBNEWTON)-$(OSTYPE)-$(NEWTON_L10N).a $(CGIOBJS) $(CONFIGPATH)/config.$(OSTYPE)-$(MACHTYPE).$(COMPILERVARIANT) $(COMMONPATH)/config.$(OSTYPE)-$(MACHTYPE).$(COMPILERVARIANT) Makefile
 	$(LD) $(LINKDIRS) $(LDFLAGS) $(CGIOBJS) $(LLVMLIBS) $(SYSTEMLIBS) -lflex-$(OSTYPE) $(LINKDIRS) $(LDFLAGS) -o $(CGI_TARGET) -lstdc++
 
+
+
+maxprec.cfg:
+	@echo $(MAX_PRECISION_BITS) > maxprec.cfg
 
 #
 #			Objects
 #
-%.$(OBJECTEXTENSION): %.c $(HEADERS) $(CONFIGPATH)/config.$(OSTYPE)-$(MACHTYPE).$(COMPILERVARIANT) $(COMMONPATH)/config.$(OSTYPE)-$(MACHTYPE).$(COMPILERVARIANT) Makefile 
+%.$(OBJECTEXTENSION): %.c $(HEADERS) $(CONFIGPATH)/config.$(OSTYPE)-$(MACHTYPE).$(COMPILERVARIANT) $(COMMONPATH)/config.$(OSTYPE)-$(MACHTYPE).$(COMPILERVARIANT) Makefile
 	$(CC) $(FLEXFLAGS) $(INCDIRS) $(CCFLAGS) $(WFLAGS) $(OPTFLAGS) $(LINTFLAGS) $<
 	$(CC) $(FLEXFLAGS) $(INCDIRS) $(CCFLAGS) $(WFLAGS) $(OPTFLAGS) $<
 
@@ -366,17 +389,26 @@ newton-irPass-LLVMIR-shrinkTypeByRange.$(OBJECTEXTENSION): newton-irPass-LLVMIR-
 	$(CXX) $(FLEXFLAGS) $(INCDIRS) $(CXXFLAGS) $(WFLAGS) $(OPTFLAGS) $(LINTFLAGS) $<
 	$(CXX) $(FLEXFLAGS) $(INCDIRS) $(CXXFLAGS) $(WFLAGS) $(OPTFLAGS) $<
 
-newton-irPass-LLVMIR-quantization.$(OBJECTEXTENSION): newton-irPass-LLVMIR-quantization.cpp
+newton-irPass-LLVMIR-quantization.$(OBJECTEXTENSION): newton-irPass-LLVMIR-quantization.cpp maxprec.cfg
 	$(CXX) $(FLEXFLAGS) $(INCDIRS) $(CXXFLAGS) $(WFLAGS) $(OPTFLAGS) $(LINTFLAGS) $<
 	$(CXX) $(FLEXFLAGS) $(INCDIRS) $(CXXFLAGS) $(WFLAGS) $(OPTFLAGS) $<
 
-newton-irPass-LLVMIR-memoryAlignment.$(OBJECTEXTENSION): newton-irPass-LLVMIR-memoryAlignment.cpp
+newton-irPass-LLVMIR-memoryAlignment.$(OBJECTEXTENSION): newton-irPass-LLVMIR-memoryAlignment.cpp maxprec.cfg
 	$(CXX) $(FLEXFLAGS) $(INCDIRS) $(CXXFLAGS) $(WFLAGS) $(OPTFLAGS) $(LINTFLAGS) $<
 	$(CXX) $(FLEXFLAGS) $(INCDIRS) $(CXXFLAGS) $(WFLAGS) $(OPTFLAGS) $<
+
+
 
 newton-irPass-LLVMIR-emitAssume.$(OBJECTEXTENSION): newton-irPass-LLVMIR-emitAssume.cpp
 	$(CXX) $(FLEXFLAGS) $(INCDIRS) $(CXXFLAGS) $(WFLAGS) $(OPTFLAGS) $(LINTFLAGS) $<
 	$(CXX) $(FLEXFLAGS) $(INCDIRS) $(CXXFLAGS) $(WFLAGS) $(OPTFLAGS) $<
+
+
+.PHONY: rebuild-quant-opt
+
+rebuild-quant-opt:
+	rm -f newton-irPass-LLVMIR-quantization.$(OBJECTEXTENSION) newton-irPass-LLVMIR-optimizeByRange.$(OBJECTEXTENSION)
+	$(MAKE) newton-irPass-LLVMIR-quantization.$(OBJECTEXTENSION) newton-irPass-LLVMIR-optimizeByRange.$(OBJECTEXTENSION)
 
 version.c: $(HEADERS) Makefile
 	echo 'char kNewtonVersion[] = "0.3-alpha-'`git rev-list --count HEAD`' ('`git rev-parse HEAD`') (build '`date '+%m-%d-%Y-%H:%M'`-`whoami`@`hostname -s`-`uname -s`-`uname -r`-`uname -m`\)\"\; > version.c
@@ -437,12 +469,12 @@ examples: $(EXAMPLES) target
 installcgi: cgi
 	sudo cp $(CGI_TARGET) $(CGI_BIN)
 	sudo mkdir -p $(HTMLBASEPATH)
-	sudo cp ../icons/* $(HTMLBASEPATH)/ 
-	sudo chmod 777 $(HTMLBASEPATH) 
+	sudo cp ../icons/* $(HTMLBASEPATH)/
+	sudo chmod 777 $(HTMLBASEPATH)
 	sudo chmod 755 $(HTMLBASEPATH)/*.png
 
 test:
-	./$(TARGET) --dot 0 $(EXAMPLESPATH)/invariants.nt | dot -Tpdf -O ; open noname.gv.pdf 
+	./$(TARGET) --dot 0 $(EXAMPLESPATH)/invariants.nt | dot -Tpdf -O ; open noname.gv.pdf
 
 
 clean:

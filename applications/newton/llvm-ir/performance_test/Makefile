@@ -18,7 +18,7 @@ OUT_OBJ = out.o
 OUT_LIB = libout.a
 
 # DEBUG_MODE=true make ...
-ifdef DEBUG_MODE
+ifdef DEBUG_MODE./
 CC_OPT_LEVEL = -O0 -g
 else
 CC_OPT_LEVEL = -O3 -Os
@@ -40,10 +40,10 @@ endif
 
 # auto-quantization configs, FP hardware by default, for Madgwick only currently
 # AUTO_QUANT=true make ...
-ifdef AUTO_QUANT
-DATA_TYPE=INT_DATA_TYPE
-else
-DATA_TYPE=FP_DATA_TYPE
+#ifdef AUTO_QUANT
+#DATA_TYPE=INT_DATA_TYPE
+#else
+#DATA_TYPE=FP_DATA_TYPE
 
 # SOFT_FLOAT_LIB=true make ...
 ifdef SOFT_FLOAT_LIB
@@ -54,15 +54,20 @@ CC_FP_FLAG = -msoft-float
 OPT_FP_FLAG = --float-abi=soft
 endif
 
-endif
+
 
 # ENABLE_OVERLOAD=true ENABLE_BUILTIN_ASSUME=true make ...
 NEWTON_FLAG=--llvm-ir-liveness-check
+#NEWTON_FLAG=--llvm-ir-liveness-check
 ifdef ENABLE_OVERLOAD
 NEWTON_FLAG+=--llvm-ir-enable-overload
 endif
 ifdef ENABLE_BUILTIN_ASSUME
 NEWTON_FLAG+=--llvm-ir-enable-builtin-assume
+endif
+
+ifdef AUTO_QUANT
+NEWTON_FLAG+=--llvm-ir-auto-quantization
 endif
 
 max_opt_fn = opt ../$(1).ll $(OPT_FP_FLAG) -O3 -Os -S -o $(OUT_FILE)
@@ -293,17 +298,17 @@ perf_exp_opt: clean make_ll exp_opt compile_lib compile_exp
 
 perf_log: clean make_ll log_non_opt compile_lib compile_log
 
-perf_log_opt: clean make_ll log_opt compile_lib compile_log 
+perf_log_opt: clean make_ll log_opt compile_lib compile_log
 
-perf_acosh: clean make_ll acosh_non_opt compile_lib compile_acosh 
+perf_acosh: clean make_ll acosh_non_opt compile_lib compile_acosh
 
-perf_acosh_opt: clean make_ll acosh_opt compile_lib compile_acosh 
+perf_acosh_opt: clean make_ll acosh_opt compile_lib compile_acosh
 
-perf_j0: clean make_ll j0_non_opt compile_lib compile_j0 
+perf_j0: clean make_ll j0_non_opt compile_lib compile_j0
 
-perf_j0_opt: clean make_ll j0_opt compile_lib compile_j0 
+perf_j0_opt: clean make_ll j0_opt compile_lib compile_j0
 
-perf_y0: clean make_ll y0_non_opt compile_lib compile_y0 
+perf_y0: clean make_ll y0_non_opt compile_lib compile_y0
 
 perf_y0_opt: clean make_ll y0_opt compile_lib compile_y0
 
@@ -371,6 +376,9 @@ perf_inferBoundControlFlow_opt: clean make_ll inferBoundControlFlow_opt compile_
 
 auto_test_compile:
 	clang++ auto_test.cpp -g -o auto_test
+
+auto_test_compile_woquant:
+	clang++ auto_test_woquant.cpp -g -o auto_test_woquant
 
 all: default
 

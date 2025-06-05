@@ -48,17 +48,19 @@ volatile bmx055xAcceleration	beta = (uint8_t)(betaDef*FRAC_BASE);	//0.1f				// 2
 // m=21 1/Yest=1448.0000 Yest=0.0000 Yest_hex=0
 // m=22 1/Yest=2048.0000 Yest=0.0000 Yest_hex=0
 
-int32_t
+
+
+inline __attribute__((always_inline))int32_t
 mulfix(int32_t x, int32_t y)
 {
-//    int32_t result;
-//    int64_t temp;
-//    temp = (int64_t)x * (int64_t)y;
-//    temp += K;
-//    result = round(temp/FRAC_BASE);
-//    return result;
-//    return ((int64_t)(x*y)) > 0 ? ((int64_t)(x*y))>>FRAC_Q : (((int64_t)(x*y))>>FRAC_Q)+1;
-    return ((int64_t)x*y)>>FRAC_Q;
+	//    int32_t result;
+	//    int64_t temp;
+	//    temp = (int64_t)x * (int64_t)y;
+	//    temp += K;
+	//    result = round(temp/FRAC_BASE);
+	//    return result;
+	//    return ((int64_t)(x*y)) > 0 ? ((int64_t)(x*y))>>FRAC_Q : (((int64_t)(x*y))>>FRAC_Q)+1;
+	return ((int64_t)x*y)>>FRAC_Q;
 }
 
 /*
@@ -66,24 +68,24 @@ mulfix(int32_t x, int32_t y)
  */
 int32_t
 sqrt_rsqrt(int32_t x, int recip) {
-    if (recip) {
-        int32_t int_halfx = mulfix(0.5*FRAC_BASE, x);
-        float fp_y = (float)x/FRAC_BASE;
-        long i = *(long*)&fp_y;
-        i = 0x5f3759df - (i>>1);
-        fp_y = *(float*)&i;
-        int32_t int_y = fp_y*FRAC_BASE;
-        int_y = mulfix(int_y, ((int32_t)(1.5f*FRAC_BASE) - (mulfix(mulfix(int_halfx, int_y), int_y))));
-        return int_y;
-//        fp_y = fp_y * (1.5f - (halfx * fp_y * fp_y));
-//        return fp_y*FRAC_BASE;
-    } else {
-        int32_t res = (int32_t)sqrt((double)x)<<(FRAC_Q/2);
-        if (FRAC_Q%2)
-            return res*1.414213562;
-        else
-            return res;
-    }
+	if (recip) {
+		int32_t int_halfx = mulfix(0.5*FRAC_BASE, x);
+		float fp_y = (float)x/FRAC_BASE;
+		long i = *(long*)&fp_y;
+		i = 0x5f3759df - (i>>1);
+		fp_y = *(float*)&i;
+		int32_t int_y = fp_y*FRAC_BASE;
+		int_y = mulfix(int_y, ((int32_t)(1.5f*FRAC_BASE) - (mulfix(mulfix(int_halfx, int_y), int_y))));
+		return int_y;
+		//        fp_y = fp_y * (1.5f - (halfx * fp_y * fp_y));
+		//        return fp_y*FRAC_BASE;
+	} else {
+		int32_t res = (int32_t)sqrt((double)x)<<(FRAC_Q/2);
+		if (FRAC_Q%2)
+			return res*1.414213562;
+		else
+			return res;
+	}
 }
 
 //====================================================================================================
@@ -92,16 +94,16 @@ sqrt_rsqrt(int32_t x, int recip) {
 //---------------------------------------------------------------------------------------------------
 // AHRS algorithm update
 
-void 
+void
 MadgwickAHRSupdate(bmx055xAngularRate gx, bmx055yAngularRate gy, bmx055zAngularRate gz,
-                   bmx055xAcceleration ax, bmx055yAcceleration ay, bmx055zAcceleration az,
-                   bmx055xMagneto mx, bmx055yMagneto my, bmx055zMagneto mz,
-                   int32_t* q0_ptr, int32_t* q1_ptr, int32_t* q2_ptr, int32_t* q3_ptr) {
+		   bmx055xAcceleration ax, bmx055yAcceleration ay, bmx055zAcceleration az,
+		   bmx055xMagneto mx, bmx055yMagneto my, bmx055zMagneto mz,
+		   int32_t* q0_ptr, int32_t* q1_ptr, int32_t* q2_ptr, int32_t* q3_ptr) {
 
-    int32_t q0 = *q0_ptr;
-    int32_t q1 = *q1_ptr;
-    int32_t q2 = *q2_ptr;
-    int32_t q3 = *q3_ptr;
+	int32_t q0 = *q0_ptr;
+	int32_t q1 = *q1_ptr;
+	int32_t q2 = *q2_ptr;
+	int32_t q3 = *q3_ptr;
 
 	int32_t		recipNorm;
 	int32_t		s0, s1, s2, s3;
@@ -126,7 +128,7 @@ MadgwickAHRSupdate(bmx055xAngularRate gx, bmx055yAngularRate gy, bmx055zAngularR
 
 		// Normalise accelerometer measurement
 		recipNorm = sqrt_rsqrt(mulfix(ax, ax) + mulfix(ay, ay) + mulfix(az, az), true);
-//        printf("1: %f\n", (double)recipNorm/FRAC_BASE);
+		//        printf("1: %f\n", (double)recipNorm/FRAC_BASE);
 		ax = mulfix(ax, recipNorm);
 		ay = mulfix(ay, recipNorm);
 		az = mulfix(az, recipNorm);
@@ -161,98 +163,98 @@ MadgwickAHRSupdate(bmx055xAngularRate gx, bmx055yAngularRate gy, bmx055zAngularR
 
 		// Reference direction of Earth's magnetic field
 		hx = mulfix(mx, q0q0)
-			- mulfix(_2q0my, q3)
-			+ mulfix(_2q0mz, q2)
-			+ mulfix(mx, q1q1)
-			+ mulfix(mulfix(_2q1, my), q2)
-			+ mulfix(mulfix(_2q1, mz), q3)
-			- mulfix(mx, q2q2) 
-			- mulfix(mx, q3q3);
+		     - mulfix(_2q0my, q3)
+		     + mulfix(_2q0mz, q2)
+		     + mulfix(mx, q1q1)
+		     + mulfix(mulfix(_2q1, my), q2)
+		     + mulfix(mulfix(_2q1, mz), q3)
+		     - mulfix(mx, q2q2)
+		     - mulfix(mx, q3q3);
 		hy = mulfix(_2q0mx, q3)
-			+ mulfix(my, q0q0)
-			- mulfix(_2q0mz, q1)
-			+ mulfix(_2q1mx, q2)
-			- mulfix(my, q1q1)
-			+ mulfix(my, q2q2)
-			+ mulfix(mulfix(_2q2, mz), q3)
-			- mulfix(my, q3q3);
+		     + mulfix(my, q0q0)
+		     - mulfix(_2q0mz, q1)
+		     + mulfix(_2q1mx, q2)
+		     - mulfix(my, q1q1)
+		     + mulfix(my, q2q2)
+		     + mulfix(mulfix(_2q2, mz), q3)
+		     - mulfix(my, q3q3);
 		_2bx = sqrt_rsqrt(mulfix(hx, hx) + mulfix(hy, hy), false);
 		_2bz = -mulfix(_2q0mx, q2)
-			+ mulfix(_2q0my, q1)
-			+ mulfix(mz, q0q0)
-			+ mulfix(_2q1mx, q3)
-			- mulfix(mz, q1q1)
-			+ mulfix(mulfix(_2q2, my), q3)
-			- mulfix(mz, q2q2)
-			+ mulfix(mz, q3q3);
+		       + mulfix(_2q0my, q1)
+		       + mulfix(mz, q0q0)
+		       + mulfix(_2q1mx, q3)
+		       - mulfix(mz, q1q1)
+		       + mulfix(mulfix(_2q2, my), q3)
+		       - mulfix(mz, q2q2)
+		       + mulfix(mz, q3q3);
 		_4bx = 2*_2bx;
 		_4bz = 2*_2bz;
 
 		// Gradient decent algorithm corrective step
 		s0 = 	- mulfix(_2q2, (2*q1q3 - _2q0q2 - ax))
-			+ mulfix(_2q1, (2*q0q1 + _2q2q3 - ay))
-			- mulfix(mulfix(_2bz, q2), (
-					  mulfix(_2bx, (DEC2FRAC(0.5) - q2q2 - q3q3))
-					+ mulfix(_2bz, (q1q3 - q0q2))
-					- mx))
-			+ mulfix((-mulfix(_2bx, q3) + mulfix(_2bz, q1)), (
-				  mulfix(_2bx, (q1q2 - q0q3))
-				+ mulfix(_2bz, (q0q1 + q2q3)) 
-				- my))
-			+ mulfix(mulfix(_2bx, q2), (
-				  mulfix(_2bx, (q0q2 + q1q3))
-				+ mulfix(_2bz, (DEC2FRAC(0.5) - q1q1 - q2q2))
-				- mz));
+		     + mulfix(_2q1, (2*q0q1 + _2q2q3 - ay))
+		     - mulfix(mulfix(_2bz, q2), (
+						    mulfix(_2bx, (DEC2FRAC(0.5) - q2q2 - q3q3))
+						    + mulfix(_2bz, (q1q3 - q0q2))
+						    - mx))
+		     + mulfix((-mulfix(_2bx, q3) + mulfix(_2bz, q1)), (
+									  mulfix(_2bx, (q1q2 - q0q3))
+									  + mulfix(_2bz, (q0q1 + q2q3))
+									  - my))
+		     + mulfix(mulfix(_2bx, q2), (
+						    mulfix(_2bx, (q0q2 + q1q3))
+						    + mulfix(_2bz, (DEC2FRAC(0.5) - q1q1 - q2q2))
+						    - mz));
 		s1 = 	  mulfix(_2q3, (2*q1q3 - _2q0q2 - ax))
-			+ mulfix(_2q0, (2*q0q1 + _2q2q3 - ay))
-			- 4 * mulfix(q1, (FRAC_BASE - 2*q1q1 - 2*q2q2 - az))
-			+ mulfix(mulfix(_2bz, q3), (
-				  mulfix(_2bx, (DEC2FRAC(0.5) - q2q2 - q3q3))
-				+ mulfix(_2bz, (q1q3 - q0q2))
-				- mx))
-			+ mulfix(mulfix(_2bx, q2) + mulfix(_2bz, q0), (
-				  mulfix(_2bx, (q1q2 - q0q3))
-				+ mulfix(_2bz, (q0q1 + q2q3))
-				- my))
-			+ mulfix(mulfix(_2bx, q3) - mulfix(_4bz, q1), (
-				  mulfix(_2bx, (q0q2 + q1q3))
-				+ mulfix(_2bz, (DEC2FRAC(0.5) - q1q1 - q2q2))
-				- mz));
+		     + mulfix(_2q0, (2*q0q1 + _2q2q3 - ay))
+		     - 4 * mulfix(q1, (FRAC_BASE - 2*q1q1 - 2*q2q2 - az))
+		     + mulfix(mulfix(_2bz, q3), (
+						    mulfix(_2bx, (DEC2FRAC(0.5) - q2q2 - q3q3))
+						    + mulfix(_2bz, (q1q3 - q0q2))
+						    - mx))
+		     + mulfix(mulfix(_2bx, q2) + mulfix(_2bz, q0), (
+								       mulfix(_2bx, (q1q2 - q0q3))
+								       + mulfix(_2bz, (q0q1 + q2q3))
+								       - my))
+		     + mulfix(mulfix(_2bx, q3) - mulfix(_4bz, q1), (
+								       mulfix(_2bx, (q0q2 + q1q3))
+								       + mulfix(_2bz, (DEC2FRAC(0.5) - q1q1 - q2q2))
+								       - mz));
 		s2 =    - mulfix(_2q0, (2*q1q3 - _2q0q2 - ax))
-			+ mulfix(_2q3, (2*q0q1 + _2q2q3 - ay))
-			- 4 * mulfix(q2, (FRAC_BASE - 2*q1q1 - 2*q2q2 - az))
-			+ mulfix((-mulfix(_4bx, q2) - mulfix(_2bz, q0)), (
-				  mulfix(_2bx, (DEC2FRAC(0.5) - q2q2 - q3q3))
-				+ mulfix(_2bz, (q1q3 - q0q2))
-				- mx))
-			+ mulfix((mulfix(_2bx, q1) + mulfix(_2bz, q3)), (
-				  mulfix(_2bx, (q1q2 - q0q3))
-				+ mulfix(_2bz, (q0q1 + q2q3))
-				- my))
-			+ mulfix((mulfix(_2bx, q0) - mulfix(_4bz, q2)), (
-				mulfix(_2bx, (q0q2 + q1q3))
-				+ mulfix(_2bz, (DEC2FRAC(0.5) - q1q1 - q2q2))
-				- mz));
+		     + mulfix(_2q3, (2*q0q1 + _2q2q3 - ay))
+		     - 4 * mulfix(q2, (FRAC_BASE - 2*q1q1 - 2*q2q2 - az))
+		     + mulfix((-mulfix(_4bx, q2) - mulfix(_2bz, q0)), (
+									  mulfix(_2bx, (DEC2FRAC(0.5) - q2q2 - q3q3))
+									  + mulfix(_2bz, (q1q3 - q0q2))
+									  - mx))
+		     + mulfix((mulfix(_2bx, q1) + mulfix(_2bz, q3)), (
+									 mulfix(_2bx, (q1q2 - q0q3))
+									 + mulfix(_2bz, (q0q1 + q2q3))
+									 - my))
+		     + mulfix((mulfix(_2bx, q0) - mulfix(_4bz, q2)), (
+									 mulfix(_2bx, (q0q2 + q1q3))
+									 + mulfix(_2bz, (DEC2FRAC(0.5) - q1q1 - q2q2))
+									 - mz));
 		s3 =      mulfix(_2q1, (2*q1q3 - _2q0q2 - ax))
-			+ mulfix(_2q2, (2*q0q1 + _2q2q3 - ay))
-			+ mulfix((-mulfix(_4bx, q3) + mulfix(_2bz, q1)), (
-				  mulfix(_2bx, (DEC2FRAC(0.5) - q2q2 - q3q3))
-				+ mulfix(_2bz, (q1q3 - q0q2))
-				- mx))
-			+ mulfix((-mulfix(_2bx, q0) + mulfix(_2bz, q2)), (
-				  mulfix(_2bx, (q1q2 - q0q3))
-				+ mulfix(_2bz, (q0q1 + q2q3))
-				- my))
-			+ mulfix(mulfix(_2bx, q1), (
-				mulfix(_2bx, (q0q2 + q1q3))
-				 + mulfix(_2bz, (DEC2FRAC(0.5) - q1q1 - q2q2))
-				 - mz));
+		     + mulfix(_2q2, (2*q0q1 + _2q2q3 - ay))
+		     + mulfix((-mulfix(_4bx, q3) + mulfix(_2bz, q1)), (
+									  mulfix(_2bx, (DEC2FRAC(0.5) - q2q2 - q3q3))
+									  + mulfix(_2bz, (q1q3 - q0q2))
+									  - mx))
+		     + mulfix((-mulfix(_2bx, q0) + mulfix(_2bz, q2)), (
+									  mulfix(_2bx, (q1q2 - q0q3))
+									  + mulfix(_2bz, (q0q1 + q2q3))
+									  - my))
+		     + mulfix(mulfix(_2bx, q1), (
+						    mulfix(_2bx, (q0q2 + q1q3))
+						    + mulfix(_2bz, (DEC2FRAC(0.5) - q1q1 - q2q2))
+						    - mz));
 		recipNorm = sqrt_rsqrt(mulfix(s0, s0) + mulfix(s1, s1) + mulfix(s2, s2) + mulfix(s3, s3), true); // normalise step magnitude
 		s0 = mulfix(s0, recipNorm);
 		s1 = mulfix(s1, recipNorm);
 		s2 = mulfix(s2, recipNorm);
 		s3 = mulfix(s3, recipNorm);
-		
+
 		/* 2nd iter normalizaton */
 		// recipNorm = sqrt_rsqrt(mulfix(s0, s0) + mulfix(s1, s1) + mulfix(s2, s2) + mulfix(s3, s3), true); // normalise step magnitude
 		// s0 = mulfix(s0, recipNorm);
@@ -275,46 +277,28 @@ MadgwickAHRSupdate(bmx055xAngularRate gx, bmx055yAngularRate gy, bmx055zAngularR
 
 	// Normalise quaternion
 	recipNorm = sqrt_rsqrt(mulfix(q0, q0) + mulfix(q1, q1) + mulfix(q2, q2) + mulfix(q3, q3), true);
-//    printf("q0=%f, q1=%f, q2=%f, q3=%f, recipNorm=%f\n",
-//           (double)q0/FRAC_BASE,
-//           (double)q1/FRAC_BASE,
-//           (double)q2/FRAC_BASE,
-//           (double)q3/FRAC_BASE,
-//           (double)recipNorm/FRAC_BASE);
 	q0 = mulfix(q0, recipNorm);
 	q1 = mulfix(q1, recipNorm);
 	q2 = mulfix(q2, recipNorm);
 	q3 = mulfix(q3, recipNorm);
-    *q0_ptr = q0;
-    *q1_ptr = q1;
-    *q2_ptr = q2;
-    *q3_ptr = q3;
+	*q0_ptr = q0;
+	*q1_ptr = q1;
+	*q2_ptr = q2;
+	*q3_ptr = q3;
 
-//    printf("FIX: q0 = %d.%04d, q1 = %d.%04d, q2 = %d.%04d, q3 = %d.%04d\n",
-//           DISPLAY_INT(q0), DISPLAY_FRAC(q0),
-//           DISPLAY_INT(q1), DISPLAY_FRAC(q1),
-//           DISPLAY_INT(q2), DISPLAY_FRAC(q2),
-//           DISPLAY_INT(q3), DISPLAY_FRAC(q3));
-	
-	// /* 2nd iter normalization */
-	// recipNorm = sqrt_rsqrt(mulfix(q0, q0) + mulfix(q1, q1) + mulfix(q2, q2) + mulfix(q3, q3), true);
-	// q0 = mulfix(q0, recipNorm);
-	// q1 = mulfix(q1, recipNorm);
-	// q2 = mulfix(q2, recipNorm);
-	// q3 = mulfix(q3, recipNorm);
 }
 
 //---------------------------------------------------------------------------------------------------
 // IMU algorithm update
 
-void 
+void
 MadgwickAHRSupdateIMU(bmx055xAngularRate gx, bmx055yAngularRate gy, bmx055zAngularRate gz,
-                      bmx055xAcceleration ax, bmx055yAcceleration ay, bmx055zAcceleration az,
-                      int32_t* q0_ptr, int32_t* q1_ptr, int32_t* q2_ptr, int32_t* q3_ptr) {
-    int32_t q0 = *q0_ptr;
-    int32_t q1 = *q1_ptr;
-    int32_t q2 = *q2_ptr;
-    int32_t q3 = *q3_ptr;
+		      bmx055xAcceleration ax, bmx055yAcceleration ay, bmx055zAcceleration az,
+		      int32_t* q0_ptr, int32_t* q1_ptr, int32_t* q2_ptr, int32_t* q3_ptr) {
+	int32_t q0 = *q0_ptr;
+	int32_t q1 = *q1_ptr;
+	int32_t q2 = *q2_ptr;
+	int32_t q3 = *q3_ptr;
 	int32_t		recipNorm;
 	int32_t		s0, s1, s2, s3;
 	int32_t		qDot1, qDot2, qDot3, qDot4;
@@ -351,30 +335,30 @@ MadgwickAHRSupdateIMU(bmx055xAngularRate gx, bmx055yAngularRate gy, bmx055zAngul
 		q3q3 = mulfix(q3, q3);
 
 		// Gradient decent algorithm corrective step
-		s0 = 	  mulfix(_4q0, q2q2) 
-			+ mulfix(_2q2, ax)
-			+ mulfix(_4q0, q1q1) 
-			- mulfix(_2q1, ay);
-		s1 = 	  mulfix(_4q1, q3q3) 
-			- mulfix(_2q3, ax)
-			+ 4 * mulfix(q0q0, q1) 
-			- mulfix(_2q0, ay) 
-			- _4q1 
-			+ mulfix(_8q1, q1q1) 
-			+ mulfix(_8q1, q2q2) 
-			+ mulfix(_4q1, az);
+		s0 = 	  mulfix(_4q0, q2q2)
+		     + mulfix(_2q2, ax)
+		     + mulfix(_4q0, q1q1)
+		     - mulfix(_2q1, ay);
+		s1 = 	  mulfix(_4q1, q3q3)
+		     - mulfix(_2q3, ax)
+		     + 4 * mulfix(q0q0, q1)
+		     - mulfix(_2q0, ay)
+		     - _4q1
+		     + mulfix(_8q1, q1q1)
+		     + mulfix(_8q1, q2q2)
+		     + mulfix(_4q1, az);
 		s2 = 4 *  mulfix(q0q0, q2)
-			+ mulfix(_2q0, ax) 
-			+ mulfix(_4q2, q3q3) 
-			- mulfix(_2q3, ay) 
-			- _4q2 
-			+ mulfix(_8q2, q1q1) 
-			+ mulfix(_8q2, q2q2) 
-			+ mulfix(_4q2, az);
-		s3 = 4 *  mulfix(q1q1, q3) 
-			- mulfix(_2q1, ax) 
-			+ 4 * mulfix(q2q2, q3) 
-			- mulfix(_2q2, ay);
+		     + mulfix(_2q0, ax)
+		     + mulfix(_4q2, q3q3)
+		     - mulfix(_2q3, ay)
+		     - _4q2
+		     + mulfix(_8q2, q1q1)
+		     + mulfix(_8q2, q2q2)
+		     + mulfix(_4q2, az);
+		s3 = 4 *  mulfix(q1q1, q3)
+		     - mulfix(_2q1, ax)
+		     + 4 * mulfix(q2q2, q3)
+		     - mulfix(_2q2, ay);
 		recipNorm = sqrt_rsqrt(mulfix(s0, s0) + mulfix(s1, s1) + mulfix(s2, s2) + mulfix(s3, s3), true); // normalise step magnitude
 		s0 = mulfix(s0, recipNorm);
 		s1 = mulfix(s1, recipNorm);
@@ -400,8 +384,8 @@ MadgwickAHRSupdateIMU(bmx055xAngularRate gx, bmx055yAngularRate gy, bmx055zAngul
 	q1 = mulfix(q1, recipNorm);
 	q2 = mulfix(q2, recipNorm);
 	q3 = mulfix(q3, recipNorm);
-    q0_ptr = &q0;
-    q1_ptr = &q1;
-    q2_ptr = &q2;
-    q3_ptr = &q3;
+	q0_ptr = &q0;
+	q1_ptr = &q1;
+	q2_ptr = &q2;
+	q3_ptr = &q3;
 }
