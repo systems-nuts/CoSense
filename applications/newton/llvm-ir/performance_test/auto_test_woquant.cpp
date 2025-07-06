@@ -17,7 +17,8 @@
 #include <sstream>
 #include <vector>
 
-const size_t iteration_num = 1;
+const size_t iteration_num = 5;
+constexpr int WARMUP_ITERATIONS = 3;
 
 struct perfData {
        int64_t inst_count_avg;
@@ -92,6 +93,20 @@ timespec toc( timespec* start_time, const char* prefix, bool print )
        return time_diff;
 }
 
+/* ---------- trimmed mean helper ---------- */
+template <typename T>
+double trimmedMean(std::vector<T> v, double trim_ratio = 0.10) {
+	if (v.empty()) return 0.0;
+	std::sort(v.begin(), v.end());
+
+	size_t n   = v.size();
+	size_t cut = std::max<size_t>(1, static_cast<size_t>(n * trim_ratio));
+	if (cut * 2 >= n) cut = n / 2;
+
+	double sum = std::accumulate(v.begin() + cut, v.end() - cut, 0.0);
+	return sum / static_cast<double>(n - 2 * cut);
+}
+
 /*
 * Get number from:
 *  36,200,478      instructions
@@ -112,6 +127,7 @@ int64_t getPerfCount(const std::string& string, size_t position) {
 	   substring.end());
        return std::stoi(substring);
 }
+
 
 /*
 * Get number from:
@@ -147,7 +163,7 @@ std::pair<int64_t, int64_t> processDataPerf(const std::string test_case, const s
        int64_t inst_count, time_consumption;
 
        // perf command
-       std::string cmd = "bash -c 'ENABLE_OVERLOAD=true make " + test_case + " >& compile.log'";
+       std::string cmd = "bash -c 'make " + test_case + " >& compile.log'";
        int command_return = system(cmd.c_str());
        if (command_return != 0) {
 	       return std::make_pair(0, 0);
@@ -206,6 +222,18 @@ std::pair<double, std::vector<double>> processDataTimer(const std::string test_c
        size_t position;
        double time_consumption;
        std::vector<double> function_results;
+
+	/* ---------- Warm-up phase ---------- */
+	for (int i = 0; i < WARMUP_ITERATIONS; ++i) {
+		std::string warm_cmd = "bash -c './main_out " + params + " > /dev/null 2>&1'";
+		int warm_ret = system(warm_cmd.c_str());
+		if (warm_ret != 0) {
+			std::cerr << "[Warm-up] iteration " << i
+				  << " failed for " << test_case
+				  << " with params: " << params << std::endl;
+		}
+	}
+	/* ---------- End Warm-up ---------- */
 
        // perf command
        std::string cmd = "bash -c './main_out " + params;
@@ -347,15 +375,27 @@ struct timerData recordTimerData(const std::string& test_cases, const std::strin
        timer_data.ir_lines = getIrLines();
        timer_data.library_size = getLibSize();
 
-       ofs << test_cases << "\t" << param_str << "\t" << timer_data.inst_count_avg
-	   << "\t" << std::accumulate(timer_data.ms_time_consumption.begin(),
-				      timer_data.ms_time_consumption.end(),
-				      0.0) / timer_data.ms_time_consumption.size()
-	   << "\t" << timer_data.ir_lines << "\t" << timer_data.library_size
-	   << "\t" << std::accumulate(timer_data.compile_time.begin(),
-				      timer_data.compile_time.end(),
-				      0.0) / timer_data.compile_time.size()
-	   << std::endl;
+	/* ---------- runtime trimmed-mean ---------- */
+	timer_data.time_consumption_avg = trimmedMean(timer_data.ms_time_consumption);
+	/* ------------------------------------------ */
+
+	ofs << test_cases << "\t" << param_str << "\t" << timer_data.inst_count_avg
+	    << "\t" << timer_data.time_consumption_avg
+	    << "\t" << timer_data.ir_lines << "\t" << timer_data.library_size
+	    << "\t" << std::accumulate(timer_data.compile_time.begin(),
+				       timer_data.compile_time.end(),
+				       0.0) / timer_data.compile_time.size()
+	    << std::endl;
+
+    //    ofs << test_cases << "\t" << param_str << "\t" << timer_data.inst_count_avg
+	   // << "\t" << std::accumulate(timer_data.ms_time_consumption.begin(),
+				//       timer_data.ms_time_consumption.end(),
+				//       0.0) / timer_data.ms_time_consumption.size()
+	   // << "\t" << timer_data.ir_lines << "\t" << timer_data.library_size
+	   // << "\t" << std::accumulate(timer_data.compile_time.begin(),
+				//       timer_data.compile_time.end(),
+				//       0.0) / timer_data.compile_time.size()
+	   // << std::endl;
 
        return timer_data;
 }
@@ -368,12 +408,12 @@ int main(int argc, char** argv) {
 //	   "perf_float64_add", "perf_float64_div",
 //	   "perf_float64_mul"};
 	std::vector<std::string> test_cases{
-	    //            "perf_exp", "perf_log",
-	    //            "perf_acosh", "perf_j0",
-	    //            "perf_y0", "perf_rem_pio2", "perf_sincosf",
-	    //            "perf_float64_add", "perf_float64_div",
-	    //            "perf_float64_mul"};
-	    "perf_j0","perf_y0"};
+	    "perf_exp", "perf_log",
+	    "perf_acosh", "perf_j0",
+	    "perf_y0", "perf_rem_pio2", "perf_sincosf",
+	    "perf_float64_add", "perf_float64_div",
+	    "perf_float64_mul"};
+	   //"perf_y0"};
 
        if (argc >= 2) {
 	       test_cases.clear();
@@ -496,12 +536,17 @@ int main(int argc, char** argv) {
 			       inst_speedup = 0;
 			       time_speedup = 0;
 		       } else {
-			       ori_perf_data.time_consumption_avg = std::accumulate(ori_perf_data.ms_time_consumption.begin(),
-										    ori_perf_data.ms_time_consumption.end(),
-										    0.0) / ori_perf_data.ms_time_consumption.size();
-			       opt_perf_data.time_consumption_avg = std::accumulate(opt_perf_data.ms_time_consumption.begin(),
-										    opt_perf_data.ms_time_consumption.end(),
-										    0.0) / opt_perf_data.ms_time_consumption.size();
+			       // ori_perf_data.time_consumption_avg = std::accumulate(ori_perf_data.ms_time_consumption.begin(),
+										//     ori_perf_data.ms_time_consumption.end(),
+										//     0.0) / ori_perf_data.ms_time_consumption.size();
+			       // opt_perf_data.time_consumption_avg = std::accumulate(opt_perf_data.ms_time_consumption.begin(),
+										//     opt_perf_data.ms_time_consumption.end(),
+
+										    // 0.0) / opt_perf_data.ms_time_consumption.size();
+
+				ori_perf_data.time_consumption_avg =trimmedMean(ori_perf_data.ms_time_consumption);
+				opt_perf_data.time_consumption_avg =
+					       trimmedMean(opt_perf_data.ms_time_consumption);
 
 			       ori_perf_data.compile_time_avg = std::accumulate(ori_perf_data.compile_time.begin(),
 										ori_perf_data.compile_time.end(),
@@ -518,14 +563,24 @@ int main(int argc, char** argv) {
 							    * 100 / opt_perf_data.compile_time_avg);
 		       }
 
-		       if (ori_perf_data.ir_lines > opt_perf_data.ir_lines) {
-			       ir_reduce = round((ori_perf_data.ir_lines - opt_perf_data.ir_lines) * 100 / opt_perf_data.ir_lines);
-			       lib_size_reduce = round((ori_perf_data.library_size - opt_perf_data.library_size) * 100 / opt_perf_data.library_size);
-		       } else {
-			       //                        assert(false && "Need to check why this case increase size!!!!!!");
-			       ir_reduce = 0;
-			       lib_size_reduce = 0;
-		       }
+			auto pct_change = [](double ori, double opt) -> int {
+				if (ori == 0) return 0;
+				return static_cast<int>(round((ori - opt) * 100.0 / ori));
+			       };
+
+			ir_reduce       = pct_change(ori_perf_data.ir_lines,
+								    opt_perf_data.ir_lines);
+			lib_size_reduce = pct_change(ori_perf_data.library_size,
+								    opt_perf_data.library_size);
+
+		       // if (ori_perf_data.ir_lines > opt_perf_data.ir_lines) {
+			      //  ir_reduce = round((ori_perf_data.ir_lines - opt_perf_data.ir_lines) * 100 / opt_perf_data.ir_lines);
+			      //  lib_size_reduce = round((ori_perf_data.library_size - opt_perf_data.library_size) * 100 / opt_perf_data.library_size);
+		       // } else {
+			      //  //                        assert(false && "Need to check why this case increase size!!!!!!");
+			      //  ir_reduce = 0;
+			      //  lib_size_reduce = 0;
+		       // }
 		       ofs << "speed up after optimization\t" << param_str << "\t" << inst_speedup << "%\t" << time_speedup << "%\t"
 			   << ir_reduce << "%\t" << lib_size_reduce << "%\t" << compile_time_speedup << "%" << std::endl;
 		       std::cout << test_cases[case_id] << ": speed up after optimization\t" << param_str << "\t" << inst_speedup

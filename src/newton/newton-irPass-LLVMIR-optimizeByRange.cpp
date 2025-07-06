@@ -1107,7 +1107,7 @@ irPassLLVMIROptimizeByRange(State * N, bool enableQuantization, bool enableOverl
 		//	        }
 	}
 
-		if (enableQuantization)
+	if (enableQuantization)
 	{
 		flexprint(N->Fe, N->Fm, N->Fpinfo, "auto quantization\n");
 		llvm::errs() << "Auto quantization enabled\n";
@@ -1124,10 +1124,6 @@ irPassLLVMIROptimizeByRange(State * N, bool enableQuantization, bool enableOverl
 			Mod->getFunctionList().push_front(mi);
 		}
 	}
-
-
-
-
 
 	/**
 	 * Check for potential overflows
@@ -1151,27 +1147,27 @@ irPassLLVMIROptimizeByRange(State * N, bool enableQuantization, bool enableOverl
 		//        }
 	}
 
-		/*
-		 * remove the functions that are optimized by passes.
-		 * */
-				if (useOverLoad)
-					cleanFunctionMap(Mod, callerMap);
-	
-				if (useOverLoad)
-					overloadFunc(Mod, callerMap);
-	
-				callerMap.clear();
-				funcBoundInfo.clear();
-				useOverLoad = true;
-				for (auto & mi : *Mod)
-				{
-					auto boundInfo = new BoundInfo();
-					mergeBoundInfo(boundInfo, globalBoundInfo);
-					rangeAnalysis(N, mi, boundInfo, callerMap, typeRange, virtualRegisterVectorRange, useOverLoad);
-					funcBoundInfo.emplace(mi.getName().str(), boundInfo);
-					std::vector<std::string> calleeNames;
-					collectCalleeInfo(calleeNames, funcBoundInfo, boundInfo);
-				}
+	//	/*
+	//	 * remove the functions that are optimized by passes.
+	//	 * */
+	//			if (useOverLoad)
+	//				cleanFunctionMap(Mod, callerMap);
+	//
+	//			if (useOverLoad)
+	//				overloadFunc(Mod, callerMap);
+	//
+	//			callerMap.clear();
+	//			funcBoundInfo.clear();
+	//			useOverLoad = true;
+	//			for (auto & mi : *Mod)
+	//			{
+	//				auto boundInfo = new BoundInfo();
+	//				mergeBoundInfo(boundInfo, globalBoundInfo);
+	//				rangeAnalysis(N, mi, boundInfo, callerMap, typeRange, virtualRegisterVectorRange, useOverLoad);
+	//				funcBoundInfo.emplace(mi.getName().str(), boundInfo);
+	//				std::vector<std::string> calleeNames;
+	//				collectCalleeInfo(calleeNames, funcBoundInfo, boundInfo);
+	//			}
 
 	/*
 		 * simplify the condition of each branch
@@ -1199,28 +1195,28 @@ irPassLLVMIROptimizeByRange(State * N, bool enableQuantization, bool enableOverl
 
 
 
-			/*
-			 * remove the functions that are optimized by passes.
-			 * */
-			if (useOverLoad)
-				cleanFunctionMap(Mod, callerMap);
-	
-			if (useOverLoad)
-				overloadFunc(Mod, callerMap);
-	
-			flexprint(N->Fe, N->Fm, N->Fpinfo, "infer bound\n");
-			callerMap.clear();
-			funcBoundInfo.clear();
-			useOverLoad = false;
-			for (auto & mi : *Mod)
-			{
-				auto boundInfo = new BoundInfo();
-				mergeBoundInfo(boundInfo, globalBoundInfo);
-				rangeAnalysis(N, mi, boundInfo, callerMap, typeRange, virtualRegisterVectorRange, useOverLoad);
-				funcBoundInfo.emplace(mi.getName().str(), boundInfo);
-				std::vector<std::string> calleeNames;
-				collectCalleeInfo(calleeNames, funcBoundInfo, boundInfo);
-			}
+	//		/*
+	//		 * remove the functions that are optimized by passes.
+	//		 * */
+	//		if (useOverLoad)
+	//			cleanFunctionMap(Mod, callerMap);
+	//
+	//		if (useOverLoad)
+	//			overloadFunc(Mod, callerMap);
+	//
+	flexprint(N->Fe, N->Fm, N->Fpinfo, "infer bound\n");
+	callerMap.clear();
+	funcBoundInfo.clear();
+	useOverLoad = false;
+	for (auto & mi : *Mod)
+	{
+		auto boundInfo = new BoundInfo();
+		mergeBoundInfo(boundInfo, globalBoundInfo);
+		rangeAnalysis(N, mi, boundInfo, callerMap, typeRange, virtualRegisterVectorRange, useOverLoad);
+		funcBoundInfo.emplace(mi.getName().str(), boundInfo);
+		std::vector<std::string> calleeNames;
+		collectCalleeInfo(calleeNames, funcBoundInfo, boundInfo);
+	}
 	//
 	flexprint(N->Fe, N->Fm, N->Fpinfo, "constant substitution\n");
 	for (auto & mi : *Mod)
@@ -1235,15 +1231,15 @@ irPassLLVMIROptimizeByRange(State * N, bool enableQuantization, bool enableOverl
 		//			assert(false);
 		//		}
 	}
-	
-				/*
-				 * remove the functions that are optimized by passes.
-				 * */
-				if (useOverLoad)
-					cleanFunctionMap(Mod, callerMap);
-	
-				if (useOverLoad)
-					overloadFunc(Mod, callerMap);
+	//
+	//			/*
+	//			 * remove the functions that are optimized by passes.
+	//			 * */
+	//			if (useOverLoad)
+	//				cleanFunctionMap(Mod, callerMap);
+	//
+	//			if (useOverLoad)
+	//				overloadFunc(Mod, callerMap);
 
 
 
@@ -1262,34 +1258,6 @@ irPassLLVMIROptimizeByRange(State * N, bool enableQuantization, bool enableOverl
 
 //	eraseOldFunctions();
 	eraseOldFunctions(*Mod);
-
-
-	// 	if (enableQuantization)
-	// {
-	// 	flexprint(N->Fe, N->Fm, N->Fpinfo, "auto quantization\n");
-	// 	llvm::errs() << "Auto quantization enabled\n";
-	// 	std::vector<llvm::Function *> functionsToInsert;
-	// 	for (auto & mi : *Mod)
-	// 	{
-	// 		llvm::errs() << "Quantizing function: " << mi.getName() << "\n";
-
-	// 		irPassLLVMIRAutoQuantization(N, mi, functionsToInsert, maxPrecisionBits);
-	// 	}
-	// 	for (auto mi : functionsToInsert)
-	// 	{
-	// 		Mod->getFunctionList().remove(mi);
-	// 		Mod->getFunctionList().push_front(mi);
-	// 	}
-	// }
-
-	// 	/*
-	//  * remove the functions that are optimized by passes.
-	//  * */
-	// if (useOverLoad)
-	// 	cleanFunctionMap(Mod, callerMap);
-
-	// if (useOverLoad)
-	// 	overloadFunc(Mod, callerMap);
 
 
 
