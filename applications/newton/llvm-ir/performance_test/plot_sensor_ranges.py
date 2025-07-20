@@ -51,7 +51,7 @@ test_case_num = 10
 merit_num = 4
 
 average_data = []
-with open('average_speedup.log', 'r') as f:
+with open('average_speedup_woquant.log.log', 'r') as f:
     for line in f.readlines():
         line_list = line.strip('\n').split('\t')
         average_data.append(line_list)
@@ -194,4 +194,4 @@ for merit_id in range(1, merit_num, 2):
 plt.close()
 
 os.system('cp perf_woquant.log ' + machine + "_perf_woquant.log")
-os.system('cp average_speedup.log ' + machine + "_average_speedup.log")
+os.system('cp average_speedup_woquant.log ' + machine + "_average_speedup_woquant.log")

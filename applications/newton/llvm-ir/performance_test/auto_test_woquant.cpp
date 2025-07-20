@@ -17,8 +17,8 @@
 #include <sstream>
 #include <vector>
 
-const size_t iteration_num = 5;
-constexpr int WARMUP_ITERATIONS = 3;
+const size_t iteration_num = 1;
+constexpr int WARMUP_ITERATIONS = 1;
 
 struct perfData {
        int64_t inst_count_avg;
@@ -39,7 +39,7 @@ struct timerData {
        std::vector<double> compile_time;
 };
 
-#define TLOG_TIMESPEC_NSEC_PER_SEC  1000000000
+#define TLOG_TIMESPEC_NSEC_PER_SEC  10000000
 
 /***************************************
 * Timer functions of the test framework
@@ -408,11 +408,13 @@ int main(int argc, char** argv) {
 //	   "perf_float64_add", "perf_float64_div",
 //	   "perf_float64_mul"};
 	std::vector<std::string> test_cases{
-	    "perf_exp", "perf_log",
-	    "perf_acosh", "perf_j0",
-	    "perf_y0", "perf_rem_pio2", "perf_sincosf",
-	    "perf_float64_add", "perf_float64_div",
-	    "perf_float64_mul"};
+	    // "perf_exp", "perf_log",
+	    // "perf_acosh", "perf_j0",
+	    // "perf_y0", "perf_rem_pio2", "perf_sincosf",
+	    // "perf_float64_add", "perf_float64_div",
+	    // "perf_float64_mul"};
+
+		"perf_float64_div","perf_float64_mul"};
 	   //"perf_y0"};
 
        if (argc >= 2) {
@@ -563,15 +565,14 @@ int main(int argc, char** argv) {
 							    * 100 / opt_perf_data.compile_time_avg);
 		       }
 
-			auto pct_change = [](double ori, double opt) -> int {
-				if (ori == 0) return 0;
-				return static_cast<int>(round((ori - opt) * 100.0 / ori));
-			       };
+			// auto pct_change = [](double ori, double opt) -> int {
+			// 	if (ori == 0) return 0;
+			// 	return static_cast<int>(round((ori - opt) * 100.0 / opt));
+			//        };
 
-			ir_reduce       = pct_change(ori_perf_data.ir_lines,
-								    opt_perf_data.ir_lines);
-			lib_size_reduce = pct_change(ori_perf_data.library_size,
-								    opt_perf_data.library_size);
+	       		ir_reduce = round((ori_perf_data.ir_lines - opt_perf_data.ir_lines) * 100.0 / opt_perf_data.ir_lines);
+	       		lib_size_reduce = round((ori_perf_data.library_size - opt_perf_data.library_size) * 100.0 / opt_perf_data.library_size);
+
 
 		       // if (ori_perf_data.ir_lines > opt_perf_data.ir_lines) {
 			      //  ir_reduce = round((ori_perf_data.ir_lines - opt_perf_data.ir_lines) * 100 / opt_perf_data.ir_lines);

@@ -19,7 +19,7 @@
 #include <tuple>
 
 const size_t iteration_num = 1;
-constexpr int WARMUP_ITERATIONS = 3;
+constexpr int WARMUP_ITERATIONS = 1;
 
 struct perfData {
     int64_t inst_count_avg;
@@ -40,7 +40,7 @@ struct timerData {
     std::vector<double> compile_time;
 };
 
-#define TLOG_TIMESPEC_NSEC_PER_SEC  1000000000
+#define TLOG_TIMESPEC_NSEC_PER_SEC  10000000
 
 typedef struct timespec timespec;
 
@@ -405,8 +405,8 @@ int main(int argc, char** argv)
 		//            "perf_y0", "perf_rem_pio2", "perf_sincosf",
 		//            "perf_float64_add", "perf_float64_div",
 		//            "perf_float64_mul"};
-		  "perf_j0","perf_y0"};
-		//"perf_y0"};
+		"perf_j0","perf_y0"};
+	//"perf_y0"};
 
 
 	if (argc >= 2)
@@ -496,16 +496,16 @@ int main(int argc, char** argv)
 		{{1, 200}, 10, 2}};
 
 	std::vector<std::vector<double>> trigonometricParams{
-		    {0, 0.17453292519943295},		       // (0, pi/18)
-		    {0.6981317007977318, 0.8726646259971648},  // (2pi/9, 5pi/18)
-		    {1.3962634015954636, 1.5707963267948966},  // (4pi/9, pi/2)
-		    {2.0943951023931953, 2.2689280275926285},  // (2pi/3, 13pi/18)
-		    {2.792526803190927, 2.9670597283903604},   // (8pi/9, 17pi/18)
-		    {3.490658503988659, 3.665191429188092},    // (10pi/9, 7pi/6)
-		    {4.1887902047863905, 4.363323129985824},   // (8pi/6, 25pi/18)
-		    {4.886921905584122, 5.061454830783556},    // (14pi/9, 29pi/18)
-		    {5.585053606381854, 5.759586531581288},    // (16pi/9, 33pi/18)
-		    {5.934119456780721, 6.1086523819801535}    // (17pi/9, 35pi/18)
+			    {0, 0.17453292519943295},		       // (0, pi/18)
+			    {0.6981317007977318, 0.8726646259971648},  // (2pi/9, 5pi/18)
+			    {1.3962634015954636, 1.5707963267948966},  // (4pi/9, pi/2)
+			    {2.0943951023931953, 2.2689280275926285},  // (2pi/3, 13pi/18)
+			    {2.792526803190927, 2.9670597283903604},   // (8pi/9, 17pi/18)
+			    {3.490658503988659, 3.665191429188092},    // (10pi/9, 7pi/6)
+			    {4.1887902047863905, 4.363323129985824},   // (8pi/6, 25pi/18)
+			    {4.886921905584122, 5.061454830783556},    // (14pi/9, 29pi/18)
+			    {5.585053606381854, 5.759586531581288},    // (16pi/9, 33pi/18)
+			    {5.934119456780721, 6.1086523819801535}    // (17pi/9, 35pi/18)
 	};
 
 	if (argc == 4)
@@ -633,15 +633,12 @@ int main(int argc, char** argv)
 					compile_time_speedup = round((ori_perf_data.compile_time_avg - opt_perf_data.compile_time_avg)
 								     * 100 / opt_perf_data.compile_time_avg);
 				}
-				auto pct_change = [](double ori, double opt) -> int {
-					if (ori == 0) return 0;
-					return static_cast<int>(round((ori - opt) * 100.0 / ori));
-				};
 
-				ir_reduce       = pct_change(ori_perf_data.ir_lines,
-								     opt_perf_data.ir_lines);
-				lib_size_reduce = pct_change(ori_perf_data.library_size,
-								     opt_perf_data.library_size);
+
+
+				ir_reduce = round((ori_perf_data.ir_lines - opt_perf_data.ir_lines) * 100.0 / opt_perf_data.ir_lines);
+				lib_size_reduce = round((ori_perf_data.library_size - opt_perf_data.library_size) * 100.0 / opt_perf_data.library_size);
+
 
 				// if (ori_perf_data.ir_lines > opt_perf_data.ir_lines)
 				// {
