@@ -18,7 +18,7 @@
 #include <vector>
 #include <tuple>
 
-const size_t iteration_num = 1;
+const size_t iteration_num = 5;
 constexpr int WARMUP_ITERATIONS = 1;
 
 struct perfData {
@@ -151,7 +151,6 @@ std::pair<int64_t, int64_t> processDataPerf(const std::string test_case, const s
     int64_t inst_count, time_consumption;
 
     // perf command
-    //todo Quantization prefix
     std::string quant_prefix = (test_case.find("_opt") != std::string::npos) ? "AUTO_QUANT=1 " : "";
     std::string cmd = "bash -c '" + quant_prefix + "make " + test_case + " >& compile.log'";
     std::cout << "[DEBUG] Running command: " << cmd << std::endl;
@@ -164,7 +163,7 @@ std::pair<int64_t, int64_t> processDataPerf(const std::string test_case, const s
     cmd = "bash -c 'perf stat -B ./main_out " + params;
 
 //    cmd += "if=/dev/zero of=/dev/null count=1000000";
-    cmd += "if=/dev/zero of=/dev/null count=1";
+    cmd += "if=/dev/zero of=/dev/null count=10000000";
     cmd += " 2>&1 | tee tmp.log'";
     command_return = system(cmd.c_str());
     if (command_return != 0) {
@@ -216,7 +215,6 @@ std::pair<double, std::vector<double>> processDataTimer(const std::string test_c
 	/* ---------- End Warm-up ---------- */
 
     // perf command
-    //TODO Addd Quantization prefix
 //    std::string cmd = "bash -c 'make " + test_case + " >& compile.log'";
 //    std::string quant_prefix = "AUTO_QUANT=1 ";
 
@@ -352,7 +350,6 @@ struct perfData recordData(const std::string& test_cases, const std::string& par
 
 struct timerData recordTimerData(const std::string& test_cases, const std::string& param_str, int precision_bits, std::ofstream& ofs){
     timerData timer_data;
-
     for (size_t idx = 0; idx < iteration_num; idx++) {
 	    double compile_time = compileTargetCode(test_cases);
 	    timer_data.compile_time.emplace_back(compile_time);
@@ -374,25 +371,17 @@ struct timerData recordTimerData(const std::string& test_cases, const std::strin
     timer_data.ir_lines = getIrLines();
     timer_data.library_size = getLibSize();
 
-
 	/* ---------- runtime trimmed-mean ---------- */
 	timer_data.time_consumption_avg = trimmedMean(timer_data.ms_time_consumption);
 	/* ------------------------------------------ */
 
-	ofs << test_cases << "\t" << param_str << "\t" << timer_data.inst_count_avg
-	    << "\t" << timer_data.time_consumption_avg
-	    << "\t" << timer_data.ir_lines << "\t" << timer_data.library_size
-	    << "\t" << std::accumulate(timer_data.compile_time.begin(),
-				       timer_data.compile_time.end(),
-				       0.0) / timer_data.compile_time.size()
-	    << std::endl;
 
-// ofs << test_cases << "\t" << param_str << "\t" << precision_bits << "\t"
-//     << timer_data.inst_count_avg << "\t"
-//     << std::accumulate(timer_data.ms_time_consumption.begin(), timer_data.ms_time_consumption.end(), 0.0) / timer_data.ms_time_consumption.size() << "\t"
-//     << timer_data.ir_lines << "\t" << timer_data.library_size << "\t"
-//     << std::accumulate(timer_data.compile_time.begin(), timer_data.compile_time.end(), 0.0) / timer_data.compile_time.size()
-//     << std::endl;
+    ofs << test_cases << "\t" << param_str << "\t" << precision_bits << "\t"
+	    << timer_data.inst_count_avg << "\t"
+	    << std::accumulate(timer_data.ms_time_consumption.begin(), timer_data.ms_time_consumption.end(), 0.0) / timer_data.ms_time_consumption.size() << "\t"
+	    << timer_data.ir_lines << "\t" << timer_data.library_size << "\t"
+	    << std::accumulate(timer_data.compile_time.begin(), timer_data.compile_time.end(), 0.0) / timer_data.compile_time.size()
+	    << std::endl;
 
     return timer_data;
 }
@@ -400,11 +389,11 @@ struct timerData recordTimerData(const std::string& test_cases, const std::strin
 int main(int argc, char** argv)
 {
 	std::vector<std::string> test_cases{
-		//            "perf_exp", "perf_log",
-		//            "perf_acosh", "perf_j0",
-		//            "perf_y0", "perf_rem_pio2", "perf_sincosf",
-		//            "perf_float64_add", "perf_float64_div",
-		//            "perf_float64_mul"};
+		// "perf_exp", "perf_log",
+		// "perf_acosh", "perf_j0",
+		// "perf_y0", "perf_rem_pio2", "perf_sincosf",
+		// "perf_float64_add", "perf_float64_div",
+		// "perf_float64_mul"};
 		"perf_j0","perf_y0"};
 	//"perf_y0"};
 
@@ -429,39 +418,12 @@ int main(int argc, char** argv)
 		return -1;
 	}
 
-	//    std::vector<std::vector<double>> normalParameters{
-	//	// BMX055 acceleration
-	//	{-2, 2},
-	//	{-4, 4},
-	//	{-8, 8},
-	//	{-16, 16},
-	//	// BMX055 gyroscope
-	//	{-125, 125},
-	//	// LM35 Centigrade Temperature Sensor
-	//	{-40, 110},
-	//	{-55, 150},
-	//	{0, 100},
-	//	{0, 70},
-	//	// LPS25H
-	//	{260, 1260},
-	//	// MAX31820 1-Wire Ambient Temperature Sensor
-	//	{10, 45},
-	//	{-55, 125},
-	//	// DHT11 Humidity Sensor
-	//	{20, 80},
-	//	{0, 50},
-	//	// LMP82064 Current Sensor and Voltage Monitor with SPI
-	//	{-0.2, 2},
-	//	// PCE-353 LEQ Sound Level Meter
-	//	{30, 130},
-	//	// LLS05-A Linear Light Sensor
-	//	{1, 200}
-	//    };
+
 
 	// param_range, precision_bits, frac_q
 	std::vector<std::tuple<std::vector<double>, int, int>> normalParameters = {
 		// BMX055 acceleration
-		// {{-2, 2}, 12, 9},
+		{{-2, 2}, 12, 9},
 		{{-4, 4}, 12, 8},
 		{{-8, 8}, 12, 7},
 		{{-16, 16}, 12, 6},
@@ -533,11 +495,7 @@ int main(int argc, char** argv)
 		int avg_compile_time_speedup = 0;
 		int avg_ir_reduce	= 0;
 		int avg_lib_size_reduce = 0;
-		//        const std::vector<std::vector<double>> parameters =
-		//                test_cases[case_id] == "perf_float64_sin" ? trigonometricParams : normalParameters;
-		// TODO
 		const bool is_trig = test_cases[case_id] == "perf_float64_sin";
-		// 对于普通测试（非trig），使用 normalParameters
 		if (!is_trig)
 		{
 			for (const auto & entry : normalParameters)
@@ -545,17 +503,12 @@ int main(int argc, char** argv)
 				const std::vector<double> & range  = std::get<0>(entry);
 				int			    frac_q = std::get<2>(entry);
 
-				// 自动重编译 newton 以更新 MAX_PRECISION_BITS=frac_q
 				std::string frac_str = std::to_string(frac_q);
 				std::string rebuild_cmd =
 				    "bash -c '"
-				    "echo \"[DEBUG] Cleaning object files...\" && "
 				    "rm -f ../../../../src/newton/newton-irPass-LLVMIR-quantization.o ../../../../src/newton/newton-irPass-LLVMIR-optimizeByRange.o && "
-				    "echo \"[DEBUG] Running make with MAX_PRECISION_BITS=" + frac_str + "\" && "
 				    "make -C ../../../../src/newton MAX_PRECISION_BITS=" + frac_str + " BIT_WIDTH=32 > build_" + frac_str + ".log 2>&1'";
 
-				//				    "2>&1 | tee build_" + frac_str + ".log'";
-				//\\				std::string rebuild_cmd = "make -C ../../../src/newton MAX_PRECISION_BITS=" + std::to_string(frac_q) + " VERBOSE=1 rebuild-quant-opt";
 				std::cout << "[INFO] Rebuilding Newton with MAX_PRECISION_BITS = " << frac_q << std::endl;
 				int ret = system(rebuild_cmd.c_str());
 				if (ret != 0)
@@ -694,9 +647,10 @@ int main(int argc, char** argv)
 			//
 			//		return 0;
 		}
-		ofs.close();
-
-		return 0;
 	}
+
+	ofs.close();
+	return 0;
 }
+
 

@@ -49,29 +49,41 @@ def parse_summary_perf_data(file_content, quantization_type):
 
     for line in lines:
         parts = line.split('\t')
-        if not parts: continue
+        if not parts:
+            continue
         test_case = parts[0].strip()
-        if test_case.startswith("perf_j0"): current_benchmark_key = "j0"
-        elif test_case.startswith("perf_y0"): current_benchmark_key = "y0"
+        if test_case.startswith("perf_j0") or (quantization_type=="w/o Auto Quantization" and test_case.startswith("perf_exp")):
+            current_benchmark_key = "j0"
+        elif test_case.startswith("perf_y0"):
+            current_benchmark_key = "y0"
         elif test_case == "speed up after optimization":
-            if current_benchmark_key is None: continue
-            if len(parts) < 7: continue
+            if current_benchmark_key is None or current_benchmark_key not in ["j0", "y0"]:
+                continue
+            if len(parts) < 7:
+                continue
             try:
                 params_str = parts[1].strip()
                 param_values = params_str.split()
-                if len(param_values) < 2: continue
+                if len(param_values) < 2:
+                    continue
                 formatted_params = f"[{float(param_values[0]):.1f}, {float(param_values[1]):.1f}]"
                 time_speedup_pct = float(parts[3].replace('%', ''))
                 library_size_reduction_pct = float(parts[5].replace('%', ''))
                 speedup_factor = 1 + (time_speedup_pct / 100.0)
                 data.append({
-                    "benchmark": current_benchmark_key, "params_raw": params_str,
-                    "params_formatted": formatted_params, "quant_type": quantization_type,
-                    "speedup_factor": speedup_factor, "library_size_reduction_pct": library_size_reduction_pct,
+                    "benchmark": current_benchmark_key,
+                    "params_raw": params_str,
+                    "params_formatted": formatted_params,
+                    "quant_type": quantization_type,
+                    "speedup_factor": speedup_factor,
+                    "library_size_reduction_pct": library_size_reduction_pct,
                     "precision_bits": None
                 })
             except (IndexError, ValueError):
                 continue
+        else:
+            current_benchmark_key = None
+            continue
     return data
 
 def process_performance_data(wo_quant_path, w_quant_path):
@@ -122,6 +134,11 @@ def process_performance_data(wo_quant_path, w_quant_path):
     pivot_df['relative_speedup'] = pivot_df.get('speedup_factor_with Auto Quantization', 1) / pivot_df.get('speedup_factor_w/o Auto Quantization', 1)
     pivot_df['size_reduction_improvement'] = pivot_df.get('library_size_reduction_pct_with Auto Quantization', 0) - pivot_df.get('library_size_reduction_pct_w/o Auto Quantization', 0)
 
+    # #
+    # print("------------- Original w/o Auto Quantization  -------------")
+    # for index, row in pivot_df.iterrows():
+    #      print(f"{row['range_over_precision_bits']}: {row.get('speedup_factor_w/o Auto Quantization', 'N/A')}")
+
     return pivot_df
 
 # --- UPDATED Plotting function for single bars and refined Y-axis ---
@@ -133,6 +150,8 @@ def create_single_bar_plot(df_benchmark_data, benchmark_id, metric_column, y_axi
     df_sorted = df_benchmark_data.copy()
     df_sorted['sort_key_params_numeric'] = df_sorted['params_raw'].apply(lambda x: tuple(map(float, x.split())))
     df_sorted = df_sorted.sort_values(by='sort_key_params_numeric').reset_index(drop=True)
+
+    is_speedup_plot = "Speedup" in y_axis_label
 
     num_param_groups = len(df_sorted.index)
     x_positions = np.arange(num_param_groups)
@@ -148,39 +167,13 @@ def create_single_bar_plot(df_benchmark_data, benchmark_id, metric_column, y_axi
     ax.set_xticks(x_positions)
     ax.set_xticklabels(df_sorted['range_over_precision_bits'], rotation=45, ha="right")
 
-    # === Y-axis refinement logic starts here ===
-
-    all_bar_values = bar_data.dropna().tolist()
-    if not all_bar_values:
-        min_data_val, max_data_val = (0.9, 1.1)
-    else:
-        min_data_val = min(all_bar_values) if all_bar_values else 0
-        max_data_val = max(all_bar_values) if all_bar_values else 1
-
-    # Check if this is a speedup plot to apply special formatting
-    is_speedup_plot = "Speedup" in y_axis_label
-
     if is_speedup_plot:
-        # Refined y-axis limits for speedup
+        ax.set_ylim(0, 1.5)
+        ax.set_yticks([0, 1, 1.5])
         ax.axhline(1.0, color='grey', linestyle='-.', linewidth=1.0)
-        y_bottom = min(0.95, min_data_val) - 0.02 # Start slightly below the lowest value or 0.95
-        y_top = max_data_val + 0.05
-        ax.set_ylim(bottom=y_bottom, top=y_top)
-
-        # Set major ticks every 0.05
-        ax.yaxis.set_major_locator(MultipleLocator(0.05))
-        # Set minor ticks every 0.025
-        ax.yaxis.set_minor_locator(MultipleLocator(0.025))
-
-        # Enable grid for both major and minor ticks, with different styles
-        ax.grid(which='major', linestyle='--', alpha=0.7, axis='y')
-        ax.grid(which='minor', linestyle=':', alpha=0.5, axis='y')
     else:
-        # Default behavior for other plots (e.g., size reduction)
         ax.axhline(0, color='grey', linestyle='-.', linewidth=1.0)
-        ax.grid(True, linestyle='--', alpha=0.7, axis='y') # Just the major grid
-
-    # === Y-axis refinement logic ends here ===
+        ax.grid(True, linestyle='--', alpha=0.7, axis='y')
 
     plt.tight_layout()
     plt.savefig(output_filename)
