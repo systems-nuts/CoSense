@@ -1204,19 +1204,19 @@ irPassLLVMIROptimizeByRange(State * N, bool enableQuantization, bool enableOverl
 	//		if (useOverLoad)
 	//			overloadFunc(Mod, callerMap);
 	//
-	//		flexprint(N->Fe, N->Fm, N->Fpinfo, "infer bound\n");
-	//		callerMap.clear();
-	//		funcBoundInfo.clear();
-	//		useOverLoad = false;
-	//		for (auto & mi : *Mod)
-	//		{
-	//			auto boundInfo = new BoundInfo();
-	//			mergeBoundInfo(boundInfo, globalBoundInfo);
-	//			rangeAnalysis(N, mi, boundInfo, callerMap, typeRange, virtualRegisterVectorRange, useOverLoad);
-	//			funcBoundInfo.emplace(mi.getName().str(), boundInfo);
-	//			std::vector<std::string> calleeNames;
-	//			collectCalleeInfo(calleeNames, funcBoundInfo, boundInfo);
-	//		}
+	flexprint(N->Fe, N->Fm, N->Fpinfo, "infer bound\n");
+	callerMap.clear();
+	funcBoundInfo.clear();
+	useOverLoad = false;
+	for (auto & mi : *Mod)
+	{
+		auto boundInfo = new BoundInfo();
+		mergeBoundInfo(boundInfo, globalBoundInfo);
+		rangeAnalysis(N, mi, boundInfo, callerMap, typeRange, virtualRegisterVectorRange, useOverLoad);
+		funcBoundInfo.emplace(mi.getName().str(), boundInfo);
+		std::vector<std::string> calleeNames;
+		collectCalleeInfo(calleeNames, funcBoundInfo, boundInfo);
+	}
 	//
 	flexprint(N->Fe, N->Fm, N->Fpinfo, "constant substitution\n");
 	for (auto & mi : *Mod)

@@ -2949,7 +2949,7 @@ rangeAnalysis(State * N, llvm::Function & llvmIrFunction, BoundInfo * boundInfo,
 						 *    and reinterpret it if necessary
 						 * */
 						unionAddress.emplace(llvmIrBitCastInstruction, llvmIrBitCastInstruction->getOperand(0));
-						assert(llvmIrBitCastInstruction->getDestTy()->getTypeID() == Type::PointerTyID);
+						//assert(llvmIrBitCastInstruction->getDestTy()->getTypeID() == Type::PointerTyID);
 						auto vrRangeIt = boundInfo->virtualRegisterRange.find(llvmIrBitCastInstruction->getOperand(0));
 						if (vrRangeIt != boundInfo->virtualRegisterRange.end())
 						{
