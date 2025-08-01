@@ -39,7 +39,7 @@ struct timerData {
        std::vector<double> compile_time;
 };
 
-#define TLOG_TIMESPEC_NSEC_PER_SEC  10000000
+#define TLOG_TIMESPEC_NSEC_PER_SEC  1000000
 
 /***************************************
 * Timer functions of the test framework
@@ -171,7 +171,7 @@ std::pair<int64_t, int64_t> processDataPerf(const std::string test_case, const s
        cmd.clear();
        cmd = "bash -c 'perf stat -B ./main_out " + params;
 
-       cmd += "if=/dev/zero of=/dev/null count=10000000";
+       cmd += "if=/dev/zero of=/dev/null count=1000000";
        cmd += " 2>&1 | tee tmp.log'";
        command_return = system(cmd.c_str());
        if (command_return != 0) {
