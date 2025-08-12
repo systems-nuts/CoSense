@@ -582,11 +582,14 @@ int main(int argc, char** argv)
 											 0.0) / opt_perf_data.compile_time.size();
 
 					inst_speedup = round((ori_perf_data.inst_count_avg - opt_perf_data.inst_count_avg) * 100 / opt_perf_data.inst_count_avg);
-					time_speedup = round((ori_perf_data.time_consumption_avg - opt_perf_data.time_consumption_avg) * 100 / opt_perf_data.time_consumption_avg);
-					compile_time_speedup = round((ori_perf_data.compile_time_avg - opt_perf_data.compile_time_avg)
-								     * 100 / opt_perf_data.compile_time_avg);
+					if (fabs(opt_perf_data.time_consumption_avg) < 1e-5)
+					{
+						time_speedup = 0;
+					} else {
+						time_speedup = round((ori_perf_data.time_consumption_avg - opt_perf_data.time_consumption_avg) * 100.0 / opt_perf_data.time_consumption_avg);
+					}
+					compile_time_speedup = round((ori_perf_data.compile_time_avg - opt_perf_data.compile_time_avg) * 100 / opt_perf_data.compile_time_avg);
 				}
-
 
 
 				ir_reduce = round((ori_perf_data.ir_lines - opt_perf_data.ir_lines) * 100.0 / opt_perf_data.ir_lines);
