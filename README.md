@@ -114,3 +114,16 @@ Users can get the average performance in `average_speedup.log` and the detailed 
 3. Optional. We provide Python scripts to plot the figures as shown in our paper.
 	* `plot_sensor_ranges.py`: Plot the heatmaps.
 	* `bar_plot.py`: Plot the average speedup bar figure.
+
+## Reference
+This project is published in CC24: https://dl.acm.org/doi/abs/10.1145/3640537.3641576
+
+```bib
+@inproceedings{mu2024cosense,
+  title={CoSense: Compiler Optimizations using Sensor Technical Specifications},
+  author={Mu, Pei and Mavrogeorgis, Nikolaos and Vasiladiotis, Christos and Tsoutsouras, Vasileios and Kaparounakis, Orestis and Stanley-Marbell, Phillip and Barbalace, Antonio},
+  booktitle={Proceedings of the 33rd ACM SIGPLAN International Conference on Compiler Construction},
+  pages={73--85},
+  year={2024}
+}
+```
