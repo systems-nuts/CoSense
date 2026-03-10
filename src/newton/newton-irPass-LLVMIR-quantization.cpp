@@ -2243,8 +2243,45 @@ shouldSkipFunction(const std::string & functionName)
 bool
 isTargetFunction(Function & func)
 {
-	return func.getName() == "MadgwickAHRSupdateIMU" ||
-	       func.getName() == "MahonyAHRSupdateIMU";
+	if (func.isDeclaration())
+		return false;
+
+	if (!shouldProcessFunction(func))
+		return false;
+
+	bool hasFloatPointerArg = false;
+	for (auto & arg : func.args())
+	{
+		Type * argTy = arg.getType();
+		if (argTy->isPointerTy())
+		{
+			Type * elemTy = argTy->getPointerElementType();
+			if (elemTy->isFloatTy() || elemTy->isDoubleTy())
+			{
+				hasFloatPointerArg = true;
+				break;
+			}
+		}
+	}
+
+	if (!hasFloatPointerArg)
+		return false;
+
+	for (User * user : func.users())
+	{
+		auto * callBase = dyn_cast<CallBase>(user);
+		if (!callBase)
+			continue;
+
+		Function * caller = callBase->getFunction();
+		if (!caller || caller == &func)
+			continue;
+
+		if (shouldProcessFunction(*caller))
+			return true;
+	}
+
+	return false;
 }
 
 void
@@ -2352,6 +2389,9 @@ irPassLLVMIRAutoQuantization(State * N, llvm::Function & llvmIrFunction, std::ve
 			llvm::errs() << "Skipping function: " << llvmIrFunction.getName() << "\n";
 			return;
 		}
+
+		llvmIrFunction.addFnAttr("newton.quantized");
+		llvmIrFunction.addFnAttr("newton.dequantize");
 
 		Type * quantizedType;
 		switch (BIT_WIDTH)

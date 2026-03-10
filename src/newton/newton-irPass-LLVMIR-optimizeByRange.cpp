@@ -83,9 +83,61 @@ using namespace llvm;
 // #define FRAC_BASE (1 << maxPrecisionBits)
 #define FRAC_BASE (1 << MAX_PRECISION_BITS)
 
-void
-checkOverflow(State * N, BoundInfo * boundInfo, int FRAC_Q)
+namespace
 {
+bool
+isOverflowCheckTarget(const llvm::Value * V)
+{
+	if (!V)
+		return false;
+
+	auto * I = llvm::dyn_cast<llvm::Instruction>(V);
+	if (!I)
+		return false;
+
+	switch (I->getOpcode())
+	{
+		case llvm::Instruction::FAdd:
+		case llvm::Instruction::FSub:
+		case llvm::Instruction::FMul:
+		case llvm::Instruction::FDiv:
+		case llvm::Instruction::FRem:
+		case llvm::Instruction::FNeg:
+			return true;
+		case llvm::Instruction::Call:
+		{
+			auto * CI = llvm::dyn_cast<llvm::CallInst>(I);
+			if (!CI)
+				return false;
+
+			llvm::Function * callee = CI->getCalledFunction();
+			if (!callee || !callee->hasName())
+				return false;
+
+			llvm::StringRef funcName = callee->getName();
+			return funcName == "log" || funcName == "exp" ||
+			       funcName == "sqrt" || funcName == "log1p" ||
+			       funcName == "scalbn" || funcName == "sin" ||
+			       funcName == "cos" ||
+			       funcName.startswith("llvm.fabs") ||
+			       funcName.startswith("llvm.floor") ||
+			       funcName.startswith("llvm.ceil");
+		}
+		default:
+			return false;
+	}
+}
+}  // namespace
+
+void
+checkOverflow(State * N, BoundInfo * boundInfo, int FRAC_Q, llvm::Function * ownerFunction)
+{
+	if (!ownerFunction || ownerFunction->isDeclaration())
+		return;
+
+	if (!ownerFunction->hasFnAttribute("newton.dequantize"))
+		return;
+
 	int maxVal, minVal;
 	if (BIT_WIDTH == 16)
 	{
@@ -103,10 +155,18 @@ checkOverflow(State * N, BoundInfo * boundInfo, int FRAC_Q)
 		return;
 	}
 
+	const double fracBase = std::ldexp(1.0, FRAC_Q);
+
 	for (const auto & entry : boundInfo->virtualRegisterRange)
 	{
-		double scaledMin = entry.second.first * FRAC_BASE;
-		double scaledMax = entry.second.second * FRAC_BASE;
+		if (!isOverflowCheckTarget(entry.first))
+			continue;
+
+		if (!std::isfinite(entry.second.first) || !std::isfinite(entry.second.second))
+			continue;
+
+		double scaledMin = entry.second.first * fracBase;
+		double scaledMax = entry.second.second * fracBase;
 
 		std::string instStr = "unknown";
 		if (Instruction * inst = dyn_cast<Instruction>(entry.first))
@@ -162,18 +222,21 @@ autoWhitelistFunctions(Module & Mod, std::set<std::string> & whitelist)
 	}
 }
 
-std::set<std::string> whitelist = {
-    "MadgwickAHRSupdate",
-    "MahonyAHRSupdate",
-    "sensfusion6UpdateQImpl",
-    "matrixMul",
-    "pzero",
-    "qzero",
-    "pone",
-    "qone",
-    "__exp_horner_poly",
-    "__log_horner_poly",
-    "__sincosf_poly_horner"};
+void
+collectDequantizeFunctions(Module & Mod, std::set<std::string> & whitelist)
+{
+	for (Function & F : Mod)
+	{
+		if (F.isDeclaration())
+			continue;
+
+		if (F.hasFnAttribute("newton.dequantize"))
+		{
+			llvm::errs() << "Auto-Whitelisting dequantize function: " << F.getName() << "\n";
+			whitelist.insert(F.getName().str());
+		}
+	}
+}
 
 void
 eraseUnusedConstant(Module & M)
@@ -415,6 +478,17 @@ handleReturnValue(ReturnInst * retInst, int maxPrecisionBits)
 	if (!retInst->getReturnValue())
 		return;
 
+	Function * parentFunction = retInst->getFunction();
+	if (!parentFunction)
+		return;
+
+	Type * declaredReturnType = parentFunction->getReturnType();
+	if (!declaredReturnType->isFloatingPointTy())
+	{
+		errs() << "Declared return type is not floating-point, skipping dequantization.\n";
+		return;
+	}
+
 	Value * retVal = retInst->getReturnValue();
 
 	if (!retVal->getType()->isIntegerTy())
@@ -424,7 +498,7 @@ handleReturnValue(ReturnInst * retInst, int maxPrecisionBits)
 	}
 
 	IRBuilder<> Builder(retInst);
-	Type *	    targetType = Type::getDoubleTy(retInst->getContext());
+	Type *	    targetType = declaredReturnType;
 
 	Value * fpVal = Builder.CreateSIToFP(retVal, targetType);
 
@@ -1089,7 +1163,7 @@ irPassLLVMIROptimizeByRange(State * N, bool enableQuantization, bool enableOverl
 	flexprint(N->Fe, N->Fm, N->Fpinfo, "checking for potential overflows\n");
 	for (auto & funcPair : funcBoundInfo)
 	{
-		checkOverflow(N, funcPair.second, maxPrecisionBits);
+		checkOverflow(N, funcPair.second, maxPrecisionBits, Mod->getFunction(funcPair.first));
 	}
 
 	flexprint(N->Fe, N->Fm, N->Fpinfo, "shrink data type by range\n");
@@ -1130,7 +1204,7 @@ irPassLLVMIROptimizeByRange(State * N, bool enableQuantization, bool enableOverl
 	flexprint(N->Fe, N->Fm, N->Fpinfo, "checking for potential overflows\n");
 	for (auto & funcPair : funcBoundInfo)
 	{
-		checkOverflow(N, funcPair.second, maxPrecisionBits);
+		checkOverflow(N, funcPair.second, maxPrecisionBits, Mod->getFunction(funcPair.first));
 	}
 
 	flexprint(N->Fe, N->Fm, N->Fpinfo, "memory alignment\n");
@@ -1248,7 +1322,9 @@ irPassLLVMIROptimizeByRange(State * N, bool enableQuantization, bool enableOverl
 	//		eraseOldFunctions();
 	//	eraseOldFunctions();
 
-	processWhitelistedFunctions(*Mod, whitelist, maxPrecisionBits);
+	std::set<std::string> dequantizeTargets;
+	collectDequantizeFunctions(*Mod, dequantizeTargets);
+	processWhitelistedFunctions(*Mod, dequantizeTargets, maxPrecisionBits);
 
 	//	eraseOldFunctions();
 	eraseOldFunctions(*Mod);

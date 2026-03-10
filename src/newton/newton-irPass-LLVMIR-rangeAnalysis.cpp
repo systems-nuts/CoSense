@@ -307,7 +307,10 @@ checkPhiRange(State * N, PHINode * phiNode, BoundInfo * boundInfo,
 
 	if (minValueVec.empty() && minPHIValueVectors.empty())
 	{
-		flexprint(N->Fe, N->Fm, N->Fperr, "Error: min value vectors are both empty.");
+		if (valueRangeDebug)
+		{
+			flexprint(N->Fe, N->Fm, N->Fpinfo, "Call: skip empty PHI incoming range set.\n");
+		}
 	}
 
 	return true;
@@ -1024,7 +1027,10 @@ rangeAnalysis(State * N, llvm::Function & llvmIrFunction, BoundInfo * boundInfo,
 									}
 									else
 									{
-										flexprint(N->Fe, N->Fm, N->Fperr, "\tTODO: Call: Didn't support current type!\n");
+										if (valueRangeDebug)
+										{
+											flexprint(N->Fe, N->Fm, N->Fpinfo, "\tCall: Skip unsupported debug type for range seeding.\n");
+										}
 									}
 								}
 								else if (const auto * basicVariableType = dyn_cast<DIBasicType>(variableType))
@@ -1032,7 +1038,10 @@ rangeAnalysis(State * N, llvm::Function & llvmIrFunction, BoundInfo * boundInfo,
 									/*
 									 * if it's a basic type, insert the basic
 									 * */
-									flexprint(N->Fe, N->Fm, N->Fperr, "\tTODO: Call: Didn't support basic type!\n");
+									if (valueRangeDebug)
+									{
+										flexprint(N->Fe, N->Fm, N->Fpinfo, "\tCall: Skip unsupported basic debug type for range seeding.\n");
+									}
 								}
 							};
 
