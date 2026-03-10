@@ -45,7 +45,6 @@ All rights reserved.
 #include "newton-irPass-LLVMIR-memoryAlignment.h"
 #include "newton-irPass-LLVMIR-emitAssume.h"
 
-
 #endif /* __cplusplus */
 
 #include <algorithm>
@@ -80,7 +79,7 @@ All rights reserved.
 #include <set>
 #include <limits>
 
-	using namespace llvm;
+using namespace llvm;
 // #define FRAC_BASE (1 << maxPrecisionBits)
 #define FRAC_BASE (1 << MAX_PRECISION_BITS)
 
@@ -133,15 +132,16 @@ checkOverflow(State * N, BoundInfo * boundInfo, int FRAC_Q)
 }
 
 void
-autoWhitelistFunctions(Module &Mod, std::set<std::string> &whitelist)
+autoWhitelistFunctions(Module & Mod, std::set<std::string> & whitelist)
 {
-	for (Function &F : Mod)
+	for (Function & F : Mod)
 	{
-		if (F.isDeclaration()) continue;
+		if (F.isDeclaration())
+			continue;
 
 		bool hasSensorParams = false;
 
-		for (auto &Arg : F.args())
+		for (auto & Arg : F.args())
 		{
 			if (Arg.hasName())
 			{
@@ -163,8 +163,6 @@ autoWhitelistFunctions(Module &Mod, std::set<std::string> &whitelist)
 	}
 }
 
-
-
 // #define IS_POINTER 1
 std::set<std::string> whitelist = {
     "MadgwickAHRSupdate",
@@ -175,35 +173,41 @@ std::set<std::string> whitelist = {
     "qzero",
     "pone",
     "qone",
-    "__ieee754_exp"};
+    "__exp_horner_poly",
+    "__log_horner_poly",
+    "__sincosf_poly_horner"};
 
-
-void eraseUnusedConstant(Module &M) {
+void
+eraseUnusedConstant(Module & M)
+{
 	std::set<std::string> quantizedBaseNames;
-	for (auto &GV : M.globals()) {
-		if (GV.getName().endswith("_quantized")) {
-			std::string baseName = GV.getName().str().substr(0, GV.getName().size() - 10); // remove "_quantized"
+	for (auto & GV : M.globals())
+	{
+		if (GV.getName().endswith("_quantized"))
+		{
+			std::string baseName = GV.getName().str().substr(0, GV.getName().size() - 10);	// remove "_quantized"
 			quantizedBaseNames.insert(baseName);
 		}
 	}
 	std::vector<GlobalVariable *> toDelete;
-	for (auto &GV : M.globals()) {
+	for (auto & GV : M.globals())
+	{
 		std::string name = GV.getName().str();
 
-		if (GV.use_empty() && quantizedBaseNames.count(name)) {
+		if (GV.use_empty() && quantizedBaseNames.count(name))
+		{
 			toDelete.push_back(&GV);
 		}
-		if (GV.use_empty() && name.size() > 10 && name.substr(name.size() - 10) == "_quantized") {
+		if (GV.use_empty() && name.size() > 10 && name.substr(name.size() - 10) == "_quantized")
+		{
 			toDelete.push_back(&GV);
 		}
 	}
-	for (auto *GV : toDelete) {
+	for (auto * GV : toDelete)
+	{
 		GV->eraseFromParent();
 	}
 }
-
-
-
 
 void
 handleGlobalStore(StoreInst * storeInst, IRBuilder<> & Builder, int maxPrecisionBits)
@@ -269,72 +273,91 @@ handleGlobalStore(StoreInst * storeInst, IRBuilder<> & Builder, int maxPrecision
 void
 handlePointerStore(StoreInst * storeInst, IRBuilder<> & Builder, int maxPrecisionBits)
 {
-	auto * pointerOperand = storeInst->getPointerOperand();
+	Value * valueOperand   = storeInst->getValueOperand();
+	Value * pointerOperand = storeInst->getPointerOperand();
 
-	if (!pointerOperand->getType()->getPointerElementType()->isIntegerTy(BIT_WIDTH))
+	auto resolveFloatPointer = [&](auto && self, Value * ptr) -> Value * {
+		if (!ptr || !ptr->getType()->isPointerTy())
+			return nullptr;
+
+		Type * elemTy = ptr->getType()->getPointerElementType();
+		if (elemTy->isFloatTy() || elemTy->isDoubleTy())
+			return ptr;
+
+		if (auto * bitcastOp = dyn_cast<BitCastOperator>(ptr))
+		{
+			return self(self, bitcastOp->getOperand(0));
+		}
+
+		if (auto * sel = dyn_cast<SelectInst>(ptr))
+		{
+			Value * tPtr = self(self, sel->getTrueValue());
+			Value * fPtr = self(self, sel->getFalseValue());
+			if (!tPtr || !fPtr)
+				return nullptr;
+			if (tPtr->getType() != fPtr->getType())
+				return nullptr;
+			return Builder.CreateSelect(sel->getCondition(), tPtr, fPtr, sel->getName() + ".float_ptr");
+		}
+
+		return nullptr;
+	};
+
+	Value * dequantStorePtr = pointerOperand;
+	if (!dequantStorePtr->getType()->getPointerElementType()->isFloatingPointTy())
 	{
-		llvm::errs() << "Pointer operand type is not an integer of expected bit width.\n";
+		Value * recovered = resolveFloatPointer(resolveFloatPointer, dequantStorePtr);
+		if (recovered)
+		{
+			dequantStorePtr = recovered;
+		}
+	}
+
+	// Check if storing an integer to pointer (which should be dequantized)
+	if (!valueOperand->getType()->isIntegerTy())
+	{
+		llvm::errs() << "Store value is not integer type. Skipping dequantization.\n";
 		return;
 	}
 
-	auto * loadInst = Builder.CreateLoad(pointerOperand->getType()->getPointerElementType(), pointerOperand);
-	if (isa<GlobalVariable>(loadInst->getPointerOperand()))
+	// Check if pointer points to float type
+	Type * pointerElementType = dequantStorePtr->getType()->getPointerElementType();
+	if (!pointerElementType->isFloatingPointTy())
 	{
-		llvm::errs() << "Skipping StoreInst due to global variable in load operand.\n";
+		llvm::errs() << "Pointer does not point to float type. Skipping dequantization.\n";
 		return;
 	}
 
-	Value * convertedFloat = Builder.CreateSIToFP(loadInst, Type::getFloatTy(storeInst->getContext()));
-	Value * dividedValue   = Builder.CreateFMul(
-	      convertedFloat, ConstantFP::get(Type::getFloatTy(storeInst->getContext()), 1.0 / FRAC_BASE));
+	llvm::errs() << "Dequantizing store: storing " << *valueOperand->getType()
+		     << " to pointer of " << *pointerElementType << "\n";
 
-	if (auto * bitcastInst = dyn_cast<BitCastInst>(pointerOperand))
+	// Step 1: Convert integer value to floating-point
+	Value * fpValue = Builder.CreateSIToFP(valueOperand, Type::getFloatTy(storeInst->getContext()));
+
+	// Step 2: Apply dequantization factor 2^(-maxPrecisionBits)
+	// Using high-precision constant to avoid runtime floating-point division errors
+	int	fracBase      = 1 << maxPrecisionBits;
+	float	dequantFactor = 1.0f / fracBase;
+	Value * dequantValue  = Builder.CreateFMul(
+	     fpValue,
+	     ConstantFP::get(Type::getFloatTy(storeInst->getContext()), dequantFactor),
+	     storeInst->getName() + ".dequantized");
+
+	// Step 3: Convert to the target floating-point type if needed
+	Value * targetValue = dequantValue;
+	if (pointerElementType->isDoubleTy())
 	{
-		Value * finalStorePtr = nullptr;
-		bool	isValidSource = false;
-		llvm::errs() << "BIT_WIDTH: " << BIT_WIDTH << "\n";
-		// Determine the final store pointer based on bit width
-		switch (BIT_WIDTH)
-
-		{
-			case 16:
-				if (bitcastInst->getSrcTy()->getPointerElementType()->isIntegerTy(32))
-				{
-					auto * i32Ptr = bitcastInst->getOperand(0);
-					if (auto * floatBitcast = dyn_cast<BitCastInst>(i32Ptr))
-					{
-						if (floatBitcast->getSrcTy()->getPointerElementType()->isFloatTy())
-						{
-							finalStorePtr = floatBitcast->getOperand(0);  // Original float*
-							isValidSource = true;
-						}
-					}
-				}
-				break;
-
-			case 32:
-				if (bitcastInst->getSrcTy()->getPointerElementType()->isFloatTy())
-				{
-					finalStorePtr = bitcastInst->getOperand(0);  // Original float*
-					isValidSource = true;
-				}
-				break;
-
-			default:
-				llvm::errs() << "Unsupported BIT_WIDTH: " << BIT_WIDTH << "\n";
-				return;
-		}
-
-		if (isValidSource && finalStorePtr)
-		{
-			Builder.CreateStore(dividedValue, finalStorePtr);
-			llvm::errs() << "Dequantized and stored value for pointer.\n";
-		}
-		else
-		{
-			llvm::errs() << "Invalid source for StoreInst: " << *storeInst << "\n";
-		}
+		targetValue = Builder.CreateFPExt(dequantValue, Type::getDoubleTy(storeInst->getContext()),
+						  storeInst->getName() + ".ext_to_double");
 	}
+
+	// Step 4: Store the dequantized float value
+	StoreInst * newStore = Builder.CreateStore(targetValue, dequantStorePtr);
+	llvm::errs() << "Created dequantized store: " << *newStore << "\n";
+
+	// Step 5: Remove the original quantized store instruction
+	storeInst->eraseFromParent();
+	llvm::errs() << "Removed original quantized store instruction.\n";
 }
 
 void
@@ -394,8 +417,8 @@ handleReturnValue(ReturnInst * retInst, int maxPrecisionBits)
 
 	llvm::Constant * oneDivFrac = llvm::ConstantFP::get(targetType, 1.0 / FRAC_BASE);
 
-	Value * dequantizedVal = Builder.CreateFMul(fpVal, oneDivFrac);
-	ReturnInst * newRet = ReturnInst::Create(retInst->getContext(), dequantizedVal, retInst);
+	Value *	     dequantizedVal = Builder.CreateFMul(fpVal, oneDivFrac);
+	ReturnInst * newRet	    = ReturnInst::Create(retInst->getContext(), dequantizedVal, retInst);
 
 	retInst->eraseFromParent();
 
@@ -417,7 +440,6 @@ dequantizeResults(StoreInst * storeInst, Function & F, int maxPrecisionBits)
 #else
 	handleGlobalStore(storeInst, Builder, maxPrecisionBits);
 #endif
-
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -540,13 +562,14 @@ detectFloatingPointOps(Module & Mod)
 	}
 }
 
-void checkFPUAvailability(Module &Mod)
+void
+checkFPUAvailability(Module & Mod)
 {
-	bool hasFPU = false;
+	bool		      hasFPU = false;
 	std::set<std::string> detectedFeatures;
 
 	// 1. Check target-features from function attributes
-	for (auto &F : Mod)
+	for (auto & F : Mod)
 	{
 		if (F.hasFnAttribute("target-features"))
 		{
@@ -602,7 +625,7 @@ void checkFPUAvailability(Module &Mod)
 	if (!detectedFeatures.empty())
 	{
 		llvm::errs() << "Target Features: ";
-		for (const auto &feature : detectedFeatures)
+		for (const auto & feature : detectedFeatures)
 		{
 			llvm::errs() << feature << " ";
 		}
@@ -619,8 +642,6 @@ void checkFPUAvailability(Module &Mod)
 		enableAutoQuantization = true;
 	}
 }
-
-
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -655,12 +676,19 @@ processWhitelistedFunctions(Module & module, const std::set<std::string> & white
 
 			for (BasicBlock & BB : F)
 			{
+				std::vector<StoreInst *> storeWorkList;
 				for (Instruction & I : BB)
 				{
-					// llvm::errs() << "Processing instruction: " << I << "\n";
 					if (auto * storeInst = dyn_cast<StoreInst>(&I))
 					{
-						llvm::errs() << "Found valid StoreInst.\n";
+						storeWorkList.push_back(storeInst);
+					}
+				}
+				for (StoreInst * storeInst : storeWorkList)
+				{
+					llvm::errs() << "Found valid StoreInst.\n";
+					if (storeInst && storeInst->getParent())
+					{
 						dequantizeResults(storeInst, F, maxPrecisionBits);
 					}
 				}
@@ -668,8 +696,6 @@ processWhitelistedFunctions(Module & module, const std::set<std::string> & white
 		}
 	}
 }
-
-
 
 // Function to save the IR of a module to a file
 void
@@ -942,8 +968,6 @@ irPassLLVMIROptimizeByRange(State * N, bool enableQuantization, bool enableOverl
 	//	}
 	//	int MAX_PRECISION_BITS = maxPrecisionBits;
 
-
-
 	int maxPrecisionBits = MAX_PRECISION_BITS;
 
 	/**
@@ -1092,7 +1116,6 @@ irPassLLVMIROptimizeByRange(State * N, bool enableQuantization, bool enableOverl
 		checkOverflow(N, funcPair.second, maxPrecisionBits);
 	}
 
-
 	flexprint(N->Fe, N->Fm, N->Fpinfo, "shrink data type by range\n");
 	for (auto & mi : *Mod)
 	{
@@ -1129,7 +1152,8 @@ irPassLLVMIROptimizeByRange(State * N, bool enableQuantization, bool enableOverl
 	 * Check for potential overflows
 	 */
 	flexprint(N->Fe, N->Fm, N->Fpinfo, "checking for potential overflows\n");
-	for (auto & funcPair : funcBoundInfo) {
+	for (auto & funcPair : funcBoundInfo)
+	{
 		checkOverflow(N, funcPair.second, maxPrecisionBits);
 	}
 
@@ -1170,8 +1194,8 @@ irPassLLVMIROptimizeByRange(State * N, bool enableQuantization, bool enableOverl
 	//			}
 
 	/*
-		 * simplify the condition of each branch
-		 * */
+	 * simplify the condition of each branch
+	 * */
 	flexprint(N->Fe, N->Fm, N->Fpinfo, "simplify control flow by range\n");
 	for (auto & mi : *Mod)
 	{
@@ -1191,9 +1215,6 @@ irPassLLVMIROptimizeByRange(State * N, bool enableQuantization, bool enableOverl
 	passManager.add(createInstSimplifyLegacyPass());
 	passManager.add(createGlobalDCEPass());
 	passManager.run(*Mod);
-
-
-
 
 	//		/*
 	//		 * remove the functions that are optimized by passes.
@@ -1241,8 +1262,6 @@ irPassLLVMIROptimizeByRange(State * N, bool enableQuantization, bool enableOverl
 	//			if (useOverLoad)
 	//				overloadFunc(Mod, callerMap);
 
-
-
 	// Finally, erase old functions
 
 	//	eraseOldFunctions();
@@ -1250,17 +1269,13 @@ irPassLLVMIROptimizeByRange(State * N, bool enableQuantization, bool enableOverl
 	// eraseOldGlobals();
 	eraseUnusedConstant(*Mod);
 
-//		eraseOldFunctions();
-//	eraseOldFunctions();
-
+	//		eraseOldFunctions();
+	//	eraseOldFunctions();
 
 	processWhitelistedFunctions(*Mod, whitelist, maxPrecisionBits);
 
-//	eraseOldFunctions();
+	//	eraseOldFunctions();
 	eraseOldFunctions(*Mod);
-
-
-
 
 	const char * homeDir = getenv("HOME");
 	if (!homeDir)
@@ -1268,13 +1283,11 @@ irPassLLVMIROptimizeByRange(State * N, bool enableQuantization, bool enableOverl
 		llvm::errs() << "Error: HOME environment variable not set.\n";
 		return;
 	}
-	// Save the optimized IR to a file
-	// std::string fileName = std::string(homeDir) + "/CoSense/applications/newton/llvm-ir/MadgwickAHRS_output.ll";
-	// saveModuleIR(*Mod, fileName);
-	// Save the optimized IR to a file
-	saveModuleIR(*Mod, "/home/xyf/CoSense/applications/newton/llvm-ir/MadgwickAHRS_output.ll");
-	saveModuleIR(*Mod, "/home/xyf/CoSense/applications/newton/llvm-ir/MahonyAHRS_output.ll");
-	saveModuleIR(*Mod, "/home/xyf/CoSense/applications/newton/llvm-ir/sensfusion6_output.ll");
+	StringRef   inputPath(N->llvmIR);
+	std::string outDir  = std::string(sys::path::parent_path(inputPath));
+	std::string outStem = std::string(sys::path::stem(inputPath)) + "_output.ll";
+	std::string outPath = outDir + "/" + outStem;
+	saveModuleIR(*Mod, outPath);
 
 	/*
 	 * Dump BC file to a file.
