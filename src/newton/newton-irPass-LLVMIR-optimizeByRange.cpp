@@ -146,7 +146,6 @@ autoWhitelistFunctions(Module & Mod, std::set<std::string> & whitelist)
 			if (Arg.hasName())
 			{
 				std::string argName = Arg.getName().str();
-				// 这里你可以加更丰富的匹配，比如查 typedef 类型名（需要调试信息）
 				if (argName.find("bmx055") != std::string::npos)
 				{
 					hasSensorParams = true;
@@ -163,7 +162,6 @@ autoWhitelistFunctions(Module & Mod, std::set<std::string> & whitelist)
 	}
 }
 
-// #define IS_POINTER 1
 std::set<std::string> whitelist = {
     "MadgwickAHRSupdate",
     "MahonyAHRSupdate",
@@ -304,6 +302,11 @@ handlePointerStore(StoreInst * storeInst, IRBuilder<> & Builder, int maxPrecisio
 	};
 
 	Value * dequantStorePtr = pointerOperand;
+	if (!dequantStorePtr->getType()->isPointerTy())
+	{
+		llvm::errs() << "Pointer operand is not pointer type. Skipping dequantization.\n";
+		return;
+	}
 	if (!dequantStorePtr->getType()->getPointerElementType()->isFloatingPointTy())
 	{
 		Value * recovered = resolveFloatPointer(resolveFloatPointer, dequantStorePtr);
@@ -321,6 +324,11 @@ handlePointerStore(StoreInst * storeInst, IRBuilder<> & Builder, int maxPrecisio
 	}
 
 	// Check if pointer points to float type
+	if (!dequantStorePtr->getType()->isPointerTy())
+	{
+		llvm::errs() << "Recovered pointer is not pointer type. Skipping dequantization.\n";
+		return;
+	}
 	Type * pointerElementType = dequantStorePtr->getType()->getPointerElementType();
 	if (!pointerElementType->isFloatingPointTy())
 	{
@@ -367,7 +375,12 @@ handleMatrixStore(StoreInst * storeInst, IRBuilder<> & Builder, int maxPrecision
 	Value * pointerOperand = storeInst->getPointerOperand();
 
 	// Ensure the stored value is an integer and the destination is a float pointer
-	Type * valueType	  = valueOperand->getType();
+	Type * valueType = valueOperand->getType();
+	if (!pointerOperand->getType()->isPointerTy())
+	{
+		llvm::errs() << "Skipping matrix store: pointer operand is not pointer type.\n";
+		return;
+	}
 	Type * pointerElementType = pointerOperand->getType()->getPointerElementType();
 
 	if (valueType->isIntegerTy() && pointerElementType->isFloatingPointTy())
@@ -734,43 +747,6 @@ dumpIR(State * N, std::string fileSuffix, const std::unique_ptr<Module> & Mod)
 	WriteBitcodeToFile(*Mod, dumpedFile);
 	dumpedFile.close();
 }
-
-// void dumpIR(State *N, std::string fileSuffix, const std::unique_ptr<Module> &Mod) {
-//	StringRef filePath(N->llvmIR);
-//	std::string dirPath = std::string(sys::path::parent_path(filePath)) + "/";
-//	std::string fileName = std::string(sys::path::stem(filePath)) + "_" + fileSuffix + ".bc";
-//	std::string filePathStr = dirPath + fileName;
-//	filePath = StringRef(filePathStr);
-//
-//	// 输出调试信息：目标 IR 文件路径
-//	flexprint(N->Fe, N->Fm, N->Fpinfo, "Dump IR of: %s\n", filePath.str().c_str());
-//	llvm::errs() << "DumpIR: File path = " << filePath.str() << "\n";
-//
-//	// 使用 errorCode 检查创建文件是否成功
-//	std::error_code errorCode;
-//	raw_fd_ostream dumpedFile(filePath, errorCode);
-//	if (errorCode) {
-//		// 输出错误信息
-//		flexprint(N->Fe, N->Fm, N->Fpinfo, "Error opening file %s: %s\n", filePath.str().c_str(), errorCode.message().c_str());
-//		llvm::errs() << "DumpIR: Failed to open file: " << filePath.str() << " (" << errorCode.message() << ")\n";
-//		return;
-//	} else {
-//		llvm::errs() << "DumpIR: File opened successfully.\n";
-//	}
-//
-//	// 写入 IR 并检查写入过程
-//	WriteBitcodeToFile(*Mod, dumpedFile);
-//	dumpedFile.flush();
-//	if (dumpedFile.has_error()) {
-//		llvm::errs() << "DumpIR: Error during WriteBitcodeToFile: " << dumpedFile.error().message() << "\n";
-//		flexprint(N->Fe, N->Fm, N->Fpinfo, "Error during WriteBitcodeToFile: %s\n", dumpedFile.error().message().c_str());
-//	} else {
-//		llvm::errs() << "DumpIR: WriteBitcodeToFile completed successfully.\n";
-//	}
-//
-//	dumpedFile.close();
-//	llvm::errs() << "DumpIR: File closed.\n";
-// }
 
 void
 mergeBoundInfo(BoundInfo * dst, const BoundInfo * src)

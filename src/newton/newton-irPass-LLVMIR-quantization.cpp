@@ -574,32 +574,32 @@ updateGlobalVariables(Module * module, Type * quantizedType)
 	}
 }
 
-// 辅助函数：对于 ConstantExpr 类型的使用，如果它是 GEP，则尝试构造新的 constant GEP 表达式
 static void
 handleConstantExprUse(llvm::ConstantExpr *   constExpr,
 		      llvm::GlobalVariable & origConst,
 		      llvm::GlobalVariable & quantizedConst)
 {
-	// 如果 constant-expression 是 getelementptr，则重建一个新的 constant-expression
 	if (constExpr->getOpcode() == llvm::Instruction::GetElementPtr)
 	{
 		llvm::SmallVector<llvm::Constant *, 4> Indices;
-		// 从操作数1开始（operand0 是指针）
 		for (unsigned i = 1, e = constExpr->getNumOperands(); i < e; ++i)
 		{
 			if (llvm::Constant * C = llvm::dyn_cast<llvm::Constant>(constExpr->getOperand(i)))
 				Indices.push_back(C);
 		}
-		// 直接使用量化后的全局变量，不做 bitcast
+		Type * quantizedGlobalTy = quantizedConst.getType();
+		if (!quantizedGlobalTy->isPointerTy())
+		{
+			llvm::errs() << "Skipping constant GEP rebuild for non-pointer global type: " << *quantizedGlobalTy << "\n";
+			return;
+		}
 		llvm::Constant * newGEP = llvm::ConstantExpr::getGetElementPtr(
-		    quantizedConst.getType()->getPointerElementType(), &quantizedConst, Indices);
-		// 用新构造的 constant 替换所有对该 constant-expression 的使用
+		    quantizedGlobalTy->getPointerElementType(), &quantizedConst, Indices);
 		constExpr->replaceAllUsesWith(newGEP);
 		llvm::errs() << "Replaced constant GEP for " << origConst.getName() << "\n";
 	}
 	else
 	{
-		// 对于非 GEP 的 constant-expression，则转换为指令
 		llvm::Instruction * insertPt = nullptr;
 		for (llvm::Use & U : constExpr->uses())
 		{
@@ -628,7 +628,13 @@ handleGEPInstruction(llvm::GetElementPtrInst * gep,
 	llvm::SmallVector<llvm::Value *, 4> Indices;
 	for (llvm::Value * idx : gep->indices())
 		Indices.push_back(idx);
-	llvm::Value * newGEP = builder.CreateGEP(quantizedConst.getType()->getPointerElementType(),
+	Type * quantizedGlobalTy = quantizedConst.getType();
+	if (!quantizedGlobalTy->isPointerTy())
+	{
+		llvm::errs() << "Skipping GEP replacement for non-pointer global type: " << *quantizedGlobalTy << "\n";
+		return;
+	}
+	llvm::Value * newGEP = builder.CreateGEP(quantizedGlobalTy->getPointerElementType(),
 						 &quantizedConst, Indices,
 						 gep->getName() + ".quantized_gep");
 	gep->replaceAllUsesWith(newGEP);
@@ -775,8 +781,14 @@ void
 quantizeMatrixFloat(LoadInst * loadInst, IRBuilder<> & Builder, Type * quantizedType, Type * loadedType)
 {
 	// Get the pointer operand of the load instruction
-	Value * pointerOperand	   = loadInst->getPointerOperand();
-	Type *	pointerElementType = pointerOperand->getType()->getPointerElementType();
+	Value * pointerOperand = loadInst->getPointerOperand();
+	if (!pointerOperand->getType()->isPointerTy())
+	{
+		llvm::errs() << "Skipping quantizeMatrixFloat: pointer operand is not pointer type: "
+			     << *pointerOperand->getType() << "\n";
+		return;
+	}
+	Type * pointerElementType = pointerOperand->getType()->getPointerElementType();
 
 	if (pointerElementType->isFloatingPointTy())
 	{
@@ -1705,7 +1717,13 @@ handleStore(Instruction * llvmIrInstruction, Type * quantizedType)
 		auto	    valueOperand   = llvmIrStoreInstruction->getValueOperand();
 		auto	    pointerOperand = llvmIrStoreInstruction->getPointerOperand();
 		auto	    valueType	   = llvmIrStoreInstruction->getValueOperand()->getType();
-		auto	    pointerType	   = pointerOperand->getType()->getPointerElementType();
+		if (!pointerOperand->getType()->isPointerTy())
+		{
+			llvm::errs() << "Skipping store quantization: pointer operand has non-pointer type: "
+				     << *pointerOperand->getType() << "\n";
+			return;
+		}
+		auto pointerType = pointerOperand->getType()->getPointerElementType();
 
 		// **Check if pointerOperand comes from GEP float***
 		if (auto gepInstruction = dyn_cast<GetElementPtrInst>(pointerOperand))
@@ -2093,28 +2111,20 @@ handleCall(CallInst * llvmIrCallInstruction, Type * quantizedType, std::vector<l
 void
 handleGetElementPtr(GetElementPtrInst * gepInst, Type * quantizedType)
 {
-	// 获取原始指令所操作的数组的元素类型
 	Type * elementType = gepInst->getSourceElementType();
 
-	// 仅处理原来操作数为浮点类型的情况（例如 double 或 float）
 	if (elementType->isFloatingPointTy())
 	{
 		IRBuilder<> Builder(gepInst);
 
-		// 获取基指针
 		Value * basePtr = gepInst->getPointerOperand();
 
-		// 收集原 GEP 指令中的所有索引
 		SmallVector<Value *, 4> Indices;
 		for (Value * Idx : gepInst->indices())
 			Indices.push_back(Idx);
 
-		// 直接构造新的 getelementptr 指令，
-		// 指定元素类型为 quantizedType，从而生成的指针类型为 quantizedType*
-		// 使用原始指令的名称，不附加后缀
 		Value * newGEP = Builder.CreateGEP(quantizedType, basePtr, Indices, gepInst->getName());
 
-		// 替换所有对原 GEP 指令的使用，并删除原指令
 		gepInst->replaceAllUsesWith(newGEP);
 		gepInst->eraseFromParent();
 
