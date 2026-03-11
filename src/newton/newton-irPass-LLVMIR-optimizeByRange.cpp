@@ -41,6 +41,7 @@ All rights reserved.
 #include "newton-irPass-LLVMIR-constantSubstitution.h"
 #include "newton-irPass-LLVMIR-shrinkTypeByRange.h"
 #include "newton-irPass-LLVMIR-quantization.h"
+#include "newton-irPass-LLVMIR-quantDecider.h"
 #include "newton-irPass-LLVMIR-optimizeByRange.h"
 #include "newton-irPass-LLVMIR-memoryAlignment.h"
 #include "newton-irPass-LLVMIR-emitAssume.h"
@@ -72,6 +73,7 @@ All rights reserved.
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/IR/Function.h"
+#include "llvm/ADT/SmallString.h"
 
 #include "config.h"
 
@@ -529,207 +531,6 @@ dequantizeResults(StoreInst * storeInst, Function & F, int maxPrecisionBits)
 #endif
 }
 
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-bool enableAutoQuantization = false;
-
-void
-detectFloatingPointOps(Module & Mod)
-{
-	bool			   hasFloatOps = false;
-	std::map<std::string, int> floatOpCounts;  // Map to store the count of floating-point operations per function
-
-	for (auto & F : Mod)
-	{
-		int functionFloatOpCount = 0;  // Counter for floating-point operations in the current function
-
-		// Analyze function parameters
-		int			 paramCount  = 0;
-		int			 returnCount = 0;
-		std::vector<std::string> paramTypes;  // To store parameter types
-		for (auto & Arg : F.args())
-		{
-			paramCount++;
-			if (Arg.getType()->isPointerTy())
-			{
-				paramTypes.push_back("pointer");
-			}
-			else if (Arg.getType()->isFloatingPointTy())
-			{
-				paramTypes.push_back("floating-point");
-			}
-			else if (Arg.getType()->isIntegerTy())
-			{
-				paramTypes.push_back("integer");
-			}
-			else
-			{
-				paramTypes.push_back("unknown");
-			}
-		}
-
-		// Analyze function return type
-		std::string returnType = "void";  // Default return type
-		if (!F.getReturnType()->isVoidTy())
-		{
-			if (F.getReturnType()->isPointerTy())
-			{
-				returnType = "pointer";
-			}
-			else if (F.getReturnType()->isFloatingPointTy())
-			{
-				returnType = "floating-point";
-			}
-			else if (F.getReturnType()->isIntegerTy())
-			{
-				returnType = "integer";
-			}
-			else
-			{
-				returnType = "unknown";
-			}
-		}
-
-		for (auto & BB : F)
-		{
-			for (auto & I : BB)
-			{
-				// Check if the instruction is a floating-point operation
-				if (I.getOpcode() == Instruction::FAdd ||
-				    I.getOpcode() == Instruction::FMul ||
-				    I.getOpcode() == Instruction::FSub ||
-				    I.getOpcode() == Instruction::FDiv)
-				{
-					hasFloatOps = true;
-					functionFloatOpCount++;
-				}
-
-				// Check if the instruction is a return
-				if (isa<ReturnInst>(I))
-				{
-					returnCount++;
-				}
-			}
-		}
-
-		// Store the count for this function
-		if (functionFloatOpCount > 0)
-		{
-			floatOpCounts[F.getName().str()] = functionFloatOpCount;
-		}
-
-		// Output function details
-		llvm::errs() << "Function: " << F.getName() << "\n";
-		llvm::errs() << "  Return Type: " << returnType << "\n";
-		llvm::errs() << "  Parameter Count: " << paramCount << "\n";
-		llvm::errs() << "  Parameter Types: ";
-		for (const auto & type : paramTypes)
-		{
-			llvm::errs() << type << " ";
-		}
-		llvm::errs() << "\n";
-		// f
-	}
-
-	// Output the results
-	if (hasFloatOps)
-	{
-		llvm::errs() << "Floating-point operations detected in the module.\n";
-		for (const auto & entry : floatOpCounts)
-		{
-			llvm::errs() << "Function: " << entry.first
-				     << " - Floating-point operations: " << entry.second << "\n";
-		}
-		llvm::errs() << "Enabling Auto-Quantization.\n";
-		enableAutoQuantization = true;
-	}
-	else
-	{
-		llvm::errs() << "No floating-point operations detected. Skipping Auto-Quantization.\n";
-	}
-}
-
-void
-checkFPUAvailability(Module & Mod)
-{
-	bool		      hasFPU = false;
-	std::set<std::string> detectedFeatures;
-
-	// 1. Check target-features from function attributes
-	for (auto & F : Mod)
-	{
-		if (F.hasFnAttribute("target-features"))
-		{
-			std::string features = F.getFnAttribute("target-features").getValueAsString().str();
-			detectedFeatures.insert(features);
-
-			// x86 FPU features
-			if (features.find("+sse") != std::string::npos ||
-			    features.find("+sse2") != std::string::npos ||
-			    features.find("+avx") != std::string::npos ||
-			    features.find("+x87") != std::string::npos ||
-			    features.find("+fma") != std::string::npos)
-			{
-				hasFPU = true;
-			}
-
-			// ARM FPU features
-			if (features.find("+vfp") != std::string::npos ||
-			    features.find("+neon") != std::string::npos ||
-			    features.find("+fp-armv8") != std::string::npos ||
-			    features.find("+fp16") != std::string::npos)
-			{
-				hasFPU = true;
-			}
-		}
-	}
-
-	// 2. Supplementary check: parse target triple for architecture
-	std::string triple = Mod.getTargetTriple();
-	llvm::errs() << "Target Triple: " << triple << "\n";
-
-	if (triple.find("armv7e-m") != std::string::npos ||
-	    triple.find("armv8-m.main") != std::string::npos ||
-	    triple.find("aarch64") != std::string::npos)
-	{
-		hasFPU = true;
-		llvm::errs() << "Triple indicates hardware FPU support.\n";
-	}
-	else if (triple.find("armv6-m") != std::string::npos ||
-		 triple.find("armv7-m") != std::string::npos)
-	{
-		hasFPU = false;
-		llvm::errs() << "Triple indicates no FPU support.\n";
-	}
-	else
-	{
-		llvm::errs() << "Triple is not recognized. Assuming conservative FPU support = false.\n";
-	}
-
-	// 3. (Removed hardcoded CPU name database for better generality)
-
-	// Summary
-	if (!detectedFeatures.empty())
-	{
-		llvm::errs() << "Target Features: ";
-		for (const auto & feature : detectedFeatures)
-		{
-			llvm::errs() << feature << " ";
-		}
-		llvm::errs() << "\n";
-	}
-
-	if (hasFPU)
-	{
-		llvm::errs() << "FPU detected (from features and/or triple).\n";
-	}
-	else
-	{
-		llvm::errs() << "No FPU detected. Enabling Auto-Quantization.\n";
-		enableAutoQuantization = true;
-	}
-}
-
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 // Process functions that are whitelisted for dequantization
@@ -813,13 +614,43 @@ dumpIR(State * N, std::string fileSuffix, const std::unique_ptr<Module> & Mod)
 	std::string dirPath	= std::string(sys::path::parent_path(filePath)) + "/";
 	std::string fileName	= std::string(sys::path::stem(filePath)) + "_" + fileSuffix + ".bc";
 	std::string filePathStr = dirPath + fileName;
+	std::string tmpPathStr	= filePathStr + ".tmp";
 	filePath		= StringRef(filePathStr);
 
 	flexprint(N->Fe, N->Fm, N->Fpinfo, "Dump IR of: %s\n", filePath.str().c_str());
-	std::error_code errorCode(errno, std::generic_category());
-	raw_fd_ostream	dumpedFile(filePath, errorCode);
+	std::error_code errorCode;
+	raw_fd_ostream	dumpedFile(tmpPathStr, errorCode, llvm::sys::fs::OF_None);
+	if (errorCode)
+	{
+		flexprint(N->Fe, N->Fm, N->Fperr, "Error: failed to open %s for bitcode output: %s\n",
+			  tmpPathStr.c_str(), errorCode.message().c_str());
+		return;
+	}
+
 	WriteBitcodeToFile(*Mod, dumpedFile);
+	dumpedFile.flush();
 	dumpedFile.close();
+
+	llvm::sys::fs::rename(tmpPathStr, filePathStr);
+}
+
+void
+emitOutputIRArtifacts(State * N, const std::unique_ptr<Module> & Mod)
+{
+	StringRef	 inputPath(N->llvmIR);
+	SmallString<256> outPath(sys::path::parent_path(inputPath));
+	std::string	 outName = (sys::path::stem(inputPath) + "_output.ll").str();
+	sys::path::append(outPath, outName);
+
+	saveModuleIR(*Mod, outPath.str().str());
+
+	LLVMContext		dumpContext;
+	SMDiagnostic		dumpErr;
+	std::unique_ptr<Module> sanitizedOutputMod = parseIRFile(outPath.str(), dumpErr, dumpContext);
+	if (sanitizedOutputMod)
+		dumpIR(N, "output", sanitizedOutputMod);
+	else
+		dumpIR(N, "output", Mod);
 }
 
 void
@@ -941,7 +772,8 @@ overloadFunc(std::unique_ptr<Module> & Mod, std::map<std::string, CallInst *> & 
 }
 
 void
-irPassLLVMIROptimizeByRange(State * N, bool enableQuantization, bool enableOverload, bool enableBuiltinAssume)
+irPassLLVMIROptimizeByRange(State * N, bool enableQuantization, bool enableOverload,
+			    bool enableBuiltinAssume, bool enableQuantDecider)
 {
 	llvm::errs() << "Entering irPassLLVMIROptimizeByRange\n";
 	if (N->llvmIR == nullptr)
@@ -1136,9 +968,6 @@ irPassLLVMIROptimizeByRange(State * N, bool enableQuantization, bool enableOverl
 		}
 	}
 
-	detectFloatingPointOps(*Mod);
-	checkFPUAvailability(*Mod);
-
 	/*
 	 * analyze the range of all local variables in each function
 	 * */
@@ -1185,8 +1014,29 @@ irPassLLVMIROptimizeByRange(State * N, bool enableQuantization, bool enableOverl
 		flexprint(N->Fe, N->Fm, N->Fpinfo, "auto quantization\n");
 		llvm::errs() << "Auto quantization enabled\n";
 		std::vector<llvm::Function *> functionsToInsert;
+
+		std::map<std::string, QuantDeciderResult> quantDecisions;
+		if (enableQuantDecider)
+		{
+			llvm::errs() << "Quant-Decider enabled: evaluating functions before quantization\n";
+			irPassLLVMIRQuantDecider(N, *Mod, maxPrecisionBits, quantDecisions);
+		}
+
 		for (auto & mi : *Mod)
 		{
+			if (mi.isDeclaration())
+				continue;
+
+			if (enableQuantDecider)
+			{
+				auto decisionIt = quantDecisions.find(mi.getName().str());
+				if (decisionIt != quantDecisions.end() && !decisionIt->second.shouldQuantize)
+				{
+					llvm::errs() << "Skipping quantization by Quant-Decider: " << mi.getName() << "\n";
+					continue;
+				}
+			}
+
 			llvm::errs() << "Quantizing function: " << mi.getName() << "\n";
 
 			irPassLLVMIRAutoQuantization(N, mi, functionsToInsert, maxPrecisionBits);
@@ -1329,21 +1179,6 @@ irPassLLVMIROptimizeByRange(State * N, bool enableQuantization, bool enableOverl
 	//	eraseOldFunctions();
 	eraseOldFunctions(*Mod);
 
-	const char * homeDir = getenv("HOME");
-	if (!homeDir)
-	{
-		llvm::errs() << "Error: HOME environment variable not set.\n";
-		return;
-	}
-	StringRef   inputPath(N->llvmIR);
-	std::string outDir  = std::string(sys::path::parent_path(inputPath));
-	std::string outStem = std::string(sys::path::stem(inputPath)) + "_output.ll";
-	std::string outPath = outDir + "/" + outStem;
-	saveModuleIR(*Mod, outPath);
-
-	/*
-	 * Dump BC file to a file.
-	 * */
-	dumpIR(N, "output", Mod);
+	emitOutputIRArtifacts(N, Mod);
 	llvm::errs() << "Exiting irPassLLVMIROptimizeByRange\n";
 }
