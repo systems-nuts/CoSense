@@ -9,6 +9,7 @@
 #include "newton-irPass-LLVMIR-quantization.h"
 #include "llvm/Support/raw_ostream.h"
 #include <unordered_map>
+#include <set>
 #include "llvm/IR/Metadata.h"
 #include "config.h"
 #include <limits>
@@ -308,52 +309,6 @@ eraseOldFunctions(Module & M)
 }
 
 bool
-isWhitelistedGlobal(const std::string & globalName)
-{
-	// Define the whitelist of global variables
-	//	static const std::set<std::string> whitelist = {"beta", "qw", "qx", "qy", "qz","zero","q0","q1","q2","q3"};
-	//	return whitelist.find(globalName) != whitelist.end();
-	return true;
-}
-
-// bool
-// shouldProcessFunction(Function &F)
-//{
-//	if (F.isDeclaration())
-//		return false;
-//
-//
-//	for (auto &BB : F)
-//	{
-//		for (auto &I : BB)
-//		{
-//
-//			if (auto *DbgValue = dyn_cast<DbgValueInst>(&I))
-//			{
-//				Value *Val = DbgValue->getValue();
-//				if (!Val)
-//					continue;
-//				if (auto *Arg = dyn_cast<Argument>(Val))
-//				{
-//					auto *DIVar = DbgValue->getVariable();
-//					if (DIVar)
-//					{
-//						std::string typeName = DIVar->getType()->getName().str();
-//						if (typeName.find("bmx055") != std::string::npos)
-//						{
-//
-//							return true;
-//						}
-//					}
-//				}
-//			}
-//		}
-//	}
-//
-//	return false;
-// }
-
-bool
 shouldProcessFunction(Function & F)
 {
 	// List of function names to process
@@ -545,13 +500,6 @@ updateGlobalVariables(Module * module, Type * quantizedType)
 	for (GlobalVariable & globalVar : module->globals())
 	{
 		std::string globalName = globalVar.getName().str();
-
-		// Skip non-whitelisted globals
-		if (!isWhitelistedGlobal(globalName))
-		{
-			llvm::errs() << "Skipping global variable not in whitelist: " << globalName << "\n";
-			continue;
-		}
 
 		// Process only float or double global variables
 		if (!globalVar.getType()->getElementType()->isFloatTy() &&
@@ -2000,26 +1948,6 @@ handleSinCosCall(CallInst * llvmIrCallInstruction, Type * quantizedType, const s
 	llvmIrCallInstruction->eraseFromParent();
 }
 
-// void
-// handleSqrtCall(CallInst * llvmIrCallInstruction, Type * quantizedType, Function * fixsqrt)
-//{
-//	IRBuilder<> Builder(llvmIrCallInstruction);
-//	auto	    operand = llvmIrCallInstruction->getOperand(0);
-//
-//	// Ensure operand is in the correct type
-//	if (operand->getType()->isFloatingPointTy())
-//	{
-//		operand = Builder.CreateFPToSI(operand, quantizedType);
-//	}
-//
-//	// Create call to the fixed-point sqrt function
-//	llvm::Value * sqrtResult = Builder.CreateCall(fixsqrt, {operand});
-//
-//	// Replace the original instruction with the new fixed-point sqrt result
-//	llvmIrCallInstruction->replaceAllUsesWith(sqrtResult);
-//	llvmIrCallInstruction->eraseFromParent();
-// }
-
 void
 
 // handleCall(CallInst * llvmIrCallInstruction, Type * quantizedType, std::vector<llvm::Function *> & functionsToInsert,  llvm::Function * fixrsqrt)
@@ -2040,11 +1968,6 @@ handleCall(CallInst * llvmIrCallInstruction, Type * quantizedType, std::vector<l
 		Value * newInst = nullptr;
 		llvm::errs() << "Handling invsqrt call\n";
 		handleRsqrtCall(llvmIrCallInstruction, quantizedType, fixrsqrt);
-
-		//		functionsToErase.erase(
-		//		    std::remove(functionsToErase.begin(), functionsToErase.end(), fixrsqrt),
-		//		    functionsToErase.end()
-		//		);
 
 		if (calledFunction->use_empty())
 		{
@@ -2565,31 +2488,9 @@ irPassLLVMIRAutoQuantization(State * N, llvm::Function & llvmIrFunction, std::ve
 						llvmIrInstruction->eraseFromParent();
 						break;
 					}
-						//				{
-						//					IRBuilder<>   Builder(llvmIrInstruction);
-						//					Instruction * insertPoint = llvmIrInstruction->getNextNode();
-						//					Builder.SetInsertPoint(insertPoint);
-						//					Value * newInst = nullptr;
-						//					if (llvmIrInstruction->getOperand(0)->getType()->isIntegerTy())
-						//					{
-						//						newInst = Builder.CreateSIToFP(
-						//						    llvmIrInstruction->getOperand(0), llvmIrInstruction->getType());
-						//					}
-						//					else
-						//					{
-						//						newInst = Builder.CreateFPCast(
-						//						    llvmIrInstruction->getOperand(0), llvmIrInstruction->getType());
-						//					}
-						//					llvmIrInstruction->replaceAllUsesWith(newInst);
-						//					llvmIrInstruction->removeFromParent();
-						//					break;
-						//				}
 
 					case Instruction::BitCast:
 					case Instruction::Ret:
-						//						handleReturn(cast<ReturnInst>(llvmIrInstruction), quantizedType);
-						//						break;
-
 					case Instruction::Switch:
 					case Instruction::Br:
 					{
@@ -2633,11 +2534,244 @@ irPassLLVMIRAutoQuantization(State * N, llvm::Function & llvmIrFunction, std::ve
 				}
 			}
 		}
-
-		// adaptTypeCast(llvmIrFunction, quantizedType);
-
-		// Process functions that are whitelisted for dequantization
-		// processWhitelistedFunctions(*module, whitelist);
 		return;
 	}
+}
+
+static void
+collectDequantizeFunctionsFromAttributes(Module & module, std::set<std::string> & whitelist)
+{
+	for (Function & function : module)
+	{
+		if (function.isDeclaration())
+			continue;
+
+		if (function.hasFnAttribute("newton.dequantize"))
+		{
+			errs() << "Auto-Whitelisting dequantize function: " << function.getName() << "\n";
+			whitelist.insert(function.getName().str());
+		}
+	}
+}
+
+static void
+handleGlobalStoreDequantize(StoreInst * storeInst, IRBuilder<> & builder, int maxPrecisionBits)
+{
+	auto * pointerOperand	  = storeInst->getPointerOperand();
+	auto * quantizedGlobalVar = dyn_cast<GlobalVariable>(pointerOperand);
+	if (!quantizedGlobalVar)
+	{
+		errs() << "Pointer operand is not a global variable. Skipping.\n";
+		return;
+	}
+
+	std::string originalName = quantizedGlobalVar->getName().str();
+	if (originalName.size() <= 10 || originalName.compare(originalName.size() - 10, 10, "_quantized") != 0)
+	{
+		errs() << "Skipping: No matching original global for " << quantizedGlobalVar->getName() << "\n";
+		return;
+	}
+	originalName = originalName.substr(0, originalName.size() - 10);
+
+	GlobalVariable * originalGlobalVar = quantizedGlobalVar->getParent()->getNamedGlobal(originalName);
+	if (!originalGlobalVar || !originalGlobalVar->getType()->getElementType()->isFloatingPointTy())
+	{
+		errs() << "Skipping: Original global variable not found or not floating-point: " << originalName << "\n";
+		return;
+	}
+
+	Instruction * prevInst = storeInst->getPrevNode();
+	if (!prevInst || !isa<TruncInst>(prevInst))
+	{
+		errs() << "Skipping: Previous instruction is not trunc.\n";
+		return;
+	}
+
+	auto *	     loadInst	      = builder.CreateLoad(quantizedGlobalVar->getType()->getPointerElementType(), quantizedGlobalVar);
+	Value *	     convertedFloat   = builder.CreateSIToFP(loadInst, Type::getFloatTy(storeInst->getContext()));
+	const double dequantFactor    = std::ldexp(1.0, -maxPrecisionBits);
+	Value *	     dequantizedValue = builder.CreateFMul(convertedFloat,
+							   ConstantFP::get(Type::getFloatTy(storeInst->getContext()), dequantFactor));
+	builder.CreateStore(dequantizedValue, originalGlobalVar);
+}
+
+static void
+handlePointerStoreDequantize(StoreInst * storeInst, IRBuilder<> & builder, int maxPrecisionBits)
+{
+	Value * valueOperand   = storeInst->getValueOperand();
+	Value * pointerOperand = storeInst->getPointerOperand();
+
+	auto resolveFloatPointer = [&](auto && self, Value * ptr) -> Value * {
+		if (!ptr || !ptr->getType()->isPointerTy())
+			return nullptr;
+
+		Type * elemTy = ptr->getType()->getPointerElementType();
+		if (elemTy->isFloatTy() || elemTy->isDoubleTy())
+			return ptr;
+
+		if (auto * bitcastOp = dyn_cast<BitCastOperator>(ptr))
+			return self(self, bitcastOp->getOperand(0));
+
+		if (auto * sel = dyn_cast<SelectInst>(ptr))
+		{
+			Value * truePtr	 = self(self, sel->getTrueValue());
+			Value * falsePtr = self(self, sel->getFalseValue());
+			if (!truePtr || !falsePtr || truePtr->getType() != falsePtr->getType())
+				return nullptr;
+			return builder.CreateSelect(sel->getCondition(), truePtr, falsePtr, sel->getName() + ".float_ptr");
+		}
+
+		return nullptr;
+	};
+
+	Value * dequantStorePtr = pointerOperand;
+	if (!dequantStorePtr->getType()->isPointerTy())
+		return;
+
+	if (!dequantStorePtr->getType()->getPointerElementType()->isFloatingPointTy())
+	{
+		Value * recovered = resolveFloatPointer(resolveFloatPointer, dequantStorePtr);
+		if (recovered)
+			dequantStorePtr = recovered;
+	}
+
+	if (!valueOperand->getType()->isIntegerTy())
+		return;
+	if (!dequantStorePtr->getType()->isPointerTy())
+		return;
+
+	Type * pointerElementType = dequantStorePtr->getType()->getPointerElementType();
+	if (!pointerElementType->isFloatingPointTy())
+		return;
+
+	Value *	     fpValue	   = builder.CreateSIToFP(valueOperand, Type::getFloatTy(storeInst->getContext()));
+	const double dequantFactor = std::ldexp(1.0, -maxPrecisionBits);
+	Value *	     dequantValue  = builder.CreateFMul(
+		  fpValue,
+		  ConstantFP::get(Type::getFloatTy(storeInst->getContext()), dequantFactor),
+		  storeInst->getName() + ".dequantized");
+
+	Value * targetValue = dequantValue;
+	if (pointerElementType->isDoubleTy())
+	{
+		targetValue = builder.CreateFPExt(dequantValue, Type::getDoubleTy(storeInst->getContext()),
+						  storeInst->getName() + ".ext_to_double");
+	}
+
+	builder.CreateStore(targetValue, dequantStorePtr);
+	storeInst->eraseFromParent();
+}
+
+static void
+handleMatrixStoreDequantize(StoreInst * storeInst, IRBuilder<> & builder, int maxPrecisionBits)
+{
+	Value * valueOperand   = storeInst->getValueOperand();
+	Value * pointerOperand = storeInst->getPointerOperand();
+
+	if (!pointerOperand->getType()->isPointerTy())
+		return;
+
+	Type * pointerElementType = pointerOperand->getType()->getPointerElementType();
+	if (!valueOperand->getType()->isIntegerTy() || !pointerElementType->isFloatingPointTy())
+		return;
+
+	Value *	     convertedFloat   = builder.CreateSIToFP(valueOperand, Type::getFloatTy(storeInst->getContext()),
+							     storeInst->getName() + ".dequantized");
+	const double dequantFactor    = std::ldexp(1.0, -maxPrecisionBits);
+	Value *	     dequantizedValue = builder.CreateFMul(
+		 convertedFloat,
+		 ConstantFP::get(Type::getFloatTy(storeInst->getContext()), dequantFactor),
+		 storeInst->getName() + ".scaled_back");
+	builder.CreateStore(dequantizedValue, pointerOperand);
+	storeInst->eraseFromParent();
+}
+
+static void
+handleReturnValueDequantize(ReturnInst * retInst, int maxPrecisionBits)
+{
+	if (!retInst->getReturnValue())
+		return;
+
+	Function * parentFunction = retInst->getFunction();
+	if (!parentFunction)
+		return;
+
+	Type * declaredReturnType = parentFunction->getReturnType();
+	if (!declaredReturnType->isFloatingPointTy())
+		return;
+
+	Value * retVal = retInst->getReturnValue();
+	if (!retVal->getType()->isIntegerTy())
+		return;
+
+	IRBuilder<>  builder(retInst);
+	Value *	     fpVal	    = builder.CreateSIToFP(retVal, declaredReturnType);
+	const double dequantFactor  = std::ldexp(1.0, -maxPrecisionBits);
+	Value *	     dequantizedVal = builder.CreateFMul(fpVal, ConstantFP::get(declaredReturnType, dequantFactor));
+	ReturnInst::Create(retInst->getContext(), dequantizedVal, retInst);
+	retInst->eraseFromParent();
+}
+
+static void
+dequantizeStoreResult(StoreInst * storeInst, Function & function, int maxPrecisionBits)
+{
+	IRBuilder<> builder(storeInst->getNextNode());
+
+#if IS_MATRIX
+	handleMatrixStoreDequantize(storeInst, builder, maxPrecisionBits);
+#elif IS_POINTER
+	handlePointerStoreDequantize(storeInst, builder, maxPrecisionBits);
+#else
+	handleGlobalStoreDequantize(storeInst, builder, maxPrecisionBits);
+#endif
+}
+
+static void
+processWhitelistedDequantizeFunctions(Module & module, const std::set<std::string> & whitelist, int maxPrecisionBits)
+{
+	for (Function & function : module)
+	{
+		if (whitelist.find(function.getName().str()) == whitelist.end())
+			continue;
+
+		std::vector<ReturnInst *> returnWorkList;
+		for (BasicBlock & block : function)
+		{
+			for (Instruction & instruction : block)
+			{
+				if (auto * retInst = dyn_cast<ReturnInst>(&instruction))
+				{
+					if (retInst->getReturnValue() && retInst->getReturnValue()->getType()->isIntegerTy())
+						returnWorkList.push_back(retInst);
+				}
+			}
+		}
+
+		for (ReturnInst * retInst : returnWorkList)
+			handleReturnValueDequantize(retInst, maxPrecisionBits);
+
+		for (BasicBlock & block : function)
+		{
+			std::vector<StoreInst *> storeWorkList;
+			for (Instruction & instruction : block)
+			{
+				if (auto * storeInst = dyn_cast<StoreInst>(&instruction))
+					storeWorkList.push_back(storeInst);
+			}
+
+			for (StoreInst * storeInst : storeWorkList)
+			{
+				if (storeInst && storeInst->getParent())
+					dequantizeStoreResult(storeInst, function, maxPrecisionBits);
+			}
+		}
+	}
+}
+
+void
+irPassLLVMIRApplyDequantization(Module & module, int maxPrecisionBits)
+{
+	std::set<std::string> dequantizeTargets;
+	collectDequantizeFunctionsFromAttributes(module, dequantizeTargets);
+	processWhitelistedDequantizeFunctions(module, dequantizeTargets, maxPrecisionBits);
 }
