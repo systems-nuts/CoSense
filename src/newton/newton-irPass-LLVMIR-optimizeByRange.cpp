@@ -558,6 +558,10 @@ irPassLLVMIROptimizeByRange(State * N, bool enableQuantization, bool enableOverl
 
 		maxPrecisionBits = fracQ;
 
+		maxPrecisionBits = 16;
+
+
+
 		flexprint(N->Fe, N->Fm, N->Fpinfo, "Minimum resolution across all sensors: %f\n", minResolution);
 		flexprint(N->Fe, N->Fm, N->Fpinfo,
 			  "Required FRAC_Q: ceil(-log2(minResolution) - 1) = ceil(%f) = %d\n",

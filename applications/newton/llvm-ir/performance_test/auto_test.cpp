@@ -49,7 +49,7 @@ struct timerData {
 	std::vector<double> compile_time;
 };
 
-#define TLOG_TIMESPEC_NSEC_PER_SEC 1000000
+#define TLOG_TIMESPEC_NSEC_PER_SEC 100
 
 /***************************************
  * Timer functions of the test framework
@@ -135,11 +135,24 @@ trimmedMean(std::vector<T> v, double trim_ratio = 0.10)
 	return sum / static_cast<double>(n - 2 * cut);
 }
 
+std::string
+normalizeTestCaseForMake(const std::string & test_case)
+{
+	if (test_case == "sin_cosf")
+		return "perf_sincosf";
+	if (test_case == "sin_cosf_opt")
+		return "perf_sincosf_opt";
+	if (test_case.rfind("e_", 0) == 0)
+		return "perf_" + test_case.substr(2);
+	return test_case;
+}
+
 double
 compileTargetCode(const std::string & test_case)
 {
 	timespec    compile_timer = tic();
-	std::string cmd		  = "bash -c 'make " + test_case + " >& compile.log'";
+	std::string make_target	  = normalizeTestCaseForMake(test_case);
+	std::string cmd		  = "bash -c 'make " + make_target + " >& compile.log'";
 	int	    ret		  = system(cmd.c_str());
 	timespec    compile_time  = toc(&compile_timer, "compile time", false);
 	if (ret != 0)
@@ -209,6 +222,7 @@ processDataPerf(const std::string test_case, const std::string params)
 	std::string line;
 	size_t	    position;
 	int64_t	    inst_count, time_consumption;
+	std::string make_target = normalizeTestCaseForMake(test_case);
 
 	// compile: add AUTO_QUANT=1 prefix for _opt targets when quantization is enabled
 	std::string quant_prefix = "";
@@ -216,7 +230,7 @@ processDataPerf(const std::string test_case, const std::string params)
 	{
 		quant_prefix = "AUTO_QUANT=1 ";
 	}
-	std::string cmd = "bash -c '" + quant_prefix + "make " + test_case + " >& compile.log'";
+	std::string cmd = "bash -c '" + quant_prefix + "make " + make_target + " >& compile.log'";
 	std::cout << "[DEBUG] Running command: " << cmd << std::endl;
 	int command_return = system(cmd.c_str());
 	if (command_return != 0)
@@ -285,9 +299,10 @@ processDataTimer(const std::string test_case, const std::string params)
 
 	if (g_enable_quant)
 	{
+		std::string make_target = normalizeTestCaseForMake(test_case);
 		// When quantization is enabled, compile inside processDataTimer with AUTO_QUANT=1 for _opt targets
 		std::string quant_prefix = (test_case.find("_opt") != std::string::npos) ? "AUTO_QUANT=1 " : "";
-		std::string cmd		 = "bash -c '" + quant_prefix + " make " + test_case + " >& compile.log'";
+		std::string cmd		 = "bash -c '" + quant_prefix + " make " + make_target + " >& compile.log'";
 		std::cout << "[DEBUG] Running command: " << cmd << std::endl;
 		int command_return = system(cmd.c_str());
 		if (command_return != 0)
@@ -524,7 +539,7 @@ main(int argc, char ** argv)
 	std::vector<std::string> test_cases;
 	if (g_enable_quant)
 	{
-		test_cases = {"e_y0", "e_j0", "e_exp", "e_log", "perf_sincosf"};
+		test_cases = {"e_y0", "e_j0", "e_exp", "e_log", "sin_cosf"};
 	}
 	else
 	{
