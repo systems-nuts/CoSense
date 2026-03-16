@@ -49,7 +49,8 @@ struct timerData {
 	std::vector<double> compile_time;
 };
 
-#define TLOG_TIMESPEC_NSEC_PER_SEC 100
+#define TLOG_TIMESPEC_NSEC_PER_SEC 1000000
+
 
 /***************************************
  * Timer functions of the test framework
